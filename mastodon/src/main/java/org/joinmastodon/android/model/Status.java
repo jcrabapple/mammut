@@ -58,6 +58,8 @@ public class Status extends BaseModel implements DisplayItemsParent, Searchable 
 	// MAMMUT: phase 1 port from upstream master — account that boosted this post, if any
 	@Nullable
 	public Account rebloggedBy;
+	// MAMMUT: phase 2 port from upstream master — client-side long-post collapse state
+	public transient boolean textExpanded, textExpandable;
 	public long favouritesCount;
 	public long repliesCount;
 	public long quotesCount;

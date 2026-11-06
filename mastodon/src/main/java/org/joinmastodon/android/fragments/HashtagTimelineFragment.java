@@ -15,19 +15,31 @@ import android.widget.TextView;
 
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.MastodonErrorResponse;
+import org.joinmastodon.android.api.requests.filters.CreateFilter;
+import org.joinmastodon.android.api.requests.filters.DeleteFilter;
+import org.joinmastodon.android.api.requests.filters.GetFilters;
 import org.joinmastodon.android.api.requests.tags.GetTag;
 import org.joinmastodon.android.api.requests.tags.SetTagFollowed;
 import org.joinmastodon.android.api.requests.timelines.GetHashtagTimeline;
 import org.joinmastodon.android.api.session.AccountSessionManager;
+import org.joinmastodon.android.model.Filter;
+import org.joinmastodon.android.model.FilterAction;
 import org.joinmastodon.android.model.FilterContext;
+import org.joinmastodon.android.model.FilterKeyword;
 import org.joinmastodon.android.model.Hashtag;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.model.TimelineDefinition;
+import org.joinmastodon.android.ui.Snackbar;
+import org.joinmastodon.android.ui.sheets.MuteHashtagConfirmationSheet;
 import org.joinmastodon.android.ui.text.SpacerSpan;
 import org.joinmastodon.android.ui.views.ProgressBarButton;
 import org.parceler.Parcels;
 
+import java.time.Duration;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
@@ -45,10 +57,13 @@ public class HashtagTimelineFragment extends PinnableStatusListFragment {
 	private TextView headerTitle, headerSubtitle;
 	private ProgressBarButton followButton;
 	private ProgressBar followProgress;
-	private MenuItem followMenuItem;
+	private MenuItem followMenuItem, muteMenuItem;
 	private boolean followRequestRunning;
 	private boolean toolbarContentVisible;
 	private String maxID;
+
+	// MAMMUT: phase 2 port from upstream master — hashtag muting is implemented as a client-side filter
+	private Optional<Filter> filter=Optional.empty();
 
 	// MOSHIDON
 	@Override
@@ -177,6 +192,91 @@ public class HashtagTimelineFragment extends PinnableStatusListFragment {
 	public void onCreateOptionsMenu(Menu menu, MenuInflater inflater){
 		followMenuItem=menu.add(getString(hashtag!=null && hashtag.following ? R.string.unfollow_user : R.string.follow_user, "#"+hashtagName));
 		followMenuItem.setVisible(toolbarContentVisible);
+		followMenuItem.setIcon(hashtag!=null && hashtag.following ? R.drawable.ic_fluent_person_delete_24_filled : R.drawable.ic_fluent_person_add_24_regular);
+		followMenuItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
+
+		// MAMMUT: phase 2 port from upstream master
+		muteMenuItem=menu.add(0, 1, 1, getString(R.string.mute_user, "#"+hashtagName));
+		muteMenuItem.setIcon(R.drawable.ic_fluent_speaker_off_24_regular);
+		muteMenuItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
+		muteMenuItem.setVisible(toolbarContentVisible);
+		new GetFilters().setCallback(new Callback<>(){
+			@Override
+			public void onSuccess(List<Filter> filters){
+				if(getActivity()==null) return;
+				// MAMMUT: hashtags are muted via a whole-word filter titled "#name"
+				filter=filters.stream().filter(f -> f.title.equals("#"+hashtagName)).findAny();
+				updateMuteState(filter.isPresent());
+			}
+
+			@Override
+			public void onError(ErrorResponse error){
+				if(getActivity()!=null) error.showToast(getActivity());
+			}
+		}).exec(accountID);
+	}
+
+	// MAMMUT: phase 2 port from upstream master
+	private void updateMuteState(boolean newMute){
+		if(muteMenuItem==null) return;
+		muteMenuItem.setTitle(getString(newMute ? R.string.unmute_user : R.string.mute_user, "#"+hashtagName));
+		muteMenuItem.setIcon(newMute ? R.drawable.ic_fluent_speaker_2_24_regular : R.drawable.ic_fluent_speaker_off_24_regular);
+	}
+
+	// MAMMUT: phase 2 port from upstream master
+	private void showMuteDialog(boolean currentlyMuted){
+		if(currentlyMuted){
+			unmuteHashtag();
+			return;
+		}
+		if(hashtag==null){
+			// entered via hashtag name only; the sheet only needs the name
+			Hashtag tag=new Hashtag();
+			tag.name=hashtagName;
+			hashtag=tag;
+		}
+
+		// pass references, so they can be changed inside the confirmation sheet
+		AtomicReference<Duration> muteDuration=new AtomicReference<>(Duration.ZERO);
+		new MuteHashtagConfirmationSheet(getContext(), null, muteDuration, hashtag, (onSuccess, onError)->{
+			FilterKeyword hashtagFilter=new FilterKeyword();
+			hashtagFilter.wholeWord=true;
+			hashtagFilter.keyword="#"+hashtagName;
+			new CreateFilter("#"+hashtagName, EnumSet.of(FilterContext.HOME), FilterAction.HIDE, (int) muteDuration.get().getSeconds(), List.of(hashtagFilter)).setCallback(new Callback<>(){
+				@Override
+				public void onSuccess(Filter result){
+					filter=Optional.of(result);
+					updateMuteState(true);
+					onSuccess.run();
+				}
+
+				@Override
+				public void onError(ErrorResponse error){
+					error.showToast(getContext());
+					onError.run();
+				}
+			}).exec(accountID);
+		}).show();
+	}
+
+	// MAMMUT: phase 2 port from upstream master
+	private void unmuteHashtag(){
+		// safe to get, this is only called if filter is present
+		new DeleteFilter(filter.get().id).setCallback(new Callback<>(){
+			@Override
+			public void onSuccess(Void result){
+				filter=Optional.empty();
+				updateMuteState(false);
+				new Snackbar.Builder(getContext())
+						.setText(getContext().getString(R.string.unmuted_user_x, '#'+hashtagName))
+						.show();
+			}
+
+			@Override
+			public void onError(ErrorResponse error){
+				error.showToast(getContext());
+			}
+		}).exec(accountID);
 	}
 
 	// MOSHIDON:
@@ -187,6 +287,12 @@ public class HashtagTimelineFragment extends PinnableStatusListFragment {
 
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item){
+		// MAMMUT: phase 2 port from upstream master — distinguish the two programmatically-created items by id
+		if(item.getItemId()==1){
+			if(hashtag!=null && filter!=null)
+				showMuteDialog(filter.isPresent());
+			return true;
+		}
 		if(hashtag!=null){
 			setFollowed(!hashtag.following);
 		}
@@ -199,6 +305,8 @@ public class HashtagTimelineFragment extends PinnableStatusListFragment {
 		toolbarTitleView.setAlpha(toolbarContentVisible ? 1f : 0f);
 		if(followMenuItem!=null)
 			followMenuItem.setVisible(toolbarContentVisible);
+		if(muteMenuItem!=null)
+			muteMenuItem.setVisible(toolbarContentVisible);
 	}
 
 	private void updateHeader(){

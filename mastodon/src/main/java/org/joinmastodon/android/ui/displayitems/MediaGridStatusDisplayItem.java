@@ -167,6 +167,12 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 					c.altButton.setTag(i);
 					c.altButton.setAlpha(1f);
 				}
+				// MAMMUT: phase 2 port from upstream master
+				if(c.noAltButton!=null){
+					c.noAltButton.setOnClickListener(altTextClickListener);
+					c.noAltButton.setTag(i);
+					c.noAltButton.setAlpha(1f);
+				}
 				controllers.add(c);
 
 				if (item.status.translation!=null && item.status.translation.mediaAttachments!=null){

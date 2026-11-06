@@ -9,9 +9,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewStub;
 import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.ui.text.HtmlParser;
@@ -77,10 +80,25 @@ public class TextStatusDisplayItem extends StatusDisplayItem{
 		private Button translationShowOriginal;
 		private ProgressBar translationProgress;
 
+		// MAMMUT: phase 2 port from upstream master — collapsible long posts
+		private final float textMaxHeight;
+		private final LinearLayout.LayoutParams collapseParams, wrapParams;
+		private final ViewGroup parent;
+		private final TextView readMore;
+		private final ScrollView textScrollView;
+
 		public Holder(Activity activity, ViewGroup parent){
 			super(activity, R.layout.display_item_text, parent);
+			this.parent=parent;
 			text=findViewById(R.id.text);
 			translationFooterStub=findViewById(R.id.translation_info);
+			textScrollView=findViewById(R.id.text_scroll_view);
+			readMore=findViewById(R.id.read_more);
+			textMaxHeight=activity.getResources().getDimension(R.dimen.text_max_height);
+			float textCollapsedHeight=activity.getResources().getDimension(R.dimen.text_collapsed_height);
+			collapseParams=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) textCollapsedHeight);
+			wrapParams=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			readMore.setOnClickListener(v -> item.callbacks.onToggleExpanded(item.status, getItemID()));
 		}
 
 		@Override
@@ -100,6 +118,33 @@ public class TextStatusDisplayItem extends StatusDisplayItem{
 			text.setTextColor(UiUtils.getThemeColor(text.getContext(), R.attr.colorM3OnSurface));
 			text.setTextSize(TypedValue.COMPLEX_UNIT_SP, item.largerFont ? 18 : 16);
 			updateTranslation(false);
+
+			// MAMMUT: phase 2 port from upstream master
+			readMore.setText(item.status.textExpanded ? R.string.sk_collapse : R.string.sk_expand);
+
+			if(!GlobalUserPreferences.collapseLongPosts){
+				textScrollView.setLayoutParams(wrapParams);
+				readMore.setVisibility(View.GONE);
+			}
+
+			// incredibly ugly workaround for https://github.com/sk22/megalodon/issues/520
+			// attempts to use OnPreDrawListener, OnGlobalLayoutListener and .post have failed -
+			// the view didn't want to reliably update after calling .setVisibility etc :(
+			int width=parent.getWidth()!=0 ? parent.getWidth() : item.fullWidth ? 4096 : 3072;
+
+			text.measure(
+					View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+					View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+
+			if(GlobalUserPreferences.collapseLongPosts && !item.status.textExpandable){
+				boolean tooBig=text.getMeasuredHeight()>textMaxHeight;
+				boolean expandable=tooBig && !item.status.hasSpoiler();
+				item.callbacks.onEnableExpandable(Holder.this, expandable);
+			}
+
+			boolean expandButtonShown=item.status.textExpandable && !item.status.textExpanded;
+			readMore.setVisibility(expandButtonShown ? View.VISIBLE : View.GONE);
+			textScrollView.setLayoutParams(item.status.textExpandable && !item.status.textExpanded ? collapseParams : wrapParams);
 		}
 
 		@Override

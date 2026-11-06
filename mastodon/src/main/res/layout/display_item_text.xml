@@ -5,17 +5,41 @@
 	android:layout_height="wrap_content"
 	android:orientation="vertical">
 
-	<org.joinmastodon.android.ui.views.LinkedTextView
-		android:id="@+id/text"
+	<!-- MAMMUT: phase 2 port from upstream master — collapsible long posts -->
+	<org.joinmastodon.android.ui.views.UntouchableScrollView
+		android:id="@+id/text_scroll_view"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:textSize="16sp"
-		android:textColor="?colorM3OnSurface"
-		android:paddingLeft="16dp"
-		android:paddingRight="16dp"
-		android:paddingTop="6dp"
-		android:paddingBottom="8dp"
-		android:lineSpacingExtra="5.25dp"/>
+		android:requiresFadingEdge="vertical"
+		android:scrollbars="none"
+		android:fadingEdgeLength="36dp">
+
+		<org.joinmastodon.android.ui.views.LinkedTextView
+			android:id="@+id/text"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:textSize="16sp"
+			android:textColor="?colorM3OnSurface"
+			android:paddingLeft="16dp"
+			android:paddingRight="16dp"
+			android:paddingTop="6dp"
+			android:paddingBottom="8dp"
+			android:lineSpacingExtra="5.25dp"/>
+
+	</org.joinmastodon.android.ui.views.UntouchableScrollView>
+
+	<Button
+		android:id="@+id/read_more"
+		style="@style/Widget.Mastodon.M3.Button.Text"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginHorizontal="16dp"
+		android:minHeight="40dp"
+		android:textAppearance="@style/m3_label_small"
+		android:textAllCaps="true"
+		android:text="@string/sk_expand"
+		android:visibility="gone"
+		android:importantForAccessibility="no"/>
 
 	<ViewStub
 		android:id="@+id/translation_info"

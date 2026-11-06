@@ -1,6 +1,8 @@
 package org.joinmastodon.android.ui.utils;
 
 import android.content.Context;
+
+import org.joinmastodon.android.GlobalUserPreferences;
 import android.graphics.Outline;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
@@ -27,6 +29,8 @@ public class MediaAttachmentViewController{
 	public final MediaGridStatusDisplayItem.GridItemType type;
 	public final ImageView photo;
 	public final View altButton;
+	// MAMMUT: phase 2 port from upstream master
+	public final View noAltButton;
 	public final TextView duration;
 	public final View playButton;
 	public final View failedOverlay;
@@ -74,6 +78,7 @@ public class MediaAttachmentViewController{
 			}, null);
 		photo=view.findViewById(R.id.photo);
 		altButton=view.findViewById(R.id.alt_button);
+		noAltButton=view.findViewById(R.id.no_alt_button);
 		duration=view.findViewById(R.id.duration);
 		playButton=view.findViewById(R.id.play_button);
 		failedOverlay=view.findViewById(R.id.failed_overlay);
@@ -104,7 +109,11 @@ public class MediaAttachmentViewController{
 		photo.setImageDrawable(crossfadeDrawable);
 		photo.setContentDescription(TextUtils.isEmpty(attachment.description) ? context.getString(R.string.media_no_description) : attachment.description);
 		if(altButton!=null){
-			altButton.setVisibility(TextUtils.isEmpty(attachment.description) ? View.GONE : View.VISIBLE);
+			boolean hasAltText=!TextUtils.isEmpty(attachment.description);
+			// MAMMUT: phase 2 port from upstream master
+			altButton.setVisibility(hasAltText && GlobalUserPreferences.showAltIndicator ? View.VISIBLE : View.GONE);
+			if(noAltButton!=null)
+				noAltButton.setVisibility(!hasAltText && GlobalUserPreferences.showNoAltIndicator ? View.VISIBLE : View.GONE);
 		}
 		if(type==MediaGridStatusDisplayItem.GridItemType.VIDEO){
 			duration.setText(UiUtils.formatMediaDuration((int)attachment.getDuration()));

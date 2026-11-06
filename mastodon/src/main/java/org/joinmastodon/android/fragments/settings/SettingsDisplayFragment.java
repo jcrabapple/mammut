@@ -43,6 +43,8 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 
 	// MAMMUT: phase 1 port from upstream master
 	private CheckableListItem<Void> enhanceTextSizeItem, marqueeItem, underlinedLinksItem, likeIconItem, spectatorModeItem, hideFabItem;
+	// MAMMUT: phase 2 port from upstream master
+	private CheckableListItem<Void> altIndicatorItem, noAltIndicatorItem, collapsePostsItem;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState){
@@ -76,6 +78,10 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		items.add(likeIconItem=new CheckableListItem<>(R.string.sk_settings_like_icon, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.likeIcon, R.drawable.ic_fluent_heart_24_regular, this::toggleCheckableItem));
 		items.add(spectatorModeItem=new CheckableListItem<>(R.string.sk_settings_hide_interaction, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.spectatorMode, R.drawable.ic_fluent_star_off_24_regular, this::toggleCheckableItem));
 		items.add(hideFabItem=new CheckableListItem<>(R.string.sk_settings_hide_fab, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.autoHideFab, R.drawable.ic_fluent_edit_24_regular, this::toggleCheckableItem));
+		// MAMMUT: phase 2 port from upstream master
+		items.add(altIndicatorItem=new CheckableListItem<>(R.string.sk_settings_show_alt_indicator, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showAltIndicator, R.drawable.ic_fluent_scan_text_24_regular, this::toggleCheckableItem));
+		items.add(noAltIndicatorItem=new CheckableListItem<>(R.string.sk_settings_show_no_alt_indicator, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showNoAltIndicator, R.drawable.ic_fluent_important_24_regular, this::toggleCheckableItem));
+		items.add(collapsePostsItem=new CheckableListItem<>(R.string.sk_settings_collapse_long_posts, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.collapseLongPosts, R.drawable.ic_fluent_chevron_down_24_regular, this::toggleCheckableItem));
 
 		items.add(showCWsItem=new CheckableListItem<>(R.string.settings_show_cws, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showCWs, R.drawable.ic_warning_24px, this::toggleCheckableItem));
 		items.add(hideSensitiveMediaItem=new CheckableListItem<>(R.string.settings_hide_sensitive_media, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.hideSensitiveMedia, R.drawable.ic_no_adult_content_24px, this::toggleCheckableItem));
@@ -110,6 +116,10 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		GlobalUserPreferences.likeIcon=likeIconItem.checked;
 		GlobalUserPreferences.spectatorMode=spectatorModeItem.checked;
 		GlobalUserPreferences.autoHideFab=hideFabItem.checked;
+		// MAMMUT: phase 2 port from upstream master
+		GlobalUserPreferences.showAltIndicator=altIndicatorItem.checked;
+		GlobalUserPreferences.showNoAltIndicator=noAltIndicatorItem.checked;
+		GlobalUserPreferences.collapseLongPosts=collapsePostsItem.checked;
 		GlobalUserPreferences.save();
 		E.post(new StatusDisplaySettingsChangedEvent(accountID));
 	}

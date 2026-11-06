@@ -356,6 +356,9 @@ public abstract class StatusDisplayItem{
 	}
 
 	public interface Callbacks extends PhotoViewerHost{
+		// MAMMUT: phase 2 port from upstream master — collapsible long posts
+		default void onEnableExpandable(TextStatusDisplayItem.Holder holder, boolean expandable) {}
+		default void onToggleExpanded(Status status, String itemID) {}
 		void onItemClick(String parentID);
 		void onItemClick(String parentID, boolean quote);
 		boolean isItemEnabled(StatusDisplayItem item);

@@ -24,6 +24,17 @@
 		android:layout_margin="8dp"
 		android:layout_gravity="start|bottom">
 		<!-- This is hidden from screenreaders because that same alt text is set as content description on the ImageView -->
+		<ImageView
+			android:id="@+id/no_alt_button"
+			android:layout_width="wrap_content"
+			android:layout_height="24dp"
+			android:layout_marginEnd="2dp"
+			android:padding="4dp"
+			android:src="@drawable/ic_fluent_important_20_filled"
+			android:background="@drawable/bg_image_no_alt_overlay"
+			android:tint="?colorGray25"
+			android:visibility="gone"
+			tools:ignore="UseAppTint" />
 		<TextView
 			android:id="@+id/alt_button"
 			android:layout_width="wrap_content"

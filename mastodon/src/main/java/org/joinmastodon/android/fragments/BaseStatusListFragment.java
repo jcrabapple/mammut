@@ -196,6 +196,36 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 	}
 
 
+	// MAMMUT: phase 2 port from upstream master — collapsible long posts
+	@Override
+	public void onEnableExpandable(TextStatusDisplayItem.Holder holder, boolean expandable){
+		Status s=holder.getItem().status;
+		if(s.textExpandable!=expandable && list!=null)
+			s.textExpandable=expandable;
+	}
+
+	// MAMMUT: phase 2 port from upstream master
+	@Override
+	public void onToggleExpanded(Status status, String itemID){
+		status.textExpanded=!status.textExpanded;
+		notifyItemChangedWithinStatus(itemID, TextStatusDisplayItem.class);
+	}
+
+	// MAMMUT: phase 2 port from upstream master — notifies only items of the given type within one status' block
+	private <I extends StatusDisplayItem> void notifyItemChangedWithinStatus(String id, Class<I> type){
+		boolean encounteredParent=false;
+		for(int i=0; i<displayItems.size(); i++){
+			StatusDisplayItem item=displayItems.get(i);
+			boolean idEquals=id.equals(item.parentID);
+			if(!encounteredParent && idEquals) encounteredParent=true; // reached top of the parent
+			else if(encounteredParent && !idEquals) break; // passed by bottom of the parent
+			if(idEquals && type.isInstance(item)){
+				adapter.notifyItemChanged(i);
+				return;
+			}
+		}
+	}
+
 	@Override
 	public void onCreate(Bundle savedInstanceState){
 		super.onCreate(savedInstanceState);
