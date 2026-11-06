@@ -12,7 +12,10 @@ import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.HapticFeedbackConstants;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.PopupMenu;
@@ -164,6 +167,10 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 			// MOSHIDON:
 			bookmarkBtn.setSelected(item.status.bookmarked);
 
+			// MAMMUT: phase 1 port from upstream master — heart vs star favorite icon
+			favorite.setCompoundDrawablesRelativeWithIntrinsicBounds(
+					GlobalUserPreferences.likeIcon ? R.drawable.ic_fluent_heart_24_selector : R.drawable.ic_star_selector, 0, 0, 0);
+
 			Drawable d=itemView.getResources().getDrawable(switch(item.status.visibility){
 				case PUBLIC, UNLISTED, LOCAL -> R.drawable.ic_boost;
 				case PRIVATE -> isOwn ? R.drawable.ic_boost_private : R.drawable.ic_boost_disabled_24px;
@@ -238,6 +245,8 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 		}
 
 		private void onFavoriteClick(View v){
+			// MAMMUT: phase 1 port from upstream master
+			vibrateForAction(favoriteBtn, !item.status.favourited);
 			AccountSessionManager.getInstance().getAccount(item.accountID).getStatusInteractionController().setFavorited(item.status, !item.status.favourited);
 			favorite.setSelected(item.status.favourited);
 			bindButton(favorite, item.status.favouritesCount);
@@ -280,7 +289,8 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 						if(status == null)
 							return;
 						bookmarkBtn.setSelected(!status.bookmarked);
-						// vibrateForAction(bookmark, !status.bookmarked);
+						// MAMMUT: phase 1 port from upstream master
+						vibrateForAction(bookmarkBtn, !status.bookmarked);
 						AccountSessionManager.getInstance().getAccount(item.accountID).getStatusInteractionController().setBookmarked(status, !status.bookmarked
 						//		, r->{
 						//	UiUtils.opacityIn(v);
@@ -435,6 +445,31 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 					item.status, item.accountID, null,
 					interactionConsumer
 			);
+		}
+
+		// MAMMUT: phase 1 port from upstream master
+		private static void vibrateForAction(View view, boolean isPositive){
+			if(!GlobalUserPreferences.hapticFeedback)
+				return;
+
+			if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.R){
+				view.performHapticFeedback(isPositive ? HapticFeedbackConstants.CONFIRM : HapticFeedbackConstants.REJECT);
+				return;
+			}
+
+			Vibrator vibrator=view.getContext().getSystemService(Vibrator.class);
+
+			if(Build.VERSION.SDK_INT==Build.VERSION_CODES.Q){
+				vibrator.vibrate(VibrationEffect.createPredefined(isPositive ? VibrationEffect.EFFECT_CLICK : VibrationEffect.EFFECT_DOUBLE_CLICK));
+			}else if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O){
+				VibrationEffect effect=isPositive
+						? VibrationEffect.createOneShot(75L, 128)
+						: VibrationEffect.createWaveform(new long[]{0L, 75L, 75L, 75L}, new int[]{0, 128, 0, 128}, -1);
+				vibrator.vibrate(effect);
+			}else{
+				if(isPositive) vibrator.vibrate(75L);
+				else vibrator.vibrate(new long[]{0L, 75L, 75L, 75L}, -1);
+			}
 		}
 
 		private boolean onFavoriteLongClick(View v) {

@@ -41,6 +41,9 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 	private CheckableListItem<Void> trueBlackModeItem;
 	private AccountLocalPreferences lp;
 
+	// MAMMUT: phase 1 port from upstream master
+	private CheckableListItem<Void> enhanceTextSizeItem, marqueeItem, underlinedLinksItem, likeIconItem, spectatorModeItem, hideFabItem;
+
 	@Override
 	public void onCreate(Bundle savedInstanceState){
 		super.onCreate(savedInstanceState);
@@ -65,6 +68,14 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		// MOSHIDON:
 		items.add(colorItem=new ListItem<>(getString(R.string.sk_settings_color_palette), getColorPaletteValue(), R.drawable.ic_fluent_color_24_regular, this::onColorClick));
 		items.add(trueBlackModeItem=new CheckableListItem<>(R.string.sk_settings_true_black, R.string.mo_setting_true_black_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.trueBlackTheme, R.drawable.ic_fluent_dark_theme_24_regular, i->onTrueBlackModeClick(), true));
+
+		// MAMMUT: phase 1 port from upstream master
+		items.add(enhanceTextSizeItem=new CheckableListItem<>(R.string.mo_settings_enhance_text_size, R.string.mo_settings_enhance_text_size_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.enhanceTextSize, R.drawable.ic_fluent_text_more_24_regular, i->onEnhanceTextSizeClick()));
+		items.add(marqueeItem=new CheckableListItem<>(R.string.sk_settings_enable_marquee, R.string.mo_setting_marquee_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.toolbarMarquee, R.drawable.ic_fluent_text_more_24_regular, this::toggleCheckableItem));
+		items.add(underlinedLinksItem=new CheckableListItem<>(R.string.sk_settings_underlined_links, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.underlinedLinks, R.drawable.ic_fluent_text_underline_24_regular, this::toggleCheckableItem));
+		items.add(likeIconItem=new CheckableListItem<>(R.string.sk_settings_like_icon, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.likeIcon, R.drawable.ic_fluent_heart_24_regular, this::toggleCheckableItem));
+		items.add(spectatorModeItem=new CheckableListItem<>(R.string.sk_settings_hide_interaction, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.spectatorMode, R.drawable.ic_fluent_star_off_24_regular, this::toggleCheckableItem));
+		items.add(hideFabItem=new CheckableListItem<>(R.string.sk_settings_hide_fab, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.autoHideFab, R.drawable.ic_fluent_edit_24_regular, this::toggleCheckableItem));
 
 		items.add(showCWsItem=new CheckableListItem<>(R.string.settings_show_cws, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showCWs, R.drawable.ic_warning_24px, this::toggleCheckableItem));
 		items.add(hideSensitiveMediaItem=new CheckableListItem<>(R.string.settings_hide_sensitive_media, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.hideSensitiveMedia, R.drawable.ic_no_adult_content_24px, this::toggleCheckableItem));
@@ -93,8 +104,22 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		GlobalUserPreferences.hideSensitiveMedia=hideSensitiveMediaItem.checked;
 		GlobalUserPreferences.showInteractionCounts=interactionCountsItem.checked;
 		GlobalUserPreferences.customEmojiInNames=emojiInNamesItem.checked;
+		// MAMMUT: phase 1 port from upstream master
+		GlobalUserPreferences.toolbarMarquee=marqueeItem.checked;
+		GlobalUserPreferences.underlinedLinks=underlinedLinksItem.checked;
+		GlobalUserPreferences.likeIcon=likeIconItem.checked;
+		GlobalUserPreferences.spectatorMode=spectatorModeItem.checked;
+		GlobalUserPreferences.autoHideFab=hideFabItem.checked;
 		GlobalUserPreferences.save();
 		E.post(new StatusDisplaySettingsChangedEvent(accountID));
+	}
+
+	// MAMMUT: phase 1 port from upstream master — activity recreation re-applies the font scale override in MainActivity.attachBaseContext
+	private void onEnhanceTextSizeClick(){
+		toggleCheckableItem(enhanceTextSizeItem);
+		GlobalUserPreferences.enhanceTextSize=enhanceTextSizeItem.checked;
+		GlobalUserPreferences.save();
+		restartActivityToApplyNewTheme();
 	}
 
 	private int getAppearanceValue(){

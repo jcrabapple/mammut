@@ -20,6 +20,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
@@ -54,6 +55,9 @@ public class Status extends BaseModel implements DisplayItemsParent, Searchable 
 	@RequiredField
 	public List<Emoji> emojis;
 	public long reblogsCount;
+	// MAMMUT: phase 1 port from upstream master — account that boosted this post, if any
+	@Nullable
+	public Account rebloggedBy;
 	public long favouritesCount;
 	public long repliesCount;
 	public long quotesCount;

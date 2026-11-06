@@ -5,6 +5,7 @@ import android.os.Bundle;
 import com.squareup.otto.Subscribe;
 
 import org.joinmastodon.android.E;
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.events.PollUpdatedEvent;
 import org.joinmastodon.android.events.RemoveAccountPostsEvent;
 import org.joinmastodon.android.events.StatusCountersUpdatedEvent;
@@ -28,7 +29,8 @@ public abstract class StatusListFragment extends BaseStatusListFragment<Status>{
 	protected EventListener eventListener=new EventListener();
 
 	protected List<StatusDisplayItem> buildDisplayItems(Status s){
-		return StatusDisplayItem.buildItems(this, s, accountID, s, knownAccounts, true);
+		// MAMMUT: phase 1 port from upstream master — spectator mode removes the interaction footer
+		return StatusDisplayItem.buildItems(this, s, accountID, s, knownAccounts, !GlobalUserPreferences.spectatorMode);
 	}
 
 	protected abstract FilterContext getFilterContext();

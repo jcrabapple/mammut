@@ -7,6 +7,7 @@ import android.view.View;
 import com.squareup.otto.Subscribe;
 
 import org.joinmastodon.android.E;
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.events.StatusUpdatedEvent;
@@ -86,7 +87,11 @@ public abstract class BaseNotificationsListFragment extends BaseStatusListFragme
 				inlineItem.removeTopPadding=true;
 				return List.of(titleItem, inlineItem);
 			}else{
-				ArrayList<StatusDisplayItem> items=StatusDisplayItem.buildItems(this, getActivity(), n.status, accountID, n, knownAccounts, titleItem!=null ? StatusDisplayItem.FLAG_NO_IN_REPLY_TO : 0);
+				// MAMMUT: phase 1 port from upstream master — spectator mode removes the interaction footer
+				int flags=titleItem!=null ? StatusDisplayItem.FLAG_NO_IN_REPLY_TO : 0;
+				if(GlobalUserPreferences.spectatorMode)
+					flags|=StatusDisplayItem.FLAG_NO_FOOTER;
+				ArrayList<StatusDisplayItem> items=StatusDisplayItem.buildItems(this, getActivity(), n.status, accountID, n, knownAccounts, flags);
 				if(titleItem!=null)
 					items.add(0, titleItem);
 				return items;

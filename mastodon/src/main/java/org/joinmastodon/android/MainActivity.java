@@ -4,8 +4,10 @@ import android.Manifest;
 import android.app.Application;
 import android.app.Fragment;
 import android.app.assist.AssistContent;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.BadParcelableException;
 import android.os.Build;
@@ -271,5 +273,21 @@ public class MainActivity extends FragmentStackActivity{
 		if(getTopmostFragment() instanceof AssistContentProviderFragment provider){
 			provider.onProvideAssistContent(outContent);
 		}
+	}
+
+	// MAMMUT: ported from upstream master — enlarge all text when enabled
+	@Override
+	protected void attachBaseContext(Context base){
+		if(!GlobalUserPreferences.enhanceTextSize){
+			super.attachBaseContext(base);
+			return;
+		}
+
+		Configuration override=new Configuration(base.getResources().getConfiguration());
+		// This is the font multiplier, which should be multiplied by, because the system settings also play a role here
+		override.fontScale*=1.15f;
+		Context newBase=base.createConfigurationContext(override);
+
+		super.attachBaseContext(newBase);
 	}
 }

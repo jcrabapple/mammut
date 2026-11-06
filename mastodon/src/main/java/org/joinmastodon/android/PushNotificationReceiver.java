@@ -17,6 +17,7 @@ import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import android.util.Log;
 
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.api.MastodonAPIController;
 import org.joinmastodon.android.api.requests.notifications.GetNotificationByID;
 import org.joinmastodon.android.api.session.AccountSession;
@@ -208,6 +209,13 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 				replyIntent.putExtra("notificationTag", notificationTag);
 				replyIntent.putExtra("visibility", notification.status.visibility.toString());
 				replyIntent.putExtra("replyPrefix", replyPrefix);
+
+			// MAMMUT: phase 1 port from upstream master — prefix the CW of a push-notification reply with "re: " per preference
+			String cwText=notification.status.spoilerText;
+			boolean prefixCW=GlobalUserPreferences.prefixReplies==GlobalUserPreferences.PrefixRepliesMode.ALWAYS
+					|| (GlobalUserPreferences.prefixReplies==GlobalUserPreferences.PrefixRepliesMode.TO_OTHERS && !ownID.equals(notification.status.account.id));
+			if(cwText!=null && prefixCW && !cwText.startsWith("re: "))
+				replyIntent.putExtra("replySpoilerText", "re: "+cwText);
 				builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_reply_24px),
 						context.getString(R.string.button_reply), PendingIntent.getService(context, (accountID+pn.notificationId+"reply").hashCode(), replyIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE))
 								.addRemoteInput(new RemoteInput.Builder("replyText").setLabel(context.getString(R.string.button_reply)).build())
@@ -219,7 +227,7 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 			favIntent.putExtra("account", accountID);
 			favIntent.putExtra("post", notification.status.id);
 			favIntent.putExtra("notificationTag", notificationTag);
-			builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_star_24px),
+			builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, GlobalUserPreferences.likeIcon ? R.drawable.ic_fluent_heart_24_filled : R.drawable.ic_star_24px),
 					context.getString(R.string.button_favorite), PendingIntent.getService(context, (accountID+pn.notificationId+"favorite").hashCode(), favIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)).build());
 
 			PendingIntent boostActionIntent;

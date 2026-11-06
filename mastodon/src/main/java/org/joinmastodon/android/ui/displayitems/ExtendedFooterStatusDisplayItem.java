@@ -15,6 +15,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.fragments.StatusEditHistoryFragment;
@@ -85,6 +86,8 @@ public class ExtendedFooterStatusDisplayItem extends StatusDisplayItem{
 		public void onBind(ExtendedFooterStatusDisplayItem item){
 			Status s=item.status;
 			favorites.setText(getFormattedPlural(R.plurals.x_favorites, item.status.favouritesCount));
+			// MAMMUT: phase 1 port from upstream master
+			favorites.setCompoundDrawablesRelativeWithIntrinsicBounds(GlobalUserPreferences.likeIcon ? R.drawable.ic_fluent_heart_20_regular : R.drawable.ic_star_20px, 0, 0, 0);
 			reblogs.setText(getFormattedPlural(R.plurals.x_reblogs, item.status.reblogsCount));
 			if(AccountSessionManager.get(item.accountID).getInstanceInfo().supportsQuotePostAuthoring()){
 				quotes.setVisibility(View.VISIBLE);

@@ -200,7 +200,8 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 				}
 			}
 			icon.setImageResource(switch(item.notification.notification.type){
-				case FAVORITE -> R.drawable.ic_star_fill1_24px;
+				// MAMMUT: phase 1 port from upstream master
+				case FAVORITE -> GlobalUserPreferences.likeIcon ? R.drawable.ic_fluent_heart_24_filled : R.drawable.ic_star_fill1_24px;
 				case REBLOG -> R.drawable.ic_repeat_fill1_24px;
 				case FOLLOW, FOLLOW_REQUEST -> R.drawable.ic_person_add_fill1_24px;
 				case POLL -> R.drawable.ic_insert_chart_fill1_24px;

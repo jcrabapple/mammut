@@ -5,6 +5,7 @@ import android.text.TextPaint;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
 
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.model.Hashtag;
 import org.joinmastodon.android.model.Mention;
@@ -36,7 +37,8 @@ public class LinkSpan extends CharacterStyle {
 	@Override
 	public void updateDrawState(TextPaint tp) {
 		tp.setColor(color=tp.linkColor);
-		tp.setUnderlineText(true);
+		// MAMMUT: phase 1 port from upstream master
+		tp.setUnderlineText(GlobalUserPreferences.underlinedLinks);
 	}
 	
 	public void onClick(Context context){

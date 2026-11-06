@@ -199,6 +199,11 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 	@Override
 	public void onCreate(Bundle savedInstanceState){
 		super.onCreate(savedInstanceState);
+		// MAMMUT: phase 1 port from upstream master — disable appkit's built-in title marquee when the pref asks for it
+		if(GlobalUserPreferences.toolbarMarquee){
+			setTitleMarqueeEnabled(false);
+			setSubtitleMarqueeEnabled(false);
+		}
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.N)
 			setRetainInstance(true);
 	}

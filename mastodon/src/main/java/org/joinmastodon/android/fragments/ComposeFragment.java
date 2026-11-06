@@ -572,6 +572,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			String ownID=AccountSessionManager.getInstance().getAccount(accountID).self.id;
 			if(!replyTo.account.id.equals(ownID))
 				mentions.add('@'+replyTo.account.acct);
+			// MAMMUT: phase 1 port from upstream master
+			if(GlobalUserPreferences.mentionRebloggerAutomatically && replyTo.rebloggedBy!=null && !replyTo.rebloggedBy.id.equals(ownID))
+				mentions.add('@'+replyTo.rebloggedBy.acct);
 			for(Mention mention:replyTo.mentions){
 				if(mention.id.equals(ownID))
 					continue;
@@ -588,7 +591,11 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				if(!TextUtils.isEmpty(replyTo.spoilerText) && AccountSessionManager.getInstance().isSelf(accountID, replyTo.account)){
 					hasSpoiler=true;
 					spoilerWrap.setVisibility(View.VISIBLE);
-					spoilerEdit.setText(replyTo.spoilerText);
+					// MAMMUT: phase 1 port from upstream master — prefix the CW with "re: " per preference
+					String prefix=(GlobalUserPreferences.prefixReplies==GlobalUserPreferences.PrefixRepliesMode.ALWAYS
+							|| (GlobalUserPreferences.prefixReplies==GlobalUserPreferences.PrefixRepliesMode.TO_OTHERS && !ownID.equals(replyTo.account.id)))
+							&& !replyTo.spoilerText.startsWith("re: ") ? "re: " : "";
+					spoilerEdit.setText(prefix + replyTo.spoilerText);
 					spoilerBtn.setSelected(true);
 				}
 			}

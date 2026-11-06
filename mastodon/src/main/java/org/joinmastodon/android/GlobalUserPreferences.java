@@ -66,6 +66,7 @@ public class GlobalUserPreferences{
 	public static boolean showPostsWithoutAlt;
 	public static boolean showMediaPreview;
 	public static boolean removeTrackingParams;
+	public static boolean enhanceTextSize;
 
 	// MOSHIDON: we changed this to public, because otherwise we can't export the settings
 	public static SharedPreferences getPrefs(){
@@ -134,7 +135,7 @@ public class GlobalUserPreferences{
 		showPostsWithoutAlt=prefs.getBoolean("showPostsWithoutAlt", true);
 		showMediaPreview=prefs.getBoolean("showMediaPreview", true);
 		removeTrackingParams=prefs.getBoolean("removeTrackingParams", true);
-//		enhanceTextSize=prefs.getBoolean("enhanceTextSize", false);
+		enhanceTextSize=prefs.getBoolean("enhanceTextSize", false);
 
 
 		if(!prefs.getBoolean("perAccountMigrationDone", false)){
@@ -210,7 +211,7 @@ public class GlobalUserPreferences{
 				.putBoolean("showPostsWithoutAlt", showPostsWithoutAlt)
 				.putBoolean("showMediaPreview", showMediaPreview)
 				.putBoolean("removeTrackingParams", removeTrackingParams)
-//				.putBoolean("enhanceTextSize", enhanceTextSize)
+				.putBoolean("enhanceTextSize", enhanceTextSize)
 
 				.apply();
 	}

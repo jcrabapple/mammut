@@ -61,6 +61,10 @@ public class NotificationActionHandlerService extends Service{
 			req.inReplyToId=postID;
 			req.status=intent.getStringExtra("replyPrefix")+replyText;
 			req.visibility=StatusPrivacy.valueOf(intent.getStringExtra("visibility"));
+			// MAMMUT: phase 1 port from upstream master — carry the "re: "-prefixed CW from PushNotificationReceiver
+			String replySpoilerText=intent.getStringExtra("replySpoilerText");
+			if(replySpoilerText!=null)
+				req.spoilerText=replySpoilerText;
 			runningRequestCount++;
 			new CreateStatus(req, UUID.randomUUID().toString())
 					.setCallback(new Callback<>(){

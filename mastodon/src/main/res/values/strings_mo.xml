@@ -84,7 +84,9 @@
 	<string name="mo_donate_url" translatable="false">https://github.com/sponsors/LucasGGamerM</string>
 
 <!--    Settings summaries-->
-    <string name="mo_setting_true_black_summary">Might save power on AMOLED displays</string>
+    <string name="mo_settings_enhance_text_size">Enhance text size</string>
+    <string name="mo_settings_enhance_text_size_summary">Makes the app\'s text bigger</string>
+<string name="mo_setting_true_black_summary">Might save power on AMOLED displays</string>
     <string name="mo_setting_marquee_summary">Disables the ellipsized title scrolling</string>
     <string name="mo_setting_uniform_summary">Use the app icon for all notifications</string>
     <string name="mo_setting_reduced_motion_summary">Disable animations of interactions</string>
