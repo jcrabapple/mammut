@@ -10,9 +10,9 @@ android {
 
 	compileSdk 35
 	defaultConfig {
-		manifestPlaceholders = [oAuthScheme:"moshidon-android-auth"]
-		archivesBaseName = "moshidon"
-		applicationId "org.joinmastodon.android.moshinda"
+		manifestPlaceholders = [oAuthScheme:"mammut-android-auth"]
+		archivesBaseName = "mammut"
+		applicationId "app.mammut.android"
 		minSdk 23
 		targetSdk 35
 		versionCode 110
@@ -55,7 +55,7 @@ android {
 			debuggable true
 			versionNameSuffix '-debug'
 			applicationIdSuffix '.debug'
-			manifestPlaceholders = [oAuthScheme:"moshidon-android-debug-auth"]
+			manifestPlaceholders = [oAuthScheme:"mammut-android-debug-auth"]
 		}
 //		appcenterPrivateBeta{
 //			initWith release
@@ -82,7 +82,7 @@ android {
 			applicationIdSuffix '.nightly'
 
 			signingConfig signingConfigs.nightly
-			manifestPlaceholders = [oAuthScheme:"moshidon-android-nightly-auth"]
+			manifestPlaceholders = [oAuthScheme:"mammut-android-nightly-auth"]
 		}
 		githubDebug{
 			initWith debug
