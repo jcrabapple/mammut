@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - mammut
-      - feat/phase1-port
+      - 'feat/**'
       - build/ci-setup
   pull_request:
     branches:
