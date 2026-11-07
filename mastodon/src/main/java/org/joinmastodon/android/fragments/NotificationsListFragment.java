@@ -56,6 +56,10 @@ import me.grishka.appkit.api.Callback;
 import me.grishka.appkit.api.ErrorResponse;
 import me.grishka.appkit.api.SimpleCallback;
 import me.grishka.appkit.utils.MergeRecyclerAdapter;
+import org.joinmastodon.android.api.requests.accounts.GetFollowRequests;
+import org.joinmastodon.android.events.FollowRequestHandledEvent;
+import org.joinmastodon.android.model.Account;
+import org.joinmastodon.android.model.HeaderPaginationList;
 
 public class NotificationsListFragment extends BaseNotificationsListFragment{
 	private boolean onlyMentions;
@@ -63,6 +67,10 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 	private View mentionsTab, allTab;
 	private String unreadMarker, realUnreadMarker;
 	private MenuItem markAllReadItem;
+	// MAMMUT: port from upstream master — pending follow requests entry point
+	private MenuItem followRequestsItem;
+	private boolean hasPendingFollowRequests;
+	private long lastFollowRequestsCheck;
 	private boolean reloadingFromCache;
 	private ListItem<Void> requestsItem=new ListItem<>(R.string.filtered_notifications, 0, R.drawable.ic_inventory_2_24px, i->openNotificationRequests());
 	private ArrayList<ListItem<Void>> requestsItems=new ArrayList<>();
@@ -257,6 +265,13 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 		markAllReadItem=menu.findItem(R.id.mark_all_read);
 		MenuItem filters=menu.findItem(R.id.filters);
 		filters.setVisible(lastPolicy!=null);
+		// MAMMUT: port from upstream master
+		followRequestsItem=menu.findItem(R.id.follow_requests);
+		if(followRequestsItem!=null){
+			followRequestsItem.setVisible(hasPendingFollowRequests);
+			UiUtils.enableOptionsMenuIcons(getActivity(), menu, R.id.follow_requests, R.id.mark_all_read);
+		}
+		refreshFollowRequestsBadge();
 	}
 
 	@Override
@@ -267,8 +282,38 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 			resetUnreadBackground();
 		}else if(id==R.id.filters){
 			showFiltersAlert();
+		}else if(id==R.id.follow_requests){
+			Bundle args=new Bundle();
+			args.putString("account", accountID);
+			Nav.go(getActivity(), FollowRequestsListFragment.class, args);
 		}
 		return true;
+	}
+
+	// MAMMUT: port from upstream master — show the follow-requests button only when one is pending
+	private void refreshFollowRequestsBadge(){
+		long now=System.currentTimeMillis();
+		if(now-lastFollowRequestsCheck<30_000)
+			return;
+		lastFollowRequestsCheck=now;
+		new GetFollowRequests(null, 1)
+				.setCallback(new SimpleCallback<HeaderPaginationList<Account>>(this){
+					@Override
+					public void onSuccess(HeaderPaginationList<Account> result){
+						hasPendingFollowRequests=!result.isEmpty();
+						if(followRequestsItem!=null)
+							followRequestsItem.setVisible(hasPendingFollowRequests);
+					}
+				})
+				.exec(accountID);
+	}
+
+	@Subscribe
+	public void onFollowRequestHandled(FollowRequestHandledEvent ev){
+		if(!ev.accountID.equals(accountID))
+			return;
+		lastFollowRequestsCheck=0;
+		refreshFollowRequestsBadge();
 	}
 
 	@Override

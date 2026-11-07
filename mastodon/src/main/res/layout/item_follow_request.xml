@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: port from upstream master — follow-request row (accept/reject) -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:paddingHorizontal="16dp">
+
+	<ImageView
+		android:id="@+id/ava"
+		android:layout_width="32dp"
+		android:layout_height="32dp"
+		android:layout_marginVertical="20dp"
+		android:layout_marginEnd="12dp"
+		android:importantForAccessibility="no"
+		tools:src="#0f0"/>
+
+	<ImageButton
+		android:id="@+id/btn_accept"
+		android:layout_width="40dp"
+		android:layout_height="40dp"
+		android:layout_marginStart="12dp"
+		android:layout_alignParentEnd="true"
+		android:layout_centerVertical="true"
+		style="@style/Widget.Mastodon.M3.Button.Outlined"
+		android:contentDescription="@string/sk_accept_follow_request"
+		android:src="@drawable/ic_check_24px"/>
+
+	<ImageButton
+		android:id="@+id/btn_reject"
+		android:layout_width="40dp"
+		android:layout_height="40dp"
+		android:layout_marginStart="12dp"
+		android:layout_toStartOf="@id/btn_accept"
+		android:layout_centerVertical="true"
+		style="@style/Widget.Mastodon.M3.Button.Outlined"
+		android:contentDescription="@string/sk_reject_follow_request"
+		android:src="@drawable/ic_delete_24px"/>
+
+	<TextView
+		android:id="@+id/name"
+		android:layout_width="match_parent"
+		android:layout_height="24dp"
+		android:layout_toEndOf="@id/ava"
+		android:layout_toStartOf="@id/btn_reject"
+		android:layout_marginTop="14dp"
+		android:singleLine="true"
+		android:ellipsize="end"
+		android:textAppearance="@style/m3_body_large"
+		android:gravity="center_vertical"
+		android:textColor="?colorM3OnSurface"
+		tools:text="User Name"/>
+
+	<TextView
+		android:id="@+id/username"
+		android:layout_width="match_parent"
+		android:layout_height="20dp"
+		android:layout_below="@id/name"
+		android:layout_toEndOf="@id/ava"
+		android:layout_toStartOf="@id/btn_reject"
+		android:singleLine="true"
+		android:ellipsize="end"
+		android:textAppearance="@style/m3_body_medium"
+		android:gravity="center_vertical"
+		android:textColor="?colorM3OnSurfaceVariant"
+		tools:text="@user@example.com"/>
+
+</RelativeLayout>
