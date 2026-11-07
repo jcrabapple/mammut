@@ -2,6 +2,7 @@ package org.joinmastodon.android.fragments.discover;
 
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 
 import org.joinmastodon.android.api.requests.trends.GetTrendingStatuses;
 import org.joinmastodon.android.api.session.AccountSessionManager;
@@ -17,6 +18,7 @@ import me.grishka.appkit.api.SimpleCallback;
 import me.grishka.appkit.utils.MergeRecyclerAdapter;
 
 public class DiscoverPostsFragment extends StatusListFragment{
+	private static final String TAG="DiscoverPostsFragment";
 	private DiscoverInfoBannerHelper bannerHelper;
 	private int realOffset=0;
 
@@ -28,14 +30,24 @@ public class DiscoverPostsFragment extends StatusListFragment{
 
 	@Override
 	protected void doLoadData(int offset, int count){
+		// MAMMUT: this screen had no diagnostics at all, which made "it spins forever" impossible
+		// to tell apart from "the request never left the device" or "every item was dropped".
+		Log.i(TAG, "doLoadData: offset="+offset+" count="+count+" account="+accountID);
 		currentRequest=new GetTrendingStatuses(offset==0 ? 0 : realOffset, count)
 				.setCallback(new SimpleCallback<>(this){
 					@Override
 					public void onSuccess(List<Status> result){
+						Log.i(TAG, "trending statuses: "+result.size()+" items after filtering");
 						realOffset+=result.size();
 						AccountSessionManager.get(accountID).filterStatuses(result, FilterContext.PUBLIC);
 						onDataLoaded(result, !result.isEmpty());
 						bannerHelper.onBannerBecameVisible();
+					}
+
+					@Override
+					public void onError(me.grishka.appkit.api.ErrorResponse error){
+						Log.e(TAG, "trending statuses failed: "+error);
+						super.onError(error);
 					}
 				}).exec(accountID);
 	}
