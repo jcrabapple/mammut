@@ -84,16 +84,21 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 				uniformIconItem=new CheckableListItem<>(R.string.sk_settings_uniform_icon_for_notifications, R.string.mo_setting_uniform_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.uniformNotificationIcon, R.drawable.ic_ntf_logo, this::toggleCheckableItem),
 				swapBookmarkWithReblogItem=new CheckableListItem<>(R.string.mo_swap_bookmark_with_reblog, R.string.mo_swap_bookmark_with_reblog_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.swapBookmarkWithBoostAction, R.drawable.ic_boost, this::toggleCheckableItem),
 				deleteNotificationsItem=new CheckableListItem<>(R.string.sk_settings_enable_delete_notifications, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.enableDeleteNotifications, R.drawable.ic_fluent_mail_inbox_dismiss_24_regular, this::toggleCheckableItem),
-				unifiedPushItem=new CheckableListItem<>(R.string.sk_settings_unifiedpush, 0, CheckableListItem.Style.SWITCH, useUnifiedPush, R.drawable.ic_fluent_alert_24_regular, i->onUnifiedPushClick(), true)
+				unifiedPushItem=new CheckableListItem<>(R.string.sk_settings_unifiedpush, 0, CheckableListItem.Style.SWITCH, useUnifiedPush, R.drawable.ic_fluent_alert_24_regular, i->onUnifiedPushRowClick(), true)
 		));
 
 		typeItems=List.of(mentionsItem, boostsItem, favoritesItem, followersItem, pollsItem, statusesItem, quotesItem);
 		pauseItem.checkedChangeListener=checked->onPauseNotificationsClick(true);
 		// MAMMUT: port from upstream master
+		// MAMMUT: SwitchListItemViewHolder does NOT update item.checked when a
+		// checkedChangeListener is set — it hands the new state to the listener. Reading the model
+		// field inside the handler therefore always saw the previous value and every attempt to
+		// enable fell into the disable branch.
 		unifiedPushItem.checkedChangeListener=checked->{
 			if(suppressUnifiedPushCallback)
 				return;
-			onUnifiedPushClick();
+			unifiedPushItem.checked=checked;
+			onUnifiedPushToggle(checked);
 		};
 		unifiedPushItem.isEnabled=hasAnyUnifiedPushDistributor;
 		if(!hasAnyUnifiedPushDistributor)
@@ -323,9 +328,18 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 		suppressUnifiedPushCallback=false;
 	}
 
+	private void onUnifiedPushRowClick(){
+		boolean next=!unifiedPushItem.checked;
+		suppressUnifiedPushCallback=true;
+		unifiedPushItem.checked=next;
+		rebindItem(unifiedPushItem);
+		suppressUnifiedPushCallback=false;
+		onUnifiedPushToggle(next);
+	}
+
 	// MAMMUT: port from upstream master
-	private void onUnifiedPushClick(){
-		if(!unifiedPushItem.checked){
+	private void onUnifiedPushToggle(boolean enable){
+		if(!enable){
 			suppressUnifiedPushCallback=true;
 			UnifiedPushHelper.unregisterAllAccounts(getContext());
 			suppressUnifiedPushCallback=false;
