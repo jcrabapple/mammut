@@ -46,9 +46,10 @@ public class LocalTimelineFragment extends StatusListFragment implements Provide
 	public void onViewCreated(View view, Bundle savedInstanceState){
 		super.onViewCreated(view, savedInstanceState);
 		// MAMMUT: root destinations carry the avatar/account-switcher entry point
-		if(getParentFragment() instanceof HomeFragment)
+		if(getParentFragment() instanceof HomeFragment){
 			NavToolbarUtils.addAvatarButton(getActivity(), getToolbar(), getParentFragment(), accountID);
 			NavToolbarUtils.addUnreadChip(getActivity(), getToolbar(), getParentFragment(), accountID);
+		}
 	}
 
 	@Override
