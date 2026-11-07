@@ -10,3 +10,6 @@
 local.properties
 *.jks
 /fastlane/report.xml
+
+# kanban worktrees
+.worktrees/
