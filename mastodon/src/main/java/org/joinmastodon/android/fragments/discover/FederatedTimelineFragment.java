@@ -48,6 +48,7 @@ public class FederatedTimelineFragment extends StatusListFragment implements Pro
 		// MAMMUT: root destinations carry the avatar/account-switcher entry point
 		if(getParentFragment() instanceof HomeFragment)
 			NavToolbarUtils.addAvatarButton(getActivity(), getToolbar(), getParentFragment(), accountID);
+			NavToolbarUtils.addUnreadChip(getActivity(), getToolbar(), getParentFragment(), accountID);
 	}
 
 	@Override

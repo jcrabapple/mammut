@@ -112,6 +112,8 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 	}
 
 	public void notify(Context context, PushNotification pn, String accountID, org.joinmastodon.android.model.Notification notification){
+		// MAMMUT: keep the in-app unread indicator live while the app is in memory
+		org.joinmastodon.android.ui.utils.UnreadNotificationStore.onPushReceived();
 		if(TextUtils.isEmpty(pn.icon)){
 			doNotify(context, pn, accountID, notification, null);
 		}else{

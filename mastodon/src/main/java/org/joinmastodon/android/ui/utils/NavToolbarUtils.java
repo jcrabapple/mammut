@@ -8,6 +8,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
+import android.widget.TextView;
 import android.widget.Toolbar;
 
 import org.joinmastodon.android.R;
@@ -15,6 +16,7 @@ import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.fragments.HomeFragment;
 import org.joinmastodon.android.fragments.ProfileFragment;
 import org.joinmastodon.android.model.Account;
+import org.joinmastodon.android.ui.NavDestination;
 import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.sheets.AccountSwitcherSheet;
 
@@ -58,6 +60,72 @@ public class NavToolbarUtils{
 				return true;
 			}
 			return false;
+		});
+	}
+
+	/**
+	 * Adds the persistent unread-notification chip to the end of a root destination's toolbar.
+	 * It exists because the bottom tab bar used to carry that count: with the bar gone, the FAB
+	 * badge is the only place it survives, and the FAB hides on scroll.
+	 */
+	public static void addUnreadChip(Activity activity, Toolbar toolbar, Fragment host, String accountID){
+		if(toolbar.findViewById(R.id.nav_unread_chip)!=null)
+			return;
+		View chip=LayoutInflater.from(activity).inflate(R.layout.nav_unread_chip, toolbar, false);
+		Toolbar.LayoutParams lp=new Toolbar.LayoutParams(V.dp(48), V.dp(48), Gravity.END|Gravity.CENTER_VERTICAL);
+		chip.setLayoutParams(lp);
+		toolbar.addView(chip);
+		bindUnreadChip(chip, host, accountID);
+	}
+
+	/**
+	 * Wires an already-inflated chip (the home toolbar carries one in its own layout) to the
+	 * shared unread store and to the Notifications destination.
+	 */
+	public static void bindUnreadChip(View chip, Fragment host, String accountID){
+		TextView badge=chip.findViewById(R.id.nav_unread_badge);
+		ImageButton button=chip.findViewById(R.id.nav_unread_button);
+		if(badge==null || button==null)
+			return;
+
+		Activity activity=(Activity) chip.getContext();
+		UnreadNotificationStore.Listener listener=(count, more)->{
+			if(count<=0){
+				badge.setVisibility(View.GONE);
+				button.setContentDescription(activity.getString(R.string.nav_destination_notifications));
+			}else{
+				boolean capped=more || count>99;
+				badge.setText(capped ? (Math.min(count, 99)+"+") : String.valueOf(count));
+				badge.setVisibility(View.VISIBLE);
+				button.setContentDescription(activity.getResources().getQuantityString(R.plurals.nav_cd_notifications_unread, count, count));
+			}
+		};
+
+		final boolean[] registered={false};
+		Runnable register=()->{
+			if(!registered[0]){
+				registered[0]=true;
+				UnreadNotificationStore.addListener(listener);
+			}
+		};
+		Runnable unregister=()->{
+			if(registered[0]){
+				registered[0]=false;
+				UnreadNotificationStore.removeListener(listener);
+			}
+		};
+		chip.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+			@Override public void onViewAttachedToWindow(View v){ register.run(); }
+			@Override public void onViewDetachedFromWindow(View v){ unregister.run(); }
+		});
+		if(chip.isAttachedToWindow())
+			register.run();
+
+		button.setOnClickListener(v->{
+			HomeFragment home=host instanceof HomeFragment hf ? hf
+					: host.getParentFragment() instanceof HomeFragment hf2 ? hf2 : null;
+			if(home!=null)
+				home.setDestination(NavDestination.NOTIFICATIONS);
 		});
 	}
 

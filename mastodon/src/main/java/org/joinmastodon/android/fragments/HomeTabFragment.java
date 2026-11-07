@@ -167,6 +167,10 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		// Compose lives in the speed-dial menu now
 		pager = new ViewPager2(getContext());
 		toolbarFrame = (FrameLayout) LayoutInflater.from(getContext()).inflate(R.layout.home_toolbar, getToolbar(), false);
+		// MAMMUT: the unread count lives in the top app bar now that no tab bar carries it
+		View unreadChip=toolbarFrame.findViewById(R.id.nav_unread_chip);
+		if(unreadChip!=null)
+			org.joinmastodon.android.ui.utils.NavToolbarUtils.bindUnreadChip(unreadChip, getParentFragment(), accountID);
 
 		if (fragments[0] == null) {
 			Bundle args = new Bundle();

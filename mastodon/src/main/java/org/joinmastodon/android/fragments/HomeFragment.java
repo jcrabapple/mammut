@@ -25,6 +25,7 @@ import org.joinmastodon.android.ui.NavDestination;
 import org.joinmastodon.android.ui.NavMenuController;
 import org.joinmastodon.android.ui.utils.NavToolbarUtils;
 import org.joinmastodon.android.ui.utils.UnreadNotificationCounter;
+import org.joinmastodon.android.ui.utils.UnreadNotificationStore;
 
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
@@ -51,6 +52,7 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 
 	@Override
 	public void onCreate(Bundle savedInstanceState){
+		UnreadNotificationStore.addListener(unreadListener);
 		super.onCreate(savedInstanceState);
 		accountID=getArguments().getString("account");
 		setTitle(R.string.app_name);
@@ -87,6 +89,7 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 
 	@Override
 	public void onDestroy(){
+		UnreadNotificationStore.removeListener(unreadListener);
 		super.onDestroy();
 		E.unregister(this);
 	}
@@ -307,15 +310,21 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	}
 
 	private void reloadNotificationsForUnreadCount(){
-		UnreadNotificationCounter.load(accountID, (count, more)->navMenuController.setUnreadCount(count, more));
+		UnreadNotificationStore.refresh(accountID);
 	}
+
+	// MAMMUT: one place feeds the FAB badge and the top-bar chip, so both stay live
+	private final UnreadNotificationStore.Listener unreadListener=(count, more)->{
+		if(navMenuController!=null)
+			navMenuController.setUnreadCount(count, more);
+	};
 
 	@Subscribe
 	public void onNotificationsMarkerUpdated(NotificationsMarkerUpdatedEvent ev){
 		if(!ev.accountID.equals(accountID))
 			return;
 		if(ev.clearUnread)
-			navMenuController.setUnreadCount(0, false);
+			UnreadNotificationStore.markRead();
 	}
 
 	@Subscribe

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: persistent unread-notification indicator for the top app bar. Lives outside the
+     FAB menu so the count stays visible while the FAB is scroll-hidden. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	android:id="@+id/nav_unread_chip"
+	android:layout_width="48dp"
+	android:layout_height="48dp"
+	android:clipChildren="false"
+	android:clipToPadding="false">
+
+	<ImageButton
+		android:id="@+id/nav_unread_button"
+		style="@style/Widget.Mastodon.M3.Button.Icon"
+		android:layout_width="48dp"
+		android:layout_height="48dp"
+		android:layout_gravity="center"
+		android:src="@drawable/ic_nav_notifications_24"
+		android:tint="?colorM3OnSurfaceVariant"
+		android:contentDescription="@string/nav_destination_notifications"/>
+
+	<TextView
+		android:id="@+id/nav_unread_badge"
+		android:layout_width="wrap_content"
+		android:layout_height="18dp"
+		android:layout_gravity="top|end"
+		android:layout_marginTop="4dp"
+		android:layout_marginEnd="2dp"
+		android:minWidth="18dp"
+		android:paddingHorizontal="4dp"
+		android:gravity="center"
+		android:background="@drawable/bg_nav_fab_badge"
+		android:textAppearance="@style/m3_label_small"
+		android:textColor="?colorM3OnPrimary"
+		android:includeFontPadding="false"
+		android:visibility="gone"
+		android:importantForAccessibility="no"/>
+</FrameLayout>

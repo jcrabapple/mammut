@@ -14,6 +14,7 @@
 	<string name="nav_subtitle_home">Your timeline</string>
 	<string name="nav_subtitle_local">This server</string>
 	<string name="nav_subtitle_federated">The known fediverse</string>
+	<string name="nav_destination_notifications">Notifications</string>
 	<string name="nav_subtitle_notifications">Mentions &amp; activity</string>
 	<string name="nav_thread">Thread</string>
 	<string name="nav_subtitle_thread_origin">From %s</string>
