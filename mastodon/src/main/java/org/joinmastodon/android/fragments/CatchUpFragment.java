@@ -309,7 +309,7 @@ public class CatchUpFragment extends StatusListFragment{
 		if(!filtered.isEmpty()){
 			CatchUpGrouping.Result grouping=CatchUpGrouping.group(filtered);
 			for(CatchUpGrouping.AuthorGroup g:grouping.authors){
-				displayItems.add(new CatchUpHeaderStatusDisplayItem("catchup_author_"+g.account.id, this, getActivity(), authorHeaderTitle(g), false, false, null));
+				displayItems.add(new CatchUpHeaderStatusDisplayItem("catchup_author_"+g.account.id, this, getActivity(), authorHeaderTitle(g), false, false, null, g.account));
 				for(Status s:g.posts){
 					List<StatusDisplayItem> postItems=buildDisplayItems(s, StatusDisplayItem.FLAG_NO_HEADER);
 					populateNestedQuotes(postItems);

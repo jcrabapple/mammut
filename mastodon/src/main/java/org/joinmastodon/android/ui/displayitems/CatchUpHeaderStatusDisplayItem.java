@@ -8,6 +8,13 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.joinmastodon.android.R;
+import org.joinmastodon.android.model.Account;
+import org.joinmastodon.android.ui.OutlineProviders;
+
+import androidx.annotation.Nullable;
+import me.grishka.appkit.imageloader.ViewImageLoader;
+import me.grishka.appkit.imageloader.requests.UrlImageLoaderRequest;
+import me.grishka.appkit.utils.V;
 
 /**
  * MAMMUT: Catch up (docs/CATCH-UP-SPEC.md §5, §8) — one header per author group
@@ -21,9 +28,16 @@ public class CatchUpHeaderStatusDisplayItem extends StatusDisplayItem{
 	public final boolean collapsible;
 	public final boolean collapsed;
 	public final Runnable onToggle;
+	/** The group's author, so the header can show their avatar. Null for the boosts header. */
+	@Nullable public final Account account;
 
 	public CatchUpHeaderStatusDisplayItem(String parentID, Callbacks callbacks, Context context, CharSequence title, boolean collapsible, boolean collapsed, Runnable onToggle){
+		this(parentID, callbacks, context, title, collapsible, collapsed, onToggle, null);
+	}
+
+	public CatchUpHeaderStatusDisplayItem(String parentID, Callbacks callbacks, Context context, CharSequence title, boolean collapsible, boolean collapsed, Runnable onToggle, @Nullable Account account){
 		super(parentID, callbacks, context);
+		this.account=account;
 		this.title=title;
 		this.collapsible=collapsible;
 		this.collapsed=collapsed;
@@ -38,16 +52,26 @@ public class CatchUpHeaderStatusDisplayItem extends StatusDisplayItem{
 	public static class Holder extends StatusDisplayItem.Holder<CatchUpHeaderStatusDisplayItem>{
 		private final TextView title;
 		private final ImageView chevron;
+		private final ImageView avatar;
 
 		public Holder(Context context, ViewGroup parent){
 			super(context, R.layout.display_item_catch_up_header, parent);
 			title=findViewById(R.id.title);
 			chevron=findViewById(R.id.chevron);
+			avatar=findViewById(R.id.avatar);
+			avatar.setOutlineProvider(OutlineProviders.OVAL);
+			avatar.setClipToOutline(true);
 		}
 
 		@Override
 		public void onBind(CatchUpHeaderStatusDisplayItem item){
 			title.setText(item.title);
+			if(item.account!=null && item.account.avatar!=null){
+				avatar.setVisibility(View.VISIBLE);
+				ViewImageLoader.load(avatar, null, new UrlImageLoaderRequest(item.account.avatar, V.dp(32), V.dp(32)));
+			}else{
+				avatar.setVisibility(View.GONE);
+			}
 			// Spec §8: every group header is an accessibility heading. The framework
 			// API exists from API 28; on older releases headings navigation simply
 			// degrades to plain text.

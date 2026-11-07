@@ -24,6 +24,7 @@
 			android:paddingRight="16dp"
 			android:paddingTop="6dp"
 			android:paddingBottom="8dp"
+			android:minHeight="48dp"
 			android:lineSpacingExtra="5.25dp"/>
 
 	</org.joinmastodon.android.ui.views.UntouchableScrollView>
