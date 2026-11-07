@@ -1,42 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MAMMUT: adaptive launcher foreground. Glyph authored on a 512 grid, scaled so the
-     mark spans ~72dp of the 108dp canvas (36dp radius), inside the 66dp safe circle. -->
+<!-- MAMMUT: monochrome layer for themed icons. One evenOdd path so the tusks and eyes
+     become cut-outs instead of blending into the silhouette. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
 	android:width="108dp"
 	android:height="108dp"
 	android:viewportWidth="108"
 	android:viewportHeight="108">
 	<group
-		android:translateX="2.29"
-		android:translateY="0.27"
-		android:scaleX="0.202"
-		android:scaleY="0.202">
+		android:translateX="2.8"
+		android:translateY="2.8"
+		android:scaleX="0.2"
+		android:scaleY="0.2">
 		<path
-			android:fillColor="#FFFFFF"
-			android:pathData="M114,250a36,52 0 1,0 72,0a36,52 0 1,0 -72,0z"/>
-		<path
-			android:fillColor="#FFFFFF"
-			android:pathData="M326,250a36,52 0 1,0 72,0a36,52 0 1,0 -72,0z"/>
-		<path
-			android:fillColor="#FFFFFF"
-			android:pathData="M256,88c-16,0 -30,6 -42,16-52,12 -88,58 -88,118 0,52 18,88 42,116v76h176v-76c24,-28 42,-64 42,-116 0,-60 -36,-106 -88,-118-12,-10 -26,-16 -42,-16z"/>
-		<path
-			android:fillColor="#00000000"
-			android:strokeColor="#FFFFFF"
-			android:strokeWidth="38"
-			android:strokeLineCap="round"
-			android:pathData="M256,294c-16,0 -27,13 -27,31v66c0,22 12,34 30,34"/>
-		<path
-			android:fillColor="#00000000"
-			android:strokeColor="#FFFFFF"
-			android:strokeWidth="24"
-			android:strokeLineCap="round"
-			android:pathData="M198,344c-38,14 -62,48 -66,92"/>
-		<path
-			android:fillColor="#00000000"
-			android:strokeColor="#FFFFFF"
-			android:strokeWidth="24"
-			android:strokeLineCap="round"
-			android:pathData="M314,344c38,14 62,48 66,92"/>
+			android:fillColor="#FFFFFFFF"
+			android:fillType="evenOdd"
+			android:pathData="M157 128L116 137L96 174L109 211L145 226L166 183Z M355 128L396 137L416 174L403 211L367 226L346 183Z M256 78L340 106L382 158L370 260L327 307L277 325H235L185 307L142 260L130 158L172 106Z M226 294H286V376Q286 412 256 412Q226 412 226 376Z M204 228L157 242L122 273L102 313L94 350L99 379L82 350L76 310L86 270L99 238L98 276L126 300L154 270L207 252Z M308 228L355 242L390 273L410 313L418 350L413 379L430 350L436 310L426 270L413 238L414 276L386 300L358 270L305 252Z M184 191L218 183V207L184 215Z M328 191L294 183V207L328 215Z"/>
 	</group>
 </vector>
