@@ -103,6 +103,9 @@ public class CatchUpFragment extends StatusListFragment{
 		if(emptyView!=null){
 			emptySubtitle=emptyView.findViewById(R.id.empty_subtitle);
 			emptySecondaryButton=emptyView.findViewById(R.id.empty_button_secondary);
+			// The label must be set here: the button is only made visible in the
+			// filtered-to-empty state, and showing it without text produced a blank bar.
+			emptySecondaryButton.setText(R.string.catch_up_load_older);
 			emptySecondaryButton.setOnClickListener(v->loadOlderPosts());
 		}
 		// MAMMUT: the spec's refresh story is "reopen the view" (§3); there is no
@@ -152,11 +155,17 @@ public class CatchUpFragment extends StatusListFragment{
 						if(getActivity()==null)
 							return;
 						currentRequest=null;
+						// MAMMUT: the server's own pagination end can only be read from the RAW
+						// page size. Server-side filters (keyword, blur) remove items here, so a
+						// filtered page shorter than PAGE_SIZE must never be mistaken for
+						// "the server has nothing older" — that is the one claim the footer is
+						// allowed to make only when the server licenses it.
+						int rawCount=page.size();
 						AccountSessionManager.get(accountID).filterStatuses(page, FilterContext.HOME);
 						if(extension){
-							onExtensionPageLoaded(page);
+							onExtensionPageLoaded(page, rawCount);
 						}else{
-							onFillPageLoaded(page);
+							onFillPageLoaded(page, rawCount);
 						}
 					}
 
@@ -193,7 +202,7 @@ public class CatchUpFragment extends StatusListFragment{
 				.exec(accountID);
 	}
 
-	private void onFillPageLoaded(List<Status> page){
+	private void onFillPageLoaded(List<Status> page, int rawCount){
 		fillPages++;
 		boolean stop=false;
 		// Inclusion tests the wrapper's createdAt — a boost of a week-old post inside
@@ -213,7 +222,7 @@ public class CatchUpFragment extends StatusListFragment{
 		}
 		ingest(page);
 		if(!stop){
-			if(page.size()<PAGE_SIZE){
+			if(rawCount<PAGE_SIZE){
 				// Server pagination end: the footer may claim completeness only
 				// because the server itself licensed it (spec §6).
 				endReason=EndReason.SERVER_END;
@@ -273,10 +282,10 @@ public class CatchUpFragment extends StatusListFragment{
 		fetchPage(oldestFetchedID, true);
 	}
 
-	private void onExtensionPageLoaded(List<Status> page){
+	private void onExtensionPageLoaded(List<Status> page, int rawCount){
 		extensionRunning=false;
 		extended=true; // the 24-hour window and the 200 cap no longer gate this view
-		if(page.isEmpty()){
+		if(rawCount==0){
 			// Only the server's own pagination end licenses the completeness copy.
 			serverEnded=true;
 		}else{
