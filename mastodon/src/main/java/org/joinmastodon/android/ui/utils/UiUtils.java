@@ -115,6 +115,7 @@ import org.joinmastodon.android.ui.sheets.MuteAccountConfirmationSheet;
 import org.joinmastodon.android.ui.text.CustomEmojiSpan;
 import org.joinmastodon.android.ui.text.SpacerSpan;
 import org.joinmastodon.android.ui.viewholders.ListItemViewHolder;
+import org.joinmastodon.android.utils.Tracking;
 import org.parceler.Parcels;
 
 import java.io.File;
@@ -172,6 +173,9 @@ public class UiUtils{
 	private UiUtils(){}
 
 	public static void launchWebBrowser(Context context, String url){
+		// MAMMUT: port from upstream master — strip tracking parameters from opened links
+		if(GlobalUserPreferences.removeTrackingParams)
+			url=Tracking.removeTrackingParameters(url);
 		Intent intent;
 		if(GlobalUserPreferences.useCustomTabs){
 			intent=new CustomTabsIntent.Builder()

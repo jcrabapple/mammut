@@ -24,6 +24,8 @@ import org.joinmastodon.android.ui.text.CodeBlockSpan;
 import org.joinmastodon.android.ui.text.DeleteWhenCopiedSpan;
 import org.joinmastodon.android.ui.text.MonospaceSpan;
 import org.joinmastodon.android.ui.utils.UiUtils;
+import org.joinmastodon.android.GlobalUserPreferences;
+import org.joinmastodon.android.utils.Tracking;
 
 import me.grishka.appkit.utils.V;
 
@@ -122,7 +124,11 @@ public class LinkedTextView extends TextView{
 			final int selEnd=getSelectionEnd();
 			int min=Math.max(0, Math.min(selStart, selEnd));
 			int max=Math.max(0, Math.max(selStart, selEnd));
-			final ClipData copyData=ClipData.newPlainText(null, deleteTextWithinDeleteSpans(getText().subSequence(min, max)));
+			CharSequence copiedText=deleteTextWithinDeleteSpans(getText().subSequence(min, max));
+			// MAMMUT: port from upstream master
+			if(GlobalUserPreferences.removeTrackingParams)
+				copiedText=Tracking.cleanUrlsInText(copiedText.toString());
+			final ClipData copyData=ClipData.newPlainText(null, copiedText);
 			ClipboardManager clipboard=getContext().getSystemService(ClipboardManager.class);
 			try {
 				clipboard.setPrimaryClip(copyData);

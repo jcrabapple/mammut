@@ -48,6 +48,7 @@ import org.joinmastodon.android.ui.sheets.ComposerVisibilitySheet;
 import org.joinmastodon.android.ui.text.HtmlParser;
 import org.joinmastodon.android.ui.utils.CustomEmojiHelper;
 import org.joinmastodon.android.ui.utils.UiUtils;
+import org.joinmastodon.android.utils.Tracking;
 import org.parceler.Parcels;
 
 import java.time.Instant;
@@ -215,7 +216,9 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 					args.putParcelable("targetAccount", Parcels.wrap(account));
 					Nav.go(activity, AddAccountToListsFragment.class, args);
 				}else if(id==R.id.copy_link){
-					activity.getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText(null, item.status.url));
+					// MAMMUT: port from upstream master
+					String copyUrl=GlobalUserPreferences.removeTrackingParams ? Tracking.removeTrackingParameters(item.status.url) : item.status.url;
+					activity.getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText(null, copyUrl));
 					UiUtils.maybeShowTextCopiedToast(activity);
 				}else if(id==R.id.pin){
 					new SetStatusPinned(item.status.id, !item.status.pinned)

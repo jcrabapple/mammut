@@ -101,6 +101,7 @@ import org.joinmastodon.android.ui.views.SizeListenerLinearLayout;
 import org.joinmastodon.android.ui.views.StatusView;
 import org.joinmastodon.android.ui.views.TopBarsScrollAwayLinearLayout;
 import org.joinmastodon.android.utils.ViewImageLoaderHolderTarget;
+import org.joinmastodon.android.utils.Tracking;
 import org.parceler.Parcels;
 
 import java.util.ArrayList;
@@ -838,6 +839,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 
 	private void actuallyPublish(){
 		String text=mainEditText.getText().toString();
+		// MAMMUT: port from upstream master — strip tracking parameters from published URLs
+		if(GlobalUserPreferences.removeTrackingParams)
+			text=Tracking.cleanUrlsInText(text);
 		CreateStatus.Request req=new CreateStatus.Request();
 		req.status=text;
 		req.visibility=statusVisibility;
@@ -1127,6 +1131,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		if(getArguments().containsKey("replyTo")){
 			replyTo=Parcels.unwrap(getArguments().getParcelable("replyTo"));
 			statusVisibility=replyTo.visibility;
+			// MAMMUT: port from upstream master — optionally relax public replies to unlisted
+			if(statusVisibility==StatusPrivacy.PUBLIC && GlobalUserPreferences.defaultToUnlistedReplies)
+				statusVisibility=StatusPrivacy.UNLISTED;
 		}
 
 		// A saved privacy setting from a previous compose session wins over the reply visibility

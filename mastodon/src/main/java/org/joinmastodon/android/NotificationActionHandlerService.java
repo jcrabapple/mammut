@@ -17,6 +17,7 @@ import org.joinmastodon.android.events.StatusCountersUpdatedEvent;
 import org.joinmastodon.android.events.StatusCreatedEvent;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.model.StatusPrivacy;
+import org.joinmastodon.android.GlobalUserPreferences;
 
 import java.util.UUID;
 
@@ -60,7 +61,11 @@ public class NotificationActionHandlerService extends Service{
 			CreateStatus.Request req=new CreateStatus.Request();
 			req.inReplyToId=postID;
 			req.status=intent.getStringExtra("replyPrefix")+replyText;
-			req.visibility=StatusPrivacy.valueOf(intent.getStringExtra("visibility"));
+			StatusPrivacy replyVisibility=StatusPrivacy.valueOf(intent.getStringExtra("visibility"));
+			// MAMMUT: port from upstream master
+			if(replyVisibility==StatusPrivacy.PUBLIC && GlobalUserPreferences.defaultToUnlistedReplies)
+				replyVisibility=StatusPrivacy.UNLISTED;
+			req.visibility=replyVisibility;
 			// MAMMUT: phase 1 port from upstream master — carry the "re: "-prefixed CW from PushNotificationReceiver
 			String replySpoilerText=intent.getStringExtra("replySpoilerText");
 			if(replySpoilerText!=null)

@@ -23,6 +23,8 @@ import org.joinmastodon.android.model.viewmodel.ListItem;
 import org.joinmastodon.android.model.viewmodel.SectionHeaderListItem;
 import org.joinmastodon.android.ui.ExtendedPopupMenu;
 import org.joinmastodon.android.ui.utils.UiUtils;
+import org.joinmastodon.android.GlobalUserPreferences;
+import org.joinmastodon.android.utils.Tracking;
 
 import java.util.List;
 
@@ -148,7 +150,9 @@ public class ClickableLinksDelegate implements CustomViewHelper{
 					}),
 					new ListItem<>(R.string.copy, 0, item->{
 						ClipboardManager clipboard=(ClipboardManager) view.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-						clipboard.setPrimaryClip(ClipData.newPlainText("", span.getLink()));
+						// MAMMUT: port from upstream master
+						String copyLink=GlobalUserPreferences.removeTrackingParams ? Tracking.removeTrackingParameters(span.getLink()) : span.getLink();
+						clipboard.setPrimaryClip(ClipData.newPlainText("", copyLink));
 						UiUtils.maybeShowTextCopiedToast(view.getContext());
 						_menu[0].dismiss();
 					})
