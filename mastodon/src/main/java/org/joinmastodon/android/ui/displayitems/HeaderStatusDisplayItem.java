@@ -301,7 +301,17 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 			else
 				time=item.context.getString(R.string.edited_timestamp, UiUtils.formatRelativeTimestamp(itemView.getContext(), item.status.editedAt));
 
-			timeAndUsername.setText(time+" · @"+item.user.acct);
+			// MAMMUT: port from upstream master — pronouns in timelines and threads
+			String subtitle=time+" · @"+item.user.acct;
+			boolean showPronouns=item.callbacks instanceof ThreadFragment
+					? GlobalUserPreferences.displayPronounsInThreads
+					: GlobalUserPreferences.displayPronounsInTimelines;
+			if(showPronouns){
+				java.util.Optional<String> pronouns=UiUtils.extractPronouns(item.context, item.user);
+				if(pronouns.isPresent())
+					subtitle+=" · "+pronouns.get();
+			}
+			timeAndUsername.setText(subtitle);
 			itemView.setPadding(itemView.getPaddingLeft(), itemView.getPaddingTop(), itemView.getPaddingRight(), item.needBottomPadding ? V.dp(6) : V.dp(4));
 			if(TextUtils.isEmpty(item.extraText)){
 				extraText.setVisibility(View.GONE);

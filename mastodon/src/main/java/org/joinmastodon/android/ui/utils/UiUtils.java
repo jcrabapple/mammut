@@ -120,6 +120,8 @@ import org.joinmastodon.android.api.requests.notifications.DismissNotification;
 import org.joinmastodon.android.api.requests.statuses.SetStatusConversationMuted;
 import org.joinmastodon.android.events.StatusMuteChangedEvent;
 import org.joinmastodon.android.model.Notification;
+import org.joinmastodon.android.model.AccountField;
+import org.joinmastodon.android.ui.text.HtmlParser;
 import org.parceler.Parcels;
 
 import java.io.File;
@@ -537,6 +539,83 @@ public class UiUtils{
 						})
 						.wrapProgress(activity, status.muted ? R.string.mo_unmuting : R.string.mo_muting, false)
 						.exec(accountID));
+	}
+
+
+	// MAMMUT: port from upstream master — pronouns are read out of profile fields
+	private static final String[] pronounsUrls=new String[]{
+			"pronouns.within.lgbt/",
+			"pronouns.cc/pronouns/",
+			"pronouns.page/"
+	};
+
+	private static final String PRONOUN_CHARS="\\w*\u00bf\u00a1!?";
+	private static final java.util.regex.Pattern trimPronouns=
+			java.util.regex.Pattern.compile("[^"+PRONOUN_CHARS+"]*(["+PRONOUN_CHARS+"].*["+PRONOUN_CHARS+"]|["+PRONOUN_CHARS+"])\\W*");
+
+	private static String extractPronounsFromField(String localizedPronouns, AccountField field){
+		if(field.name==null)
+			return null;
+		if(!field.name.toLowerCase().contains(localizedPronouns) && !field.name.toLowerCase().contains("pronouns"))
+			return null;
+		String text=HtmlParser.text(field.value);
+		if(text==null)
+			return null;
+		if(text.toLowerCase().contains("https://")){
+			for(String pronounUrl:pronounsUrls){
+				int index=text.indexOf(pronounUrl);
+				int beginPronouns=index+pronounUrl.length();
+				// only show the info from these urls if they are not usernames
+				if(index>-1 && beginPronouns<text.length() && text.charAt(beginPronouns)!='@')
+					return text.substring(beginPronouns);
+			}
+			// maybe it's like "they and them (https://pronouns.page/...)"
+			String[] parts=text.substring(0, text.toLowerCase().indexOf("https://")).split(" ");
+			if(parts.length==0)
+				return null;
+			text=String.join(" ", parts);
+		}
+
+		java.util.regex.Matcher matcher=trimPronouns.matcher(text);
+		if(!matcher.find())
+			return null;
+		String pronouns=matcher.group(1);
+
+		// crude fix to allow for pronouns like "it(/she)" or "(de) sie/ihr"
+		int missingParens=0, missingBrackets=0;
+		for(char c:pronouns.toCharArray()){
+			if(c=='(') missingParens++;
+			else if(c=='[') missingBrackets++;
+			else if(c==')') missingParens--;
+			else if(c==']') missingBrackets--;
+		}
+		if(missingParens>0) pronouns+=")".repeat(missingParens);
+		else if(missingParens<0) pronouns="(".repeat(missingParens*-1)+pronouns;
+		if(missingBrackets>0) pronouns+="]".repeat(missingBrackets);
+		else if(missingBrackets<0) pronouns="[".repeat(missingBrackets*-1)+pronouns;
+
+		// if it ends with an un-closed custom emoji
+		if(pronouns.matches("^.*\\s+:[a-zA-Z_]+$")) pronouns+=':';
+		return pronouns;
+	}
+
+	public static java.util.Optional<String> extractPronouns(Context context, Account account){
+		if(account==null || account.fields==null)
+			return java.util.Optional.empty();
+		String localizedPronouns=context.getString(R.string.sk_pronouns_label).toLowerCase();
+		java.util.function.ToIntFunction<AccountField> comparePronounFields=(f)->{
+			String t=f.name==null ? "" : f.name.toLowerCase();
+			int localizedIndex=t.indexOf(localizedPronouns);
+			int englishIndex=t.indexOf("pronouns");
+			if(englishIndex<0) englishIndex=localizedIndex>-1 ? -t.length() : t.length();
+			if(localizedIndex<0) localizedIndex=t.length();
+			return (localizedIndex+t.length())+(englishIndex+t.length())*100;
+		};
+		return account.fields.stream()
+				.sorted(java.util.Comparator.comparingInt(comparePronounFields))
+				.map(f->extractPronounsFromField(localizedPronouns, f))
+				.filter(java.util.Objects::nonNull)
+				.findFirst();
 	}
 
 	public static void confirmToggleBlockUser(Activity activity, String accountID, Account account, boolean currentlyBlocked, Consumer<Relationship> resultCallback){

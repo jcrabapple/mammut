@@ -34,6 +34,7 @@ import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.views.CheckableRelativeLayout;
 import org.joinmastodon.android.ui.views.ProgressBarButton;
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.parceler.Parcels;
 
 import java.util.HashMap;
@@ -112,7 +113,14 @@ public class AccountViewHolder extends BindableViewHolder<AccountViewModel> impl
 	@Override
 	public void onBind(AccountViewModel item){
 		name.setText(item.parsedName);
-		username.setText("@"+item.account.acct);
+		// MAMMUT: port from upstream master — pronouns in user listings
+		String usernameText="@"+item.account.acct;
+		if(GlobalUserPreferences.displayPronounsInUserListings){
+			java.util.Optional<String> pronouns=UiUtils.extractPronouns(fragment.getActivity(), item.account);
+			if(pronouns.isPresent())
+				usernameText+=" · "+pronouns.get();
+		}
+		username.setText(usernameText);
 		if(followers!=null){
 			String followersStr=fragment.getResources().getQuantityString(R.plurals.x_followers, item.account.followersCount>1000 ? 999 : (int)item.account.followersCount);
 			String followersNum=UiUtils.abbreviateNumber(item.account.followersCount);

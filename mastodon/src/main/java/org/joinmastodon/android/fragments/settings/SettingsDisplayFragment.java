@@ -47,6 +47,8 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 	private CheckableListItem<Void> altIndicatorItem, noAltIndicatorItem, collapsePostsItem;
 	// MAMMUT: parity port from upstream master
 	private CheckableListItem<Void> showDividersItem, showNavLabelsItem, doubleTapSearchItem, translateOpenedItem;
+	// MAMMUT: port from upstream master
+	private CheckableListItem<Void> pronounsTimelinesItem, pronounsThreadsItem, pronounsUserListingsItem;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState){
@@ -88,6 +90,10 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		items.add(showNavLabelsItem=new CheckableListItem<>(R.string.sk_settings_show_labels_in_navigation_bar, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showNavigationLabels, R.drawable.ic_fluent_tag_24_regular, this::toggleCheckableItem));
 		items.add(doubleTapSearchItem=new CheckableListItem<>(R.string.mo_double_tap_to_search, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.doubleTapToSearch, R.drawable.ic_fluent_search_24_regular, this::toggleCheckableItem));
 		items.add(translateOpenedItem=new CheckableListItem<>(R.string.sk_settings_translate_only_opened, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.translateButtonOpenedOnly, R.drawable.ic_fluent_translate_24_regular, this::toggleCheckableItem));
+		// MAMMUT: port from upstream master — pronouns
+		items.add(pronounsTimelinesItem=new CheckableListItem<>(R.string.sk_settings_display_pronouns_in_timelines, 0, CheckableListItem.Style.CHECKBOX, GlobalUserPreferences.displayPronounsInTimelines, 0, this::toggleCheckableItem));
+		items.add(pronounsThreadsItem=new CheckableListItem<>(R.string.sk_settings_display_pronouns_in_threads, 0, CheckableListItem.Style.CHECKBOX, GlobalUserPreferences.displayPronounsInThreads, 0, this::toggleCheckableItem));
+		items.add(pronounsUserListingsItem=new CheckableListItem<>(R.string.sk_settings_display_pronouns_in_user_listings, 0, CheckableListItem.Style.CHECKBOX, GlobalUserPreferences.displayPronounsInUserListings, 0, this::toggleCheckableItem));
 
 		items.add(showCWsItem=new CheckableListItem<>(R.string.settings_show_cws, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showCWs, R.drawable.ic_warning_24px, this::toggleCheckableItem));
 		items.add(hideSensitiveMediaItem=new CheckableListItem<>(R.string.settings_hide_sensitive_media, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.hideSensitiveMedia, R.drawable.ic_no_adult_content_24px, this::toggleCheckableItem));
@@ -133,6 +139,9 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		GlobalUserPreferences.showNavigationLabels=showNavLabelsItem.checked;
 		GlobalUserPreferences.doubleTapToSearch=doubleTapSearchItem.checked;
 		GlobalUserPreferences.translateButtonOpenedOnly=translateOpenedItem.checked;
+		GlobalUserPreferences.displayPronounsInTimelines=pronounsTimelinesItem.checked;
+		GlobalUserPreferences.displayPronounsInThreads=pronounsThreadsItem.checked;
+		GlobalUserPreferences.displayPronounsInUserListings=pronounsUserListingsItem.checked;
 		GlobalUserPreferences.save();
 		if(restartPlease)
 			restartActivityToApplyNewTheme();
