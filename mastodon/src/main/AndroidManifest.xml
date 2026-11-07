@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
 	package="org.joinmastodon.android">
 
 	<uses-permission android:name="android.permission.INTERNET"/>
@@ -87,6 +88,27 @@
 			</intent-filter>
 		</activity>
 		<activity android:name=".DonationFragmentActivity" android:exported="false" android:configChanges="orientation|screenSize" android:windowSoftInputMode="adjustResize"/>
+
+		<!-- MAMMUT: port from upstream master -->
+		<activity android:name=".PanicResponderActivity" android:exported="true"
+			android:launchMode="singleInstance" android:noHistory="true"
+			android:theme="@android:style/Theme.NoDisplay">
+			<intent-filter>
+				<action android:name="info.guardianproject.panic.action.TRIGGER"/>
+				<category android:name="android.intent.category.DEFAULT"/>
+			</intent-filter>
+		</activity>
+		<activity android:name=".ExitActivity" android:exported="false"
+			android:theme="@android:style/Theme.NoDisplay"/>
+		<activity android:name=".ChooseAccountForComposeActivity" android:exported="true"
+			android:configChanges="orientation|screenSize" android:windowSoftInputMode="adjustResize"
+			android:theme="@style/TransparentDialog">
+			<intent-filter>
+				<action android:name="android.intent.action.CHOOSER"/>
+				<category android:name="android.intent.category.LAUNCHER"/>
+				<data android:mimeType="*/*"/>
+			</intent-filter>
+		</activity>
 
 		<service android:name=".AudioPlayerService" android:foregroundServiceType="mediaPlayback"/>
 		<service android:name=".NotificationActionHandlerService" android:exported="false"/>
