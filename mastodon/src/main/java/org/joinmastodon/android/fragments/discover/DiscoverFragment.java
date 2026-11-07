@@ -155,6 +155,16 @@ public class DiscoverFragment extends AppKitFragment implements ScrollableToTop{
 			}
 		});
 		tabLayoutMediator.attach();
+
+		// MAMMUT: this screen used to be a bottom-bar destination and HomeFragment kicked off its
+		// first load when the tab became visible. It is opened from the navigation menu now, so
+		// nothing triggered the initial request and the Posts tab sat on its spinner forever:
+		// ViewPager2 only reports page CHANGES, and page 0 never changes to become page 0.
+		pager.post(()->{
+			Fragment page=getFragmentForPage(pager.getCurrentItem());
+			if(page instanceof BaseRecyclerFragment<?> recyclerPage && !recyclerPage.loaded && !recyclerPage.isDataLoading())
+				recyclerPage.loadData();
+		});
 		tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener(){
 			@Override
 			public void onTabSelected(TabLayout.Tab tab){}
