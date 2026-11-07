@@ -15,6 +15,8 @@ import org.joinmastodon.android.model.Relationship;
 import org.joinmastodon.android.model.viewmodel.NotificationViewModel;
 
 import me.grishka.appkit.api.SimpleCallback;
+import org.joinmastodon.android.E;
+import org.joinmastodon.android.events.FollowRequestHandledEvent;
 
 public class FollowRequestActionsDisplayItem extends StatusDisplayItem{
 	public final NotificationViewModel notification;
@@ -55,6 +57,8 @@ public class FollowRequestActionsDisplayItem extends StatusDisplayItem{
 						public void onSuccess(Relationship result){
 							parentFragment.removeDisplayItem(item);
 							parentFragment.refresh();
+							// MAMMUT: keep the follow-requests action in sync when answered inline
+							E.post(new FollowRequestHandledEvent(parentFragment.getAccountID(), true, item.notification.accounts.get(0), result));
 						}
 					})
 					.wrapProgress(parentFragment.getActivity(), R.string.loading, true)
@@ -70,6 +74,8 @@ public class FollowRequestActionsDisplayItem extends StatusDisplayItem{
 						public void onSuccess(Relationship result){
 							BaseNotificationsListFragment fragment=(BaseNotificationsListFragment) parentFragment;
 							fragment.removeNotification(item.notification);
+							// MAMMUT: keep the follow-requests action in sync when answered inline
+							E.post(new FollowRequestHandledEvent(parentFragment.getAccountID(), false, item.notification.accounts.get(0), result));
 						}
 					})
 					.wrapProgress(parentFragment.getActivity(), R.string.loading, true)
