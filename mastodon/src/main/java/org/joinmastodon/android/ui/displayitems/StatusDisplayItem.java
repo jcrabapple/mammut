@@ -16,6 +16,7 @@ import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.model.Attachment;
 import org.joinmastodon.android.model.DisplayItemsParent;
 import org.joinmastodon.android.model.FilterContext;
+import org.joinmastodon.android.model.FilterAction;
 import org.joinmastodon.android.model.FilterResult;
 import org.joinmastodon.android.model.Poll;
 import org.joinmastodon.android.model.Quote;
@@ -157,21 +158,21 @@ public abstract class StatusDisplayItem{
 				items.add(header=new HeaderStatusDisplayItem(parentID, statusForContent.account, statusForContent.createdAt, callbacks, context, accountID, statusForContent, null));
 		}
 
-		boolean filtered=false;
-		if(status.filtered!=null){
-			for(FilterResult filter:status.filtered){
-				if(filter.filter.isActive()){
-					filtered=true;
-					break;
-				}
-			}
+		boolean filtered=false; // whole-post spoiler: Warn, Hide, or an unknown action
+		boolean blurFiltered=false; // Blur: media covered, text stays readable
+		String filterTitle=null;
+		FilterResult effectiveResult=FilterResult.getEffectiveResult(status.filtered);
+		if(effectiveResult!=null){
+			filterTitle=effectiveResult.filter.title;
+			blurFiltered=effectiveResult.filter.filterAction==FilterAction.BLUR;
+			filtered=!blurFiltered;
 		}
 
 		ArrayList<StatusDisplayItem> contentItems=items;
 		ArrayList<StatusDisplayItem> cwParentItems=items;
 		boolean needAddCWItems=false;
 		if(filtered){
-			SpoilerStatusDisplayItem spoilerItem=new SpoilerStatusDisplayItem(parentID, callbacks, context, context.getString(R.string.post_matches_filter_x, status.filtered.get(0).filter.title), status, statusForContent, Type.FILTER_SPOILER, Status.SpoilerType.FILTER);
+			SpoilerStatusDisplayItem spoilerItem=new SpoilerStatusDisplayItem(parentID, callbacks, context, context.getString(R.string.post_matches_filter_x, filterTitle), status, statusForContent, Type.FILTER_SPOILER, Status.SpoilerType.FILTER);
 			contentItems.add(spoilerItem);
 			contentItems=spoilerItem.contentItems;
 			cwParentItems=contentItems;
@@ -208,6 +209,12 @@ public abstract class StatusDisplayItem{
 				mediaGrid.sensitiveRevealed=false;
 			}else if(statusForContent.sensitive && !GlobalUserPreferences.hideSensitiveMedia){
 				mediaGrid.sensitiveRevealed=true;
+			}else if(blurFiltered && !statusForContent.sensitive){
+				// MAMMUT: F2 — a Blur filter covers only the media; the post text stays readable.
+				// The reveal state lives on Status.filterMediaRevealed, separate from sensitiveRevealed.
+				mediaGrid.sensitiveTitle=context.getString(R.string.media_blurred_by_filter_x, filterTitle);
+				mediaGrid.sensitiveRevealed=statusForContent.filterMediaRevealed;
+				mediaGrid.filterBlur=true;
 			}
 			contentItems.add(mediaGrid);
 		}

@@ -500,6 +500,11 @@
 	<string name="settings_filter_context">Mute from</string>
 	<string name="settings_filter_show_cw">Show with content warning</string>
 	<string name="settings_filter_show_cw_explanation">Still show posts that match this filter, but behind a content warning</string>
+	<string name="filter_action_blur">Blur media</string>
+	<string name="settings_filter_blur_explanation">Keep matching posts in the timeline, but blur their media until you reveal it</string>
+	<string name="filter_action_hide">Hide</string>
+	<string name="settings_filter_hide_explanation">Remove matching posts from your timelines entirely</string>
+	<string name="media_blurred_by_filter_x">Media blurred by filter “%s”</string>
 	<string name="settings_delete_filter">Delete filter</string>
 	<string name="filter_duration_forever">Forever</string>
 	<!-- %s is the timestamp ("tomorrow at 12:34") -->

@@ -51,6 +51,9 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 	public final Status status;
 	public boolean sensitiveRevealed;
 	public String sensitiveTitle;
+	// MAMMUT: F2 — true when the cover is a Blur filter cover rather than a sensitive-media cover,
+	// so revealing it persists to Status.filterMediaRevealed instead of touching sensitive state
+	public boolean filterBlur;
 
 	public MediaGridStatusDisplayItem(String parentID, Callbacks callbacks, Context context, PhotoLayoutHelper.TiledLayoutResult tiledLayout, List<Attachment> attachments, Status status){
 		super(parentID, callbacks, context);
@@ -270,6 +273,8 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 			if(item.sensitiveRevealed)
 				return;
 			item.sensitiveRevealed=true;
+			if(item.filterBlur)
+				item.status.filterMediaRevealed=true;
 			V.setVisibilityAnimated(sensitiveOverlay, View.GONE);
 			layout.setVisibility(View.VISIBLE);
 		}
