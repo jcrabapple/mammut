@@ -54,6 +54,7 @@ public class UnifiedPushNotificationReceiver extends MessagingReceiver{
 	@Override
 	public void onRegistrationFailed(@NonNull Context context, @NonNull FailedReason reason, @NonNull String instance){
 		Log.d(TAG, "onRegistrationFailed: "+instance+" ("+reason+")");
+		android.widget.Toast.makeText(context, R.string.mo_up_failed, android.widget.Toast.LENGTH_LONG).show();
 		fallBackToFcm(instance);
 	}
 

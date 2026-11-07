@@ -65,6 +65,10 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 		// MAMMUT: port from upstream master
 		useUnifiedPush=UnifiedPushHelper.isUnifiedPushEnabled(getContext());
 		hasAnyUnifiedPushDistributor=UnifiedPushHelper.hasAnyDistributorInstalled(getContext());
+		if(useUnifiedPush && !UnifiedPushHelper.isRegistrationAcknowledged(getContext())){
+			// A distributor is chosen but the registration never completed; retry quietly.
+			UnifiedPushHelper.registerAllAccounts(getContext());
+		}
 
 		onDataLoaded(List.of(
 				pauseItem=new CheckableListItem<>(getString(R.string.pause_all_notifications), getPauseItemSubtitle(), CheckableListItem.Style.SWITCH, false, R.drawable.ic_notifications_paused_24px, i->onPauseNotificationsClick(false)),
@@ -322,31 +326,41 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 	// MAMMUT: port from upstream master
 	private void onUnifiedPushClick(){
 		if(!unifiedPushItem.checked){
+			suppressUnifiedPushCallback=true;
 			UnifiedPushHelper.unregisterAllAccounts(getContext());
+			suppressUnifiedPushCallback=false;
 			return;
 		}
-		if(!UnifiedPushHelper.hasAnyDistributorInstalled(getContext())){
+		java.util.List<String> distributors=org.unifiedpush.android.connector.UnifiedPush.getDistributors(getContext());
+		if(distributors.isEmpty()){
 			setUnifiedPushSwitchSilently(false);
 			new M3AlertDialogBuilder(getActivity())
-					.setTitle(R.string.sk_settings_unifiedpush)
-					.setMessage(R.string.sk_settings_unifiedpush_no_distributor_body)
+					.setTitle(R.string.mo_up_none_title)
+					.setMessage(R.string.mo_up_none_body)
 					.setPositiveButton(R.string.ok, null)
 					.show();
 			return;
 		}
-		java.util.List<String> distributors=org.unifiedpush.android.connector.UnifiedPush.getDistributors(getContext());
-		if(distributors.size()>1){
-			new M3AlertDialogBuilder(getActivity())
-					.setTitle(R.string.sk_settings_unifiedpush_choose)
-					.setSingleChoiceItems(distributors.toArray(new String[0]), 0, (dlg, which)->{
-						org.unifiedpush.android.connector.UnifiedPush.saveDistributor(getContext(), distributors.get(which));
-						dlg.dismiss();
-						UnifiedPushHelper.registerAllAccounts(getContext());
-					})
-					.setNegativeButton(R.string.cancel, (dlg, which)->setUnifiedPushSwitchSilently(false))
-					.show();
-			return;
+		// MAMMUT: always ask, even when only one distributor is installed. Without an explicit
+		// choice nothing is stored, and the connector silently drops the registration request.
+		String[] labels=new String[distributors.size()];
+		String saved=org.unifiedpush.android.connector.UnifiedPush.getSavedDistributor(getContext());
+		int preselect=0;
+		for(int i=0;i<distributors.size();i++){
+			labels[i]=UnifiedPushHelper.getDistributorLabel(getContext(), distributors.get(i));
+			if(distributors.get(i).equals(saved))
+				preselect=i;
 		}
-		UnifiedPushHelper.registerAllAccounts(getContext());
+		final int[] choice={preselect};
+		new M3AlertDialogBuilder(getActivity())
+				.setTitle(R.string.mo_up_choose)
+				.setSingleChoiceItems(labels, preselect, (dlg, which)->choice[0]=which)
+				.setPositiveButton(R.string.ok, (dlg, which)->{
+					org.unifiedpush.android.connector.UnifiedPush.saveDistributor(getContext(), distributors.get(choice[0]));
+					setUnifiedPushSwitchSilently(true);
+					UnifiedPushHelper.registerAllAccounts(getContext());
+				})
+				.setNegativeButton(R.string.cancel, (dlg, which)->setUnifiedPushSwitchSilently(false))
+				.show();
 	}
 }
