@@ -5,9 +5,13 @@ import android.os.Bundle;
 
 import com.squareup.otto.Subscribe;
 
+import me.grishka.appkit.api.Callback;
+import me.grishka.appkit.api.ErrorResponse;
+
 import org.joinmastodon.android.E;
 import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.R;
+import org.joinmastodon.android.api.requests.statuses.DeleteStatus;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.events.PollUpdatedEvent;
 import org.joinmastodon.android.events.RemoveAccountPostsEvent;
@@ -20,6 +24,7 @@ import org.joinmastodon.android.model.FilterContext;
 import org.joinmastodon.android.model.Mention;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.model.TimelineDefinition;
+import org.joinmastodon.android.ui.Snackbar;
 import org.joinmastodon.android.ui.displayitems.ExtendedFooterStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.FooterStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.StatusDisplayItem;
@@ -46,6 +51,12 @@ public abstract class StatusListFragment extends BaseStatusListFragment<Status>{
 	private boolean lastPageHadMore;
 	private CharSequence defaultEmptyText;
 	private boolean usedFilteredEmptyText;
+
+	// MAMMUT: G2 — the "Posted · Undo" affordance for a just-published post. The snackbar is a
+	// window-level overlay, so it survives the composer finish animation; the reference is nulled
+	// on every teardown path so a dismissed offer is never re-shown.
+	@Nullable
+	private Snackbar postedUndoSnackbar;
 
 	protected List<StatusDisplayItem> buildDisplayItems(Status s){
 		// MAMMUT: port from upstream master — spectator mode removes the footer, the
@@ -174,8 +185,73 @@ public abstract class StatusListFragment extends BaseStatusListFragment<Status>{
 
 	@Override
 	public void onDestroy(){
+		dismissPostedUndoSnackbar();
 		super.onDestroy();
 		E.unregister(eventListener);
+	}
+
+	@Override
+	protected void onHidden(){
+		super.onHidden();
+		// MAMMUT: G2 — leaving this screen (tab switch, another app, activity teardown) ends
+		// the undo window: the offer disappears, nothing is queued for later.
+		dismissPostedUndoSnackbar();
+	}
+
+	// MAMMUT: G2 — undo window after publishing. The copy is deliberately honest: the post has
+	// already been published (and federated) when this shows; Undo here means "delete it now",
+	// never "unsend it". Offered exactly once, for a fixed 10 seconds.
+	private void showPostedUndoSnackbar(Status status){
+		Activity activity=getActivity();
+		if(activity==null || getView()==null || isHidden() || postedUndoSnackbar!=null)
+			return;
+		Snackbar snackbar=new Snackbar.Builder(activity)
+				.setText(R.string.posted_undo_text)
+				.setAction(R.string.posted_undo_action, ()->undoPostedStatus(status))
+				.setDuration(10_000)
+				.create();
+		// The field must be released when the snackbar goes away by ANY path (timer, swipe,
+		// replacement by another snackbar, action click), or the null-check above keeps
+		// refusing to show it and undo silently stops working for every later post.
+		snackbar.setDismissListener(()->{
+			if(postedUndoSnackbar==snackbar)
+				postedUndoSnackbar=null;
+		});
+		postedUndoSnackbar=snackbar;
+		postedUndoSnackbar.show();
+	}
+
+	private void undoPostedStatus(Status status){
+		dismissPostedUndoSnackbar();
+		new DeleteStatus(status.id)
+				.setCallback(new Callback<>(){
+					@Override
+					public void onSuccess(Status result){
+						AccountSessionManager.getInstance().getAccount(accountID).getCacheController().deleteStatus(status.id);
+						// The existing deleted-status event removes the post from every visible list
+						E.post(new StatusDeletedEvent(status.id, accountID));
+					}
+
+					@Override
+					public void onError(ErrorResponse error){
+						// Say so plainly and leave the post alone. One attempt only — the offer
+						// was already consumed, so there is no retry loop and no second offer.
+						Activity activity=getActivity();
+						if(activity==null)
+							return;
+						new Snackbar.Builder(activity)
+								.setText(R.string.posted_undo_failed)
+								.show();
+					}
+				})
+				.exec(accountID);
+	}
+
+	private void dismissPostedUndoSnackbar(){
+		if(postedUndoSnackbar==null)
+			return;
+		postedUndoSnackbar.dismissImmediately();
+		postedUndoSnackbar=null;
 	}
 
 	@Override
@@ -361,6 +437,7 @@ public abstract class StatusListFragment extends BaseStatusListFragment<Status>{
 			if(!ev.accountID.equals(accountID))
 				return;
 			StatusListFragment.this.onStatusCreated(ev.status.clone());
+			showPostedUndoSnackbar(ev.status);
 		}
 
 		@Subscribe
