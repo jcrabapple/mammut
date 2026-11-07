@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.drawable.Animatable;
 import android.graphics.drawable.Drawable;
+import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
@@ -138,7 +139,7 @@ public class TextStatusDisplayItem extends StatusDisplayItem{
 
 			if(GlobalUserPreferences.collapseLongPosts && !item.status.textExpandable){
 				boolean tooBig=text.getMeasuredHeight()>textMaxHeight;
-				boolean expandable=tooBig && !item.status.hasSpoiler();
+				boolean expandable=tooBig && TextUtils.isEmpty(item.status.spoilerText);
 				item.callbacks.onEnableExpandable(Holder.this, expandable);
 			}
 
