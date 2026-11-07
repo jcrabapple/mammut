@@ -201,6 +201,46 @@ public class PushSubscriptionManager{
 		});
 	}
 
+	// MAMMUT: port from upstream master — UnifiedPush registration.
+	// The distributor owns the key pair, so we neither need an FCM token nor generate keys here.
+	public void registerAccountForPush(PushSubscription subscription, boolean standard, String endpoint, String p256dh, String auth){
+		MastodonAPIController.runInBackground(()->{
+			AccountSession session=AccountSessionManager.getInstance().tryGetAccount(accountID);
+			if(session==null)
+				return;
+			Log.d(TAG, "registerAccountForPush(unifiedpush): registering "+accountID+" at "+endpoint);
+			session.needReRegisterForPush=true;
+			AccountSessionManager.getInstance().writeAccountPushSettings(accountID);
+			new RegisterForPushNotifications(endpoint, standard, p256dh, auth,
+					subscription==null ? PushSubscription.Alerts.ofAll() : subscription.alerts,
+					subscription==null ? PushSubscription.Policy.ALL : subscription.policy)
+					.setCallback(new Callback<>(){
+						@Override
+						public void onSuccess(PushSubscription result){
+							MastodonAPIController.runInBackground(()->{
+								AccountSession session=AccountSessionManager.getInstance().tryGetAccount(accountID);
+								if(session==null)
+									return;
+								session.pushSubscription=result;
+								session.needReRegisterForPush=false;
+								AccountSessionManager.getInstance().writeAccountPushSettings(accountID);
+								Log.d(TAG, "Successfully registered "+accountID+" for unified push");
+							});
+						}
+
+						@Override
+						public void onError(ErrorResponse error){
+							Log.e(TAG, "registerAccountForPush(unifiedpush): failed for "+accountID, (Exception) null);
+						}
+					})
+					.exec(accountID);
+		});
+	}
+
+	public void registerAccountForPush(PushSubscription subscription, String endpoint){
+		registerAccountForPush(subscription, false, endpoint, null, null);
+	}
+
 	public void updatePushSettings(PushSubscription subscription){
 		new UpdatePushSettings(subscription.alerts, subscription.policy)
 				.setCallback(new Callback<>(){

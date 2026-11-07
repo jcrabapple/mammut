@@ -106,7 +106,12 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 		}
 	}
 
-	private void notify(Context context, PushNotification pn, String accountID, org.joinmastodon.android.model.Notification notification){
+	// MAMMUT: port from upstream master — entry point for UnifiedPush payloads
+	public void notifyUnifiedPush(Context context, org.joinmastodon.android.api.session.AccountSession account, org.joinmastodon.android.model.Notification notification){
+		notify(context, PushNotification.fromNotification(context, account, notification), account.getID(), notification);
+	}
+
+	public void notify(Context context, PushNotification pn, String accountID, org.joinmastodon.android.model.Notification notification){
 		if(TextUtils.isEmpty(pn.icon)){
 			doNotify(context, pn, accountID, notification, null);
 		}else{

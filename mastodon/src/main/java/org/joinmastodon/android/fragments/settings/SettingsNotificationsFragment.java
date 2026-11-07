@@ -23,6 +23,7 @@ import org.joinmastodon.android.ui.M3AlertDialogBuilder;
 import org.joinmastodon.android.ui.utils.HideableSingleViewRecyclerAdapter;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.GlobalUserPreferences;
+import org.joinmastodon.android.utils.UnifiedPushHelper;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -46,6 +47,9 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 	private CheckableListItem<Void> mentionsItem, boostsItem, favoritesItem, followersItem, pollsItem, statusesItem, quotesItem;
 	// MAMMUT: parity port from upstream master
 	private CheckableListItem<Void> uniformIconItem, swapBookmarkWithReblogItem, deleteNotificationsItem;
+	// MAMMUT: port from upstream master
+	private CheckableListItem<Void> unifiedPushItem;
+	private boolean useUnifiedPush, hasAnyUnifiedPushDistributor;
 	private List<CheckableListItem<Void>> typeItems;
 	private boolean needUpdateNotificationSettings;
 	private boolean notificationsAllowed=true;
@@ -56,6 +60,9 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 		setTitle(R.string.settings_notifications);
 
 		getPushSubscription();
+		// MAMMUT: port from upstream master
+		useUnifiedPush=UnifiedPushHelper.isUnifiedPushEnabled(getContext());
+		hasAnyUnifiedPushDistributor=UnifiedPushHelper.hasAnyDistributorInstalled(getContext());
 
 		onDataLoaded(List.of(
 				pauseItem=new CheckableListItem<>(getString(R.string.pause_all_notifications), getPauseItemSubtitle(), CheckableListItem.Style.SWITCH, false, R.drawable.ic_notifications_paused_24px, i->onPauseNotificationsClick(false)),
@@ -70,11 +77,17 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 				quotesItem=new CheckableListItem<>(R.string.notification_type_quote, 0, CheckableListItem.Style.CHECKBOX, pushSubscription.alerts.quote, this::toggleCheckableItem),
 				uniformIconItem=new CheckableListItem<>(R.string.sk_settings_uniform_icon_for_notifications, R.string.mo_setting_uniform_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.uniformNotificationIcon, R.drawable.ic_ntf_logo, this::toggleCheckableItem),
 				swapBookmarkWithReblogItem=new CheckableListItem<>(R.string.mo_swap_bookmark_with_reblog, R.string.mo_swap_bookmark_with_reblog_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.swapBookmarkWithBoostAction, R.drawable.ic_boost, this::toggleCheckableItem),
-				deleteNotificationsItem=new CheckableListItem<>(R.string.sk_settings_enable_delete_notifications, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.enableDeleteNotifications, R.drawable.ic_fluent_mail_inbox_dismiss_24_regular, this::toggleCheckableItem)
+				deleteNotificationsItem=new CheckableListItem<>(R.string.sk_settings_enable_delete_notifications, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.enableDeleteNotifications, R.drawable.ic_fluent_mail_inbox_dismiss_24_regular, this::toggleCheckableItem),
+				unifiedPushItem=new CheckableListItem<>(R.string.sk_settings_unifiedpush, 0, CheckableListItem.Style.SWITCH, useUnifiedPush, R.drawable.ic_fluent_alert_24_regular, i->onUnifiedPushClick(), true)
 		));
 
 		typeItems=List.of(mentionsItem, boostsItem, favoritesItem, followersItem, pollsItem, statusesItem, quotesItem);
 		pauseItem.checkedChangeListener=checked->onPauseNotificationsClick(true);
+		// MAMMUT: port from upstream master
+		unifiedPushItem.checkedChangeListener=checked->onUnifiedPushClick();
+		unifiedPushItem.isEnabled=hasAnyUnifiedPushDistributor;
+		if(!hasAnyUnifiedPushDistributor)
+			unifiedPushItem.subtitleRes=R.string.sk_settings_unifiedpush_no_distributor;
 		updatePolicyItem(null);
 		updatePauseItem();
 	}
@@ -291,5 +304,40 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 		}else{
 			bannerAdapter.setVisible(false);
 		}
+	}
+
+	// MAMMUT: port from upstream master
+	private void onUnifiedPushClick(){
+		if(!unifiedPushItem.checked){
+			UnifiedPushHelper.unregisterAllAccounts(getContext());
+			return;
+		}
+		if(!UnifiedPushHelper.hasAnyDistributorInstalled(getContext())){
+			unifiedPushItem.checked=false;
+			rebindItem(unifiedPushItem);
+			new M3AlertDialogBuilder(getActivity())
+					.setTitle(R.string.sk_settings_unifiedpush)
+					.setMessage(R.string.sk_settings_unifiedpush_no_distributor_body)
+					.setPositiveButton(R.string.ok, null)
+					.show();
+			return;
+		}
+		java.util.List<String> distributors=org.unifiedpush.android.connector.UnifiedPush.getDistributors(getContext());
+		if(distributors.size()>1){
+			new M3AlertDialogBuilder(getActivity())
+					.setTitle(R.string.sk_settings_unifiedpush_choose)
+					.setSingleChoiceItems(distributors.toArray(new String[0]), 0, (dlg, which)->{
+						org.unifiedpush.android.connector.UnifiedPush.saveDistributor(getContext(), distributors.get(which));
+						dlg.dismiss();
+						UnifiedPushHelper.registerAllAccounts(getContext());
+					})
+					.setNegativeButton(R.string.cancel, (dlg, which)->{
+						unifiedPushItem.checked=false;
+						rebindItem(unifiedPushItem);
+					})
+					.show();
+			return;
+		}
+		UnifiedPushHelper.registerAllAccounts(getContext());
 	}
 }

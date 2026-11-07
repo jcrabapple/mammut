@@ -60,6 +60,7 @@ import org.joinmastodon.android.model.LegacyFilter;
 import org.joinmastodon.android.model.Preferences;
 import org.joinmastodon.android.model.Token;
 import org.joinmastodon.android.ui.utils.UiUtils;
+import org.joinmastodon.android.utils.UnifiedPushHelper;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -151,7 +152,15 @@ public class AccountSessionManager{
 			db.insertWithOnConflict("accounts", null, values, SQLiteDatabase.CONFLICT_REPLACE);
 		});
 		updateInstanceEmojis(instance, instance.getDomain());
-		if(PushSubscriptionManager.arePushNotificationsAvailable()){
+		// MAMMUT: port from upstream master — register new accounts with UnifiedPush when in use
+		if(UnifiedPushHelper.isUnifiedPushEnabled(MastodonApp.context)){
+			String vapid=session.app==null || session.app.vapidKey==null ? null : session.app.vapidKey.replaceAll("=", "");
+			try{
+				org.unifiedpush.android.connector.UnifiedPush.register(MastodonApp.context, session.getID(), session.self.fqn, vapid);
+			}catch(RuntimeException x){
+				Log.e(TAG, "addAccount: UnifiedPush registration failed", x);
+			}
+		}else if(PushSubscriptionManager.arePushNotificationsAvailable()){
 			session.getPushSubscriptionManager().registerAccountForPush(null);
 		}
 		maybeUpdateShortcuts();

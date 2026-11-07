@@ -8,6 +8,7 @@ import android.webkit.WebView;
 
 import org.joinmastodon.android.api.PushSubscriptionManager;
 import org.joinmastodon.android.ui.utils.UiUtils;
+import org.joinmastodon.android.utils.UnifiedPushHelper;
 
 import me.grishka.appkit.imageloader.ImageCache;
 import me.grishka.appkit.utils.NetworkUtils;
@@ -30,7 +31,12 @@ public class MastodonApp extends Application{
 		NetworkUtils.setUserAgent("MastodonAndroid/"+BuildConfig.VERSION_NAME);
 		UiUtils.updateLocalizedDateFormatters(context);
 
-		PushSubscriptionManager.tryRegisterFCM();
+		// MAMMUT: port from upstream master — prefer UnifiedPush when a distributor is in use
+		if(UnifiedPushHelper.isUnifiedPushEnabled(this)){
+			UnifiedPushHelper.registerAllAccounts(this);
+		}else{
+			PushSubscriptionManager.tryRegisterFCM();
+		}
 		GlobalUserPreferences.load();
 		if(BuildConfig.DEBUG){
 			WebView.setWebContentsDebuggingEnabled(true);

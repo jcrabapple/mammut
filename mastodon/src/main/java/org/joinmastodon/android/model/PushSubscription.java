@@ -13,6 +13,8 @@ public class PushSubscription extends BaseModel implements Cloneable{
 	public Alerts alerts;
 	public String serverKey;
 	public Policy policy=Policy.ALL;
+	// MAMMUT: port from upstream master — true when the endpoint is not the FCM relay
+	public Boolean standard=false;
 
 	public PushSubscription(){}
 
