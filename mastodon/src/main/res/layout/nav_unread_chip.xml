@@ -10,10 +10,10 @@
 
 	<ImageButton
 		android:id="@+id/nav_unread_button"
-		style="@style/Widget.Mastodon.M3.Button.Icon"
 		android:layout_width="48dp"
 		android:layout_height="48dp"
 		android:layout_gravity="center"
+		android:background="?android:attr/selectableItemBackgroundBorderless"
 		android:src="@drawable/ic_nav_notifications_24"
 		android:tint="?colorM3OnSurfaceVariant"
 		android:contentDescription="@string/nav_destination_notifications"/>

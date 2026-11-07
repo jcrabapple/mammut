@@ -83,8 +83,7 @@ public class NavMenuView extends FrameLayout{
 	private LinearLayout menuPanel;
 	private View fab;
 	private ImageView fabGlyphLines, fabGlyphClose;
-	private TextView fabBadge;
-
+	
 	private final Map<NavDestination, View> rows=new EnumMap<>(NavDestination.class);
 	private final Map<NavDestination, TextView> rowBadges=new EnumMap<>(NavDestination.class);
 	private View composeRow;
@@ -127,7 +126,6 @@ public class NavMenuView extends FrameLayout{
 		fab=findViewById(R.id.fab);
 		fabGlyphLines=findViewById(R.id.fab_glyph_lines);
 		fabGlyphClose=findViewById(R.id.fab_glyph_close);
-		fabBadge=findViewById(R.id.fab_badge);
 
 		fab.setOnClickListener(v->{
 			if(menuOpen)
@@ -281,7 +279,6 @@ public class NavMenuView extends FrameLayout{
 			});
 			runAnims(set);
 		}
-		fabBadge.setVisibility(GONE);
 	}
 
 	private void onFabHidden(){
@@ -359,7 +356,6 @@ public class NavMenuView extends FrameLayout{
 		}
 
 		// Opening the menu must not duplicate the unread count: keep it on the row only
-		fabBadge.setVisibility(GONE);
 		updateFabDescription();
 		updateRowBadges();
 		bringSelectedRowIntoView();
@@ -441,15 +437,13 @@ public class NavMenuView extends FrameLayout{
 		runAnims(set);
 	}
 
+	/**
+	 * MAMMUT: the FAB no longer carries the count. The top app bar chip is the single
+	 * always-visible indicator — the FAB hides on scroll, and showing the same number in two
+	 * places at once was redundant. The count is still announced on the FAB for screen readers.
+	 */
 	private void updateBadge(){
-		if(unreadCount<=0){
-			fabBadge.setVisibility(GONE);
-			return;
-		}
-		boolean more=unreadMore || unreadCount>99;
-		fabBadge.setText(more ? (Math.min(unreadCount, 99)+"+") : String.valueOf(unreadCount));
-		// Suppressed while the menu is open; retained (hidden with the FAB) while scroll-hidden
-		fabBadge.setVisibility(menuOpen || fabHidden ? GONE : VISIBLE);
+		updateFabDescription();
 	}
 
 	@SuppressLint("SetTextI18n")
