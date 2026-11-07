@@ -54,6 +54,7 @@ import org.joinmastodon.android.events.SelfUpdateStateChangedEvent;
 import org.joinmastodon.android.fragments.settings.SettingsMainFragment;
 import org.joinmastodon.android.fragments.settings.TimelineViewSettingsFragment;
 import org.joinmastodon.android.model.Announcement;
+import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.model.Hashtag;
 import org.joinmastodon.android.model.HeaderPaginationList;
 import org.joinmastodon.android.model.FollowList;
@@ -61,7 +62,10 @@ import org.joinmastodon.android.model.StatusPrivacy;
 import org.joinmastodon.android.model.TimelineDefinition;
 import org.joinmastodon.android.model.viewmodel.ListItem;
 import org.joinmastodon.android.ui.ExtendedPopupMenu;
+import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.SimpleViewHolder;
+import org.joinmastodon.android.ui.sheets.AccountSwitcherSheet;
+import org.joinmastodon.android.ui.utils.NavToolbarUtils;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.updater.GithubSelfUpdater;
 import org.joinmastodon.android.utils.ElevationOnScrollListener;
@@ -82,6 +86,8 @@ import me.grishka.appkit.Nav;
 import me.grishka.appkit.api.Callback;
 import me.grishka.appkit.api.ErrorResponse;
 import me.grishka.appkit.fragments.BaseRecyclerFragment;
+import me.grishka.appkit.imageloader.ViewImageLoader;
+import me.grishka.appkit.imageloader.requests.UrlImageLoaderRequest;
 import me.grishka.appkit.utils.CubicBezierInterpolator;
 import me.grishka.appkit.utils.V;
 import me.grishka.appkit.views.FragmentRootLinearLayout;
@@ -114,8 +120,10 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 	private PopupMenu overflowPopup;
 	private View overflowActionView = null;
 	private boolean announcementsBadged, settingsBadged;
-	private ImageButton fab;
 	private ElevationOnScrollListener elevationOnScrollListener;
+	private ImageView toolbarAvatar;
+	private TextView timelineSubtitle;
+	private final List<Runnable> pageChangeListeners=new ArrayList<>();
 
 	// TODO: rename this
 	private Runnable returnToBeginningOfPager=this::returnToBeginningOfPager;
@@ -155,10 +163,8 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		FrameLayout view = new FrameLayout(getContext());
 		view.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 		rootView.addView(view);
-		inflater.inflate(R.layout.compose_fab, view);
-		fab = view.findViewById(R.id.fab);
-		fab.setOnClickListener(this::onFabClick);
-		fab.setOnLongClickListener(this::onFabLongClick);
+		// MAMMUT: the compose FAB was replaced by the navigation FAB owned by HomeFragment;
+		// Compose lives in the speed-dial menu now
 		pager = new ViewPager2(getContext());
 		toolbarFrame = (FrameLayout) LayoutInflater.from(getContext()).inflate(R.layout.home_toolbar, getToolbar(), false);
 
@@ -215,8 +221,22 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 
 		timelineIcon = toolbarFrame.findViewById(R.id.timeline_icon);
 		timelineTitle = toolbarFrame.findViewById(R.id.timeline_title);
+		timelineSubtitle = toolbarFrame.findViewById(R.id.timeline_subtitle);
 		collapsedChevron = toolbarFrame.findViewById(R.id.collapsed_chevron);
 		switcher = toolbarFrame.findViewById(R.id.switcher_btn);
+		toolbarAvatar=toolbarFrame.findViewById(R.id.toolbar_avatar);
+		toolbarAvatar.setOutlineProvider(OutlineProviders.OVAL);
+		toolbarAvatar.setClipToOutline(true);
+		Account self=AccountSessionManager.getInstance().getAccount(accountID).self;
+		ViewImageLoader.loadWithoutAnimation(toolbarAvatar, null, new UrlImageLoaderRequest(self.avatar, V.dp(40), V.dp(40)));
+		toolbarAvatar.setOnClickListener(v->NavToolbarUtils.openSelfProfile(getActivity(), accountID));
+		toolbarAvatar.setOnLongClickListener(v->{
+			if(getParentFragment() instanceof HomeFragment hf){
+				new AccountSwitcherSheet(getActivity(), hf).show();
+				return true;
+			}
+			return false;
+		});
 		switcherPopup = new PopupMenu(getContext(), switcher);
 		switcherPopup.setOnMenuItemClickListener(this::onSwitcherItemSelected);
 		UiUtils.enablePopupMenuIcons(getContext(), switcherPopup);
@@ -244,6 +264,7 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 					switcher.setAlpha(0.65f);
 				}
 				updateSwitcherIcon(position);
+			for(Runnable r:pageChangeListeners) r.run();
 				if (!timelines[position].equals(TimelineDefinition.HOME_TIMELINE)) hideNewPostsButton();
 				if (fragments[position] instanceof BaseRecyclerFragment<?> page){
 					if(!page.loaded && !page.isDataLoading()) page.loadData();
@@ -342,18 +363,21 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		return elevationOnScrollListener;
 	}
 
+	/**
+	 * MAMMUT: HomeFragment re-points the navigation FAB's scroll rule at the pager's
+	 * current page whenever it changes.
+	 */
+	public void addPageChangeListener(Runnable listener){
+		pageChangeListeners.add(listener);
+	}
+
 	private void onFabClick(View v){
-		if (fragments[pager.getCurrentItem()] instanceof BaseStatusListFragment<?> l) {
-			l.onFabClick(v);
-		}
+		// MAMMUT: replaced by the navigation FAB's Compose menu entry
 	}
 
 	private boolean onFabLongClick(View v) {
-		if (fragments[pager.getCurrentItem()] instanceof BaseStatusListFragment<?> l) {
-			return l.onFabLongClick(v);
-		} else {
-			return false;
-		}
+		// MAMMUT: replaced by the navigation FAB's Compose menu entry
+		return false;
 	}
 
 	private void addListsToOverflowMenu() {
@@ -531,18 +555,17 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 
 	@Override
 	public void showFab() {
-		if (fragments[pager.getCurrentItem()] instanceof BaseStatusListFragment<?> l) l.showFab();
+		// MAMMUT: the navigation FAB is owned by HomeFragment
 	}
 
 	@Override
 	public void hideFab() {
-		if (fragments[pager.getCurrentItem()] instanceof BaseStatusListFragment<?> l) l.hideFab();
+		// MAMMUT: the navigation FAB is owned by HomeFragment
 	}
 
 	@Override
 	public boolean isScrolling() {
-		return (fragments[pager.getCurrentItem()] instanceof HasFab fabulous)
-				&& fabulous.isScrolling();
+		return false;
 	}
 
 	@Override
@@ -554,8 +577,20 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 	private void updateSwitcherIcon(int i) {
 		timelineIcon.setImageResource(timelines[i].getIcon().iconRes);
 		timelineTitle.setText(timelines[i].getTitle(getContext()));
-		showFab();
-		if (elevationOnScrollListener != null && getCurrentFragment() instanceof IsOnTop f) {
+		// MAMMUT: supporting line for the core timelines ("Home / Your timeline", ...)
+		int subtitleRes=switch(timelines[i].getType()){
+			case HOME -> R.string.nav_subtitle_home;
+			case LOCAL -> R.string.nav_subtitle_local;
+			case FEDERATED -> R.string.nav_subtitle_federated;
+			default -> 0;
+		};
+		if(subtitleRes!=0){
+			timelineSubtitle.setText(subtitleRes);
+			timelineSubtitle.setVisibility(View.VISIBLE);
+		}else{
+			timelineSubtitle.setVisibility(View.GONE);
+		}
+		if(elevationOnScrollListener != null && getCurrentFragment() instanceof IsOnTop f) {
 			// FIXME: make this work again
 //			elevationOnScrollListener.handleScroll(getContext(), f.isOnTop());
 		}
@@ -563,6 +598,11 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item){
+		if(item.getItemId()==R.id.nav_search){
+			// MAMMUT: search entry point moved into the top app bar
+			NavToolbarUtils.openDiscover(getActivity(), accountID);
+			return true;
+		}
 		Bundle args=new Bundle();
 		args.putString("account", accountID);
 		int id = item.getItemId();
@@ -807,8 +847,9 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		return fragments[pager.getCurrentItem()];
 	}
 
-	public ImageButton getFab() {
-		return fab;
+	public View getFab() {
+		// MAMMUT: the compose FAB was replaced by the navigation FAB owned by HomeFragment
+		return null;
 	}
 
 	@Override

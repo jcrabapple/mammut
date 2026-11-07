@@ -3,6 +3,7 @@ package org.joinmastodon.android.fragments.discover;
 import android.net.Uri;
 import android.os.Bundle;
 
+import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.timelines.GetPublicTimeline;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.fragments.StatusListFragment;
@@ -25,6 +26,10 @@ public class LocalTimelineFragment extends StatusListFragment implements Provide
 	@Override
 	public void onCreate(Bundle savedInstanceState){
 		super.onCreate(savedInstanceState);
+		// MAMMUT: supporting line, only when this fragment is a root destination;
+		// inside DiscoverFragment the bar belongs to the discover surface
+		if(getParentFragment() instanceof org.joinmastodon.android.fragments.HomeFragment)
+			setSubtitle(R.string.nav_subtitle_local);
 		bannerHelper=new DiscoverInfoBannerHelper(DiscoverInfoBannerHelper.BannerType.LOCAL_TIMELINE, accountID);
 	}
 

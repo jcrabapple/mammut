@@ -103,6 +103,8 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 	public void onAttach(Activity activity){
 		super.onAttach(activity);
 		setTitle(R.string.notifications);
+		// MAMMUT: supporting line under the destination title
+		setSubtitle(R.string.nav_subtitle_notifications);
 	}
 
 	@Override

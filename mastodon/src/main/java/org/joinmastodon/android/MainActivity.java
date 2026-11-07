@@ -227,7 +227,8 @@ public class MainActivity extends FragmentStackActivity{
 			}else if(intent.getBooleanExtra("compose", false)){
 				showCompose();
 			}else if(intent.getBooleanExtra("explore", false) && fragment instanceof HomeFragment hf){
-				getWindow().getDecorView().post(()->hf.setCurrentTab(R.id.tab_search));
+				// MAMMUT: search moved out of the tab bar; the explore intent opens Discover
+				getWindow().getDecorView().post(()->org.joinmastodon.android.ui.utils.NavToolbarUtils.openDiscover(this, hf.getAccountID()));
 			}else if(Intent.ACTION_VIEW.equals(intent.getAction())){
 				handleURL(intent.getData(), null);
 			}else{

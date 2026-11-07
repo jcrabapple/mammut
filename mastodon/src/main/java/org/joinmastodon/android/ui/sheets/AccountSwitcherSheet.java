@@ -348,7 +348,8 @@ public class AccountSwitcherSheet extends BottomSheet{
 
 			if(AccountSessionManager.getInstance().getLastActiveAccountID().equals(item.getID())){
 				if(fragment!=null){
-					fragment.setCurrentTab(R.id.tab_profile);
+					// MAMMUT: the profile tab is gone; open the own profile instead
+					fragment.openSelfProfile();
 				}
 				return;
 			}

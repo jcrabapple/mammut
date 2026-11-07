@@ -36,6 +36,8 @@ import org.joinmastodon.android.model.FilterContext;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.model.StatusContext;
 import org.joinmastodon.android.ui.OutlineProviders;
+import org.joinmastodon.android.ui.NavDestination;
+import org.joinmastodon.android.ui.NavMenuController;
 import org.joinmastodon.android.ui.Snackbar;
 import org.joinmastodon.android.ui.displayitems.ExtendedFooterStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.FooterStatusDisplayItem;
@@ -45,6 +47,7 @@ import org.joinmastodon.android.ui.displayitems.StatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.TextStatusDisplayItem;
 import org.joinmastodon.android.ui.text.HtmlParser;
 import org.joinmastodon.android.ui.utils.UiUtils;
+import org.joinmastodon.android.ui.utils.UnreadNotificationCounter;
 import org.parceler.Parcels;
 
 import java.util.ArrayList;
@@ -62,6 +65,7 @@ import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ListUpdateCallback;
 import androidx.recyclerview.widget.RecyclerView;
 import me.grishka.appkit.Nav;
+import me.grishka.appkit.FragmentStackActivity;
 import me.grishka.appkit.api.SimpleCallback;
 import me.grishka.appkit.imageloader.ViewImageLoader;
 import me.grishka.appkit.imageloader.requests.UrlImageLoaderRequest;
@@ -70,8 +74,9 @@ import me.grishka.appkit.utils.MergeRecyclerAdapter;
 import me.grishka.appkit.utils.SingleViewRecyclerAdapter;
 import me.grishka.appkit.utils.V;
 
-public class ThreadFragment extends StatusListFragment implements AssistContentProviderFragment{
+public class ThreadFragment extends StatusListFragment implements AssistContentProviderFragment, NavMenuController.Host{
 	private Status mainStatus;
+	private NavMenuController navMenuController;
 	private ImageView endMark;
 	private FrameLayout replyContainer;
 	private LinearLayout replyButton;
@@ -114,6 +119,8 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			setTitle(HtmlParser.parseCustomEmoji(getString(R.string.post_from_user, mainStatus.account.displayName), mainStatus.account.emojis));
 		else
 			setTitle(getString(R.string.post_from_user, mainStatus.account.displayName));
+		// MAMMUT: supporting line under the thread title ("From <origin>")
+		setSubtitle(getString(R.string.nav_subtitle_thread_origin, mainStatus.account.displayName));
 		setRefreshEnabled(false);
 		setHasOptionsMenu(true);
 	}
@@ -287,11 +294,64 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			dataLoading=true;
 			doLoadData();
 		}
+		// MAMMUT: the navigation FAB is available in threads too
+		UnreadNotificationCounter.load(accountID, (count, more)->navMenuController.setUnreadCount(count, more));
+	}
+
+	@Override
+	protected void onHidden(){
+		super.onHidden();
+		if(navMenuController!=null)
+			navMenuController.closeMenu();
+	}
+
+	private final Runnable navMenuBackCallback=()->navMenuController.closeMenu();
+
+	@Override
+	public void onNavDestinationSelected(NavDestination destination){
+		// Pop back to the home surface, then switch the destination there so the
+		// existing per-destination state and scroll positions survive
+		navMenuController.closeMenu();
+		((FragmentStackActivity)getActivity()).removeFragment(this, true);
+		getActivity().getWindow().getDecorView().post(()->{
+			for(android.app.Fragment f:getFragmentManager().getFragments()){
+				if(f instanceof HomeFragment hf){
+					hf.setDestination(destination);
+					break;
+				}
+			}
+		});
+	}
+
+	@Override
+	public void onNavComposeSelected(){
+		navMenuController.closeMenu();
+		Bundle args=new Bundle();
+		args.putString("account", accountID);
+		Nav.go(getActivity(), ComposeFragment.class, args);
+	}
+
+	@Override
+	public void onNavMenuOpenChanged(boolean open){
+		// Back closes the menu before any navigation happens
+		if(open)
+			addBackCallback(navMenuBackCallback);
+		else
+			removeBackCallback(navMenuBackCallback);
 	}
 
 	@Override
 	public void onViewCreated(View view, Bundle savedInstanceState){
 		super.onViewCreated(view, savedInstanceState);
+		// MAMMUT: navigation FAB overlay; the content container is a FrameLayout so the
+		// menu scrim/panel float above the thread, same as on the home surface
+		navMenuController=new NavMenuController(this);
+		ViewGroup content=view.findViewById(me.grishka.appkit.R.id.appkit_loader_content);
+		if(content instanceof FrameLayout){
+			navMenuController.attach(content);
+			navMenuController.setDestination(NavDestination.HOME);
+			navMenuController.setScrollTarget(getList());
+		}
 		replyContainer=view.findViewById(R.id.reply_button_wrapper);
 		replyButton=replyContainer.findViewById(R.id.reply_button);
 		replyButtonText=replyButton.findViewById(R.id.reply_btn_text);
