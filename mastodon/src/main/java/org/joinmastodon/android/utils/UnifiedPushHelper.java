@@ -6,6 +6,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
+import org.joinmastodon.android.api.PushSubscriptionManager;
 import org.joinmastodon.android.api.session.AccountSession;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.model.PushSubscription;
@@ -51,8 +52,10 @@ public class UnifiedPushHelper{
 	public static void unregisterAllAccounts(@NonNull Context context){
 		for(AccountSession accountSession:AccountSessionManager.getInstance().getLoggedInAccounts()){
 			UnifiedPush.unregister(context, accountSession.getID());
-			// use FCM again
-			accountSession.getPushSubscriptionManager().registerAccountForPush(null);
+			// use FCM again — but only when this build actually has an FCM token, otherwise
+			// there is nothing to fall back to
+			if(PushSubscriptionManager.arePushNotificationsAvailable())
+				accountSession.getPushSubscriptionManager().registerAccountForPush(null);
 		}
 	}
 }

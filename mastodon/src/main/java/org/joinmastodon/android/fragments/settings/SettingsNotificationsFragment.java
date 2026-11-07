@@ -50,6 +50,8 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 	// MAMMUT: port from upstream master
 	private CheckableListItem<Void> unifiedPushItem;
 	private boolean useUnifiedPush, hasAnyUnifiedPushDistributor;
+	// MAMMUT: guard against the listener firing again when we reset the switch programmatically
+	private boolean suppressUnifiedPushCallback;
 	private List<CheckableListItem<Void>> typeItems;
 	private boolean needUpdateNotificationSettings;
 	private boolean notificationsAllowed=true;
@@ -84,7 +86,11 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 		typeItems=List.of(mentionsItem, boostsItem, favoritesItem, followersItem, pollsItem, statusesItem, quotesItem);
 		pauseItem.checkedChangeListener=checked->onPauseNotificationsClick(true);
 		// MAMMUT: port from upstream master
-		unifiedPushItem.checkedChangeListener=checked->onUnifiedPushClick();
+		unifiedPushItem.checkedChangeListener=checked->{
+			if(suppressUnifiedPushCallback)
+				return;
+			onUnifiedPushClick();
+		};
 		unifiedPushItem.isEnabled=hasAnyUnifiedPushDistributor;
 		if(!hasAnyUnifiedPushDistributor)
 			unifiedPushItem.subtitleRes=R.string.sk_settings_unifiedpush_no_distributor;
@@ -306,6 +312,13 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 		}
 	}
 
+	private void setUnifiedPushSwitchSilently(boolean checked){
+		suppressUnifiedPushCallback=true;
+		unifiedPushItem.checked=checked;
+		rebindItem(unifiedPushItem);
+		suppressUnifiedPushCallback=false;
+	}
+
 	// MAMMUT: port from upstream master
 	private void onUnifiedPushClick(){
 		if(!unifiedPushItem.checked){
@@ -313,8 +326,7 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 			return;
 		}
 		if(!UnifiedPushHelper.hasAnyDistributorInstalled(getContext())){
-			unifiedPushItem.checked=false;
-			rebindItem(unifiedPushItem);
+			setUnifiedPushSwitchSilently(false);
 			new M3AlertDialogBuilder(getActivity())
 					.setTitle(R.string.sk_settings_unifiedpush)
 					.setMessage(R.string.sk_settings_unifiedpush_no_distributor_body)
@@ -331,10 +343,7 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 						dlg.dismiss();
 						UnifiedPushHelper.registerAllAccounts(getContext());
 					})
-					.setNegativeButton(R.string.cancel, (dlg, which)->{
-						unifiedPushItem.checked=false;
-						rebindItem(unifiedPushItem);
-					})
+					.setNegativeButton(R.string.cancel, (dlg, which)->setUnifiedPushSwitchSilently(false))
 					.show();
 			return;
 		}

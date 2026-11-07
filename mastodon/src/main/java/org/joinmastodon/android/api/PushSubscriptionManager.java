@@ -134,8 +134,13 @@ public class PushSubscriptionManager{
 	}
 
 	public void registerAccountForPush(PushSubscription subscription){
-		if(TextUtils.isEmpty(deviceToken))
-			throw new IllegalStateException("No device push token available");
+		// MAMMUT: builds without Google Play services (the github flavor) never obtain an FCM
+		// token, and every caller of this method is fire-and-forget, so throwing here took the
+		// whole app down (Settings -> Notifications -> UnifiedPush). Bail out instead.
+		if(TextUtils.isEmpty(deviceToken)){
+			Log.w(TAG, "registerAccountForPush: no FCM device token, skipping registration for "+accountID);
+			return;
+		}
 		MastodonAPIController.runInBackground(()->{
 			Log.d(TAG, "registerAccountForPush: started for "+accountID);
 			String encodedPublicKey, encodedAuthKey, pushAccountID;
@@ -259,7 +264,10 @@ public class PushSubscriptionManager{
 					@Override
 					public void onError(ErrorResponse error){
 						if(((MastodonErrorResponse)error).httpStatus==404){ // Not registered for push, register now
-							registerAccountForPush(subscription);
+							if(arePushNotificationsAvailable())
+								registerAccountForPush(subscription);
+							else
+								org.joinmastodon.android.utils.UnifiedPushHelper.registerAllAccounts(MastodonApp.context);
 						}else{
 							AccountSession session=AccountSessionManager.getInstance().tryGetAccount(accountID);
 							if(session==null)
