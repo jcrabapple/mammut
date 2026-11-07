@@ -417,6 +417,12 @@
 	<string name="mark_all_notifications_read">Mark all as read</string>
 	<string name="settings_display">Display</string>
 	<string name="settings_filters">Filters</string>
+	<string name="settings_hidden_domains">Blocked domains</string>
+	<string name="settings_hidden_domains_explanation">Review and unblock servers you’ve hidden</string>
+	<string name="no_hidden_domains">You haven’t blocked any domains</string>
+	<string name="unblock">Unblock</string>
+	<string name="unblock_domain_explanation">Posts and notifications from this server will appear in your timelines again.</string>
+	<string name="error_unblocking_domain">Couldn’t unblock %s — tap to try again</string>
 	<string name="settings_server_explanation">Overview, rules, moderators</string>
 	<!-- %s is the app name (Mastodon, key app_name). I made it a placeholder so everything Just Works™ with forks -->
 	<string name="about_app">About %s</string>
