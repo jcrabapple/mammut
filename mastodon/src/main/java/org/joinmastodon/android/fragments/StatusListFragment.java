@@ -31,8 +31,14 @@ public abstract class StatusListFragment extends BaseStatusListFragment<Status>{
 	protected EventListener eventListener=new EventListener();
 
 	protected List<StatusDisplayItem> buildDisplayItems(Status s){
-		// MAMMUT: phase 1 port from upstream master — spectator mode removes the interaction footer
-		return StatusDisplayItem.buildItems(this, s, accountID, s, knownAccounts, !GlobalUserPreferences.spectatorMode);
+		// MAMMUT: port from upstream master — spectator mode removes the footer, the
+		// media-preview preference swaps thumbnails for attachment rows
+		int flags=0;
+		if(GlobalUserPreferences.spectatorMode)
+			flags|=StatusDisplayItem.FLAG_NO_FOOTER;
+		if(!GlobalUserPreferences.showMediaPreview)
+			flags|=StatusDisplayItem.FLAG_NO_MEDIA_PREVIEW;
+		return StatusDisplayItem.buildItems(this, getActivity(), s, accountID, s, knownAccounts, flags);
 	}
 
 	protected abstract FilterContext getFilterContext();

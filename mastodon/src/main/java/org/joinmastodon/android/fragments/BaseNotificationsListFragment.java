@@ -91,6 +91,9 @@ public abstract class BaseNotificationsListFragment extends BaseStatusListFragme
 				int flags=titleItem!=null ? StatusDisplayItem.FLAG_NO_IN_REPLY_TO : 0;
 				if(GlobalUserPreferences.spectatorMode)
 					flags|=StatusDisplayItem.FLAG_NO_FOOTER;
+				// MAMMUT: port from upstream master
+				if(!GlobalUserPreferences.showMediaPreview)
+					flags|=StatusDisplayItem.FLAG_NO_MEDIA_PREVIEW;
 				ArrayList<StatusDisplayItem> items=StatusDisplayItem.buildItems(this, getActivity(), n.status, accountID, n, knownAccounts, flags);
 				if(titleItem!=null)
 					items.add(0, titleItem);

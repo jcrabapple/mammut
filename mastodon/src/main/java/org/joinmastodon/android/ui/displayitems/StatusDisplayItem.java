@@ -103,6 +103,9 @@ public abstract class StatusDisplayItem{
 			case GAP -> new GapStatusDisplayItem.Holder(activity, parent);
 			case EXTENDED_FOOTER -> new ExtendedFooterStatusDisplayItem.Holder(activity, parent);
 			case MEDIA_GRID -> new MediaGridStatusDisplayItem.Holder(activity, parent);
+			// MAMMUT: port from upstream master
+			case PREVIEWLESS_MEDIA_GRID -> new PreviewlessMediaGridStatusDisplayItem.Holder(activity, parent);
+			case FILE -> new FileStatusDisplayItem.Holder(activity, parent);
 			case SPOILER, FILTER_SPOILER -> new SpoilerStatusDisplayItem.Holder(activity, parent, type);
 			case SECTION_HEADER -> new SectionHeaderStatusDisplayItem.Holder(activity, parent);
 			case NOTIFICATION_HEADER -> new NotificationHeaderStatusDisplayItem.Holder(activity, parent);
@@ -195,7 +198,9 @@ public abstract class StatusDisplayItem{
 		}
 
 		List<Attachment> imageAttachments=statusForContent.mediaAttachments.stream().filter(att->att.type.isImage()).collect(Collectors.toList());
-		if(!imageAttachments.isEmpty()){
+		// MAMMUT: port from upstream master — previewless mode lists attachments instead of thumbnails
+		boolean mediaPreview=(flags & FLAG_NO_MEDIA_PREVIEW)==0;
+		if(mediaPreview && !imageAttachments.isEmpty()){
 			PhotoLayoutHelper.TiledLayoutResult layout=PhotoLayoutHelper.processThumbs(imageAttachments);
 			MediaGridStatusDisplayItem mediaGrid=new MediaGridStatusDisplayItem(parentID, callbacks, context, layout, imageAttachments, statusForContent);
 			if((flags & FLAG_MEDIA_FORCE_HIDDEN)!=0){
@@ -206,9 +211,13 @@ public abstract class StatusDisplayItem{
 			}
 			contentItems.add(mediaGrid);
 		}
+		if(!mediaPreview && !statusForContent.mediaAttachments.isEmpty())
+			contentItems.add(new PreviewlessMediaGridStatusDisplayItem(parentID, callbacks, context, statusForContent.mediaAttachments, statusForContent));
 		for(Attachment att:statusForContent.mediaAttachments){
 			if(att.type==Attachment.Type.AUDIO){
 				contentItems.add(new AudioStatusDisplayItem(parentID, callbacks, context, statusForContent, att));
+			}else if(att.type==Attachment.Type.UNKNOWN){
+				contentItems.add(new FileStatusDisplayItem(parentID, callbacks, context, accountID, att));
 			}
 		}
 		if(statusForContent.poll!=null){
@@ -292,6 +301,9 @@ public abstract class StatusDisplayItem{
 		GAP,
 		EXTENDED_FOOTER,
 		MEDIA_GRID,
+		// MAMMUT: port from upstream master
+		PREVIEWLESS_MEDIA_GRID,
+		FILE,
 		SPOILER,
 		SECTION_HEADER,
 		HEADER_CHECKABLE,
