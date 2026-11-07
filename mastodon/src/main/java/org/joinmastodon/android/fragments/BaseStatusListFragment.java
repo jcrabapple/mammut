@@ -260,6 +260,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 		}
 		postprocessNewlyLoadedStatuses(items);
 		for(T s:items){
+			if(!shouldIncludeItemInList(s))
+				continue;
 			List<StatusDisplayItem> newItems=buildDisplayItems(s);
 			populateNestedQuotes(newItems);
 			displayItems.addAll(newItems);
@@ -286,6 +288,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 		}
 		postprocessNewlyLoadedStatuses(items);
 		for(T s:items){
+			if(!shouldIncludeItemInList(s))
+				continue;
 			List<StatusDisplayItem> toAdd=buildDisplayItems(s);
 			populateNestedQuotes(toAdd);
 			displayItems.addAll(offset, toAdd);
@@ -355,12 +359,26 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 	}
 
 	protected String getMaxID(){
-//		if(!preloadedData.isEmpty())
-//			return preloadedData.get(preloadedData.size()-1).getID();
-//		else if(!data.isEmpty())
-//			return data.get(data.size()-1).getID();
-//		else
+		// MAMMUT: restored the raw-data cursor from upstream master — the local rewrite commented
+		// this out, which made "load more" re-request the first page on every timeline that relies
+		// on getMaxID(). View filtering (F1) hides rows in the display list only, so raw data (and
+		// therefore this cursor) always stays intact; the `refreshing` guard keeps the original
+		// "refresh and see older posts" fix.
+		if(refreshing) return null;
+		if(maxID!=null) return maxID;
+		if(!preloadedData.isEmpty())
+			return preloadedData.get(preloadedData.size()-1).getID();
+		else if(!data.isEmpty())
+			return data.get(data.size()-1).getID();
+		else
 			return null;
+	}
+
+	// MAMMUT: F1 projection hook for per-tab view filters. Subclasses override this to hide
+	// statuses from the visible list; the raw status MUST stay in `data` so pagination cursors
+	// (see getMaxID()) remain correct and hidden rows can be restored without re-fetching.
+	protected boolean shouldIncludeItemInList(T item){
+		return true;
 	}
 
 	protected abstract List<StatusDisplayItem> buildDisplayItems(T s);
@@ -1053,6 +1071,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 	public void rebuildAllDisplayItems(){
 		displayItems.clear();
 		for(T item:data){
+			if(!shouldIncludeItemInList(item))
+				continue;
 			displayItems.addAll(buildDisplayItems(item));
 		}
 		adapter.notifyDataSetChanged();

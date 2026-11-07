@@ -15,6 +15,7 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -51,6 +52,7 @@ import org.joinmastodon.android.events.ListDeletedEvent;
 import org.joinmastodon.android.events.ListUpdatedEvent;
 import org.joinmastodon.android.events.SelfUpdateStateChangedEvent;
 import org.joinmastodon.android.fragments.settings.SettingsMainFragment;
+import org.joinmastodon.android.fragments.settings.TimelineViewSettingsFragment;
 import org.joinmastodon.android.model.Announcement;
 import org.joinmastodon.android.model.Hashtag;
 import org.joinmastodon.android.model.HeaderPaginationList;
@@ -175,7 +177,11 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 
 			FragmentTransaction transaction = getChildFragmentManager().beginTransaction();
 			for (int i = 0; i < count; i++) {
-				fragments[i].setArguments(timelines[i].populateArguments(new Bundle(args)));
+				Bundle tabArgs = timelines[i].populateArguments(new Bundle(args));
+				// MAMMUT: F1 — let the tab fragment find its per-tab view filter definition
+				if (timelines[i].supportsViewFilters())
+					tabArgs.putInt(StatusListFragment.EXTRA_TIMELINE_DEF_INDEX, i);
+				fragments[i].setArguments(tabArgs);
 				FrameLayout tabView = new FrameLayout(getActivity());
 				tabView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 				tabView.setVisibility(View.GONE);
@@ -192,7 +198,11 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		overflowActionView = UiUtils.makeOverflowActionView(getContext());
 		overflowPopup = new PopupMenu(getContext(), overflowActionView);
 		overflowPopup.setOnMenuItemClickListener(this::onOptionsItemSelected);
-		overflowActionView.setOnClickListener(l -> overflowPopup.show());
+		overflowActionView.setOnClickListener(l -> {
+			// MAMMUT: F1 — rebuild before showing so the Timeline view item reflects active filters
+			updateOverflowMenu();
+			overflowPopup.show();
+		});
 		overflowActionView.setOnTouchListener(overflowPopup.getDragToOpenListener());
 
 		return rootView;
@@ -430,6 +440,26 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		addListsToOverflowMenu();
 		addHashtagsToOverflowMenu();
 
+		// MAMMUT: F1 — per-tab view filters: hide the action for tabs that don't support it and
+		// annotate it with the active filters so it's obvious the tab is filtered.
+		if(pager!=null){
+			MenuItem timelineView=m.findItem(R.id.timeline_view);
+			TimelineDefinition current=timelines[pager.getCurrentItem()];
+			timelineView.setVisible(current.supportsViewFilters());
+			if(current.hasActiveViewFilters()){
+				ArrayList<String> activeFilters=new ArrayList<>(3);
+				if(current.isMediaOnly())
+					activeFilters.add(getString(R.string.timeline_view_label_media_only));
+				if(!current.isShowBoosts())
+					activeFilters.add(getString(R.string.timeline_view_label_no_boosts));
+				if(!current.isShowReplies())
+					activeFilters.add(getString(R.string.timeline_view_label_no_replies));
+				timelineView.setTitle(getString(R.string.timeline_view_menu_active, TextUtils.join(", ", activeFilters)));
+			}else{
+				timelineView.setTitle(R.string.timeline_view);
+			}
+		}
+
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P && !UiUtils.isEMUI() && !UiUtils.isMagic())
 			m.setGroupDividerEnabled(true);
 	}
@@ -548,6 +578,10 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 			Nav.goForResult(getActivity(), AnnouncementsFragment.class, args, ANNOUNCEMENTS_RESULT, this);
 		} else if (id == R.id.edit_timelines) {
 			Nav.go(getActivity(), EditTimelinesFragment.class, args);
+		} else if (id == R.id.timeline_view) {
+			// MAMMUT: F1 — view filters for the currently visible tab
+			args.putInt(StatusListFragment.EXTRA_TIMELINE_DEF_INDEX, pager.getCurrentItem());
+			Nav.go(getActivity(), TimelineViewSettingsFragment.class, args);
 		} else if ((list = listItems.get(id)) != null) {
 			args.putString("listID", list.id);
 			args.putString("listTitle", list.title);
