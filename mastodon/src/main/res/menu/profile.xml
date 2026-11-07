@@ -18,6 +18,7 @@
 	<group android:orderInCategory="3" android:id="@+id/menu_group3">
 		<item android:id="@+id/hide_boosts" android:title="@string/hide_boosts_from_user"/>
 		<item android:id="@+id/mute" android:title="@string/mute_user"/>
+		<item android:id="@+id/remove_follower" android:title="@string/remove_follower" android:icon="@drawable/ic_person_remove_24px"/>
 	</group>
 	<group android:orderInCategory="4" android:id="@+id/menu_group4">
 		<item android:id="@+id/block" android:title="@string/block_user"/>

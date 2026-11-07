@@ -245,6 +245,8 @@ public class AccountViewHolder extends BindableViewHolder<AccountViewModel> impl
 			UiUtils.confirmToggleMuteUser(fragment.getActivity(), accountID, account, relationship.muting, this::updateRelationship);
 		}else if(id==R.id.block){
 			UiUtils.confirmToggleBlockUser(fragment.getActivity(), accountID, account, relationship.blocking, this::updateRelationship);
+		}else if(id==R.id.remove_follower){
+			UiUtils.confirmRemoveFollower(fragment.getActivity(), accountID, account, relationship, ()->updateRelationship(relationship));
 		}else if(id==R.id.report){
 			Bundle args=new Bundle();
 			args.putString("account", accountID);
@@ -368,6 +370,7 @@ public class AccountViewHolder extends BindableViewHolder<AccountViewModel> impl
 			blockDomain.setVisible(false);
 		}
 		menu.findItem(R.id.add_to_list).setVisible(relationship.following);
+		menu.findItem(R.id.remove_follower).setVisible(relationship.followedBy && UiUtils.supportsRemoveFollower(accountID));
 		return true;
 	}
 
