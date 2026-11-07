@@ -24,7 +24,9 @@ import android.widget.TextView;
 import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.ui.NavDestination;
+import org.joinmastodon.android.fragments.discover.DiscoverFragment;
 import org.joinmastodon.android.fragments.settings.SettingsMainFragment;
+import org.joinmastodon.android.ui.utils.NavToolbarUtils;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
 import java.util.ArrayList;
@@ -146,6 +148,11 @@ public class NavMenuView extends FrameLayout{
 			menuPanel.addView(row);
 		}
 
+		menuPanel.addView(createActionRow(inflater, R.drawable.ic_tab_search, R.string.tab_search,
+				R.string.tab_search, v->openDiscover()));
+		menuPanel.addView(createActionRow(inflater, R.drawable.ic_fluent_person_24_regular, R.string.tab_profile,
+				R.string.my_profile, v->openProfile()));
+
 		View divider=new View(context);
 		divider.setBackgroundColor(UiUtils.getThemeColor(context, R.attr.colorM3OutlineVariant));
 		LinearLayout.LayoutParams dividerParams=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, V.dp(1));
@@ -155,6 +162,7 @@ public class NavMenuView extends FrameLayout{
 		dividerParams.rightMargin=V.dp(8);
 		menuPanel.addView(divider, dividerParams);
 
+		// MAMMUT: Explore and Profile were bottom-bar destinations; they belong in the menu too
 		composeRow=createRow(inflater, null);
 		menuPanel.addView(composeRow);
 
@@ -183,6 +191,34 @@ public class NavMenuView extends FrameLayout{
 		lp.rightMargin=V.dp(8);
 		divider.setLayoutParams(lp);
 		return divider;
+	}
+
+	private View createActionRow(LayoutInflater inflater, int iconRes, int labelRes, int descRes, View.OnClickListener onClick){
+		View row=inflater.inflate(R.layout.nav_menu_row, menuPanel, false);
+		ImageView icon=row.findViewById(R.id.icon);
+		TextView label=row.findViewById(R.id.label);
+		icon.setImageResource(iconRes);
+		label.setText(labelRes);
+		row.setContentDescription(getContext().getString(descRes));
+		row.setOnClickListener(v->{
+			closeMenu();
+			onClick.onClick(v);
+		});
+		return row;
+	}
+
+	private void openDiscover(){
+		if(accountID==null || !(getContext() instanceof android.app.Activity activity))
+			return;
+		Bundle args=new Bundle();
+		args.putString("account", accountID);
+		Nav.go(activity, DiscoverFragment.class, args);
+	}
+
+	private void openProfile(){
+		if(accountID==null || !(getContext() instanceof android.app.Activity activity))
+			return;
+		NavToolbarUtils.openSelfProfile(activity, accountID);
 	}
 
 	private View createSettingsRow(LayoutInflater inflater){
