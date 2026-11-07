@@ -61,6 +61,7 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 			setRetainInstance(true);
 
 		navMenuController=new NavMenuController(this);
+		navMenuController.setAccountID(accountID);
 
 		if(savedInstanceState!=null && savedInstanceState.containsKey("selectedDestination")){
 			currentDestination=NavDestination.valueOf(savedInstanceState.getString("selectedDestination"));

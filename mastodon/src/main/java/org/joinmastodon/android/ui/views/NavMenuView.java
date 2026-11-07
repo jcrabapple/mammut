@@ -8,6 +8,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Rect;
 import android.os.Build;
+import android.os.Bundle;
 import android.provider.Settings;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
@@ -23,6 +24,7 @@ import android.widget.TextView;
 import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.ui.NavDestination;
+import org.joinmastodon.android.fragments.settings.SettingsMainFragment;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
 import java.util.ArrayList;
@@ -32,6 +34,7 @@ import java.util.Map;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import me.grishka.appkit.utils.CubicBezierInterpolator;
+import me.grishka.appkit.Nav;
 import me.grishka.appkit.utils.V;
 
 /**
@@ -101,6 +104,7 @@ public class NavMenuView extends FrameLayout{
 	private final Rect fabHitRect=new Rect();
 
 	private final boolean reducedMotion;
+	private String accountID;
 
 	public NavMenuView(@NonNull Context context){
 		this(context, null);
@@ -154,6 +158,10 @@ public class NavMenuView extends FrameLayout{
 		composeRow=createRow(inflater, null);
 		menuPanel.addView(composeRow);
 
+		// MAMMUT: Settings moved out of the overflow menu and into the navigation menu
+		menuPanel.addView(createDivider(context));
+		menuPanel.addView(createSettingsRow(inflater));
+
 		menuPanel.setPivotX(menuPanel.getWidth()); // set properly once laid out
 		menuPanel.setPivotX(V.dp(216));
 		menuPanel.setPivotY(menuPanel.getHeight());
@@ -163,6 +171,41 @@ public class NavMenuView extends FrameLayout{
 		updateFabDescription();
 
 		getViewTreeObserver().addOnGlobalLayoutListener(this::updateMenuMaxHeight);
+	}
+
+	private View createDivider(Context context){
+		View divider=new View(context);
+		divider.setBackgroundColor(UiUtils.getThemeColor(context, R.attr.colorM3OutlineVariant));
+		LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, V.dp(1));
+		lp.topMargin=V.dp(6);
+		lp.bottomMargin=V.dp(6);
+		lp.leftMargin=V.dp(8);
+		lp.rightMargin=V.dp(8);
+		divider.setLayoutParams(lp);
+		return divider;
+	}
+
+	private View createSettingsRow(LayoutInflater inflater){
+		View row=inflater.inflate(R.layout.nav_menu_row, menuPanel, false);
+		ImageView icon=row.findViewById(R.id.icon);
+		TextView label=row.findViewById(R.id.label);
+		icon.setImageResource(R.drawable.ic_fluent_settings_24_regular);
+		label.setText(R.string.settings);
+		row.setContentDescription(getContext().getString(R.string.settings));
+		row.setOnClickListener(v->{
+			closeMenu();
+			if(accountID==null)
+				return;
+			Bundle args=new Bundle();
+			args.putString("account", accountID);
+			if(getContext() instanceof android.app.Activity activity)
+				Nav.go(activity, SettingsMainFragment.class, args);
+		});
+		return row;
+	}
+
+	public void setAccountID(String accountID){
+		this.accountID=accountID;
 	}
 
 	private View createRow(LayoutInflater inflater, @Nullable NavDestination dest){

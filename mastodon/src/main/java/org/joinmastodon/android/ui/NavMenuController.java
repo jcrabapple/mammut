@@ -31,9 +31,16 @@ public class NavMenuController implements NavMenuView.OnMenuActionListener{
 	private int bottomInset;
 	private RecyclerView paddedTarget;
 	private int savedPaddingBottom=-1;
+	private String accountID;
 
 	public NavMenuController(Host host){
 		this.host=host;
+	}
+
+	public void setAccountID(String accountID){
+		this.accountID=accountID;
+		if(view!=null)
+			view.setAccountID(accountID);
 	}
 
 	/**
@@ -43,6 +50,7 @@ public class NavMenuController implements NavMenuView.OnMenuActionListener{
 	public NavMenuView attach(ViewGroup overlayContainer){
 		view=new NavMenuView(overlayContainer.getContext());
 		view.setListener(this);
+		view.setAccountID(accountID);
 		overlayContainer.addView(view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 		// FAB bottom margin: 16dp above the navigation-bar inset (the previous tab bar
 		// enforced a 24dp minimum when any inset was present; keep that so the FAB

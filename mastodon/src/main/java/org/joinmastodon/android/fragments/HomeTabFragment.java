@@ -96,7 +96,7 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 	private static final int ANNOUNCEMENTS_RESULT = 654;
 
 	private String accountID;
-	private MenuItem announcements, announcementsAction, settings, settingsAction;
+	private MenuItem announcements, announcementsAction, settingsAction;
 	//	private ImageView toolbarLogo;
 	private Button toolbarShowNewPostsBtn;
 	private boolean newPostsBtnShown;
@@ -450,7 +450,6 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		m.clear();
 		overflowPopup.inflate(R.menu.home_overflow);
 		announcements = m.findItem(R.id.announcements);
-		settings = m.findItem(R.id.settings);
 		hashtagsMenu = m.findItem(R.id.hashtags).getSubMenu();
 		listsMenu = m.findItem(R.id.lists).getSubMenu();
 
@@ -460,10 +459,7 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		announcements.setVisible(false);
 		announcementsAction.setVisible(false);
 
-		settings.setVisible(!settingsBadged);
 		settingsAction.setVisible(settingsBadged);
-
-		UiUtils.enablePopupMenuIcons(getContext(), overflowPopup);
 
 		addListsToOverflowMenu();
 		addHashtagsToOverflowMenu();
@@ -487,6 +483,10 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 				timelineView.setTitle(R.string.timeline_view);
 			}
 		}
+
+		// MAMMUT: icon + label-spacer pass runs last. It rewrites each item's title with spacer
+			// spans, so any setTitle() after it leaves that row's label flush against the icon.
+		UiUtils.enablePopupMenuIcons(getContext(), overflowPopup);
 
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P && !UiUtils.isEMUI() && !UiUtils.isMagic())
 			m.setGroupDividerEnabled(true);
@@ -616,7 +616,7 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		if (item.getItemId() == R.id.menu_back) {
 			getToolbar().post(() -> overflowPopup.show());
 			return true;
-		} else if (id == R.id.settings || id == R.id.settings_action) {
+		} else if (id == R.id.settings_action) {
 			Nav.go(getActivity(), SettingsMainFragment.class, args);
 		} else if (id == R.id.announcements || id == R.id.announcements_action) {
 			Nav.goForResult(getActivity(), AnnouncementsFragment.class, args, ANNOUNCEMENTS_RESULT, this);
@@ -737,7 +737,6 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		if(state!=GithubSelfUpdater.UpdateState.NO_UPDATE && state!=GithubSelfUpdater.UpdateState.CHECKING) {
 			settingsBadged = true;
 			settingsAction.setVisible(true);
-			settings.setVisible(false);
 		}
 	}
 
