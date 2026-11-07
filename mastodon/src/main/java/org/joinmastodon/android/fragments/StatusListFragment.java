@@ -205,11 +205,19 @@ public abstract class StatusListFragment extends BaseStatusListFragment<Status>{
 		Activity activity=getActivity();
 		if(activity==null || getView()==null || isHidden() || postedUndoSnackbar!=null)
 			return;
-		postedUndoSnackbar=new Snackbar.Builder(activity)
+		Snackbar snackbar=new Snackbar.Builder(activity)
 				.setText(R.string.posted_undo_text)
 				.setAction(R.string.posted_undo_action, ()->undoPostedStatus(status))
 				.setDuration(10_000)
 				.create();
+		// The field must be released when the snackbar goes away by ANY path (timer, swipe,
+		// replacement by another snackbar, action click), or the null-check above keeps
+		// refusing to show it and undo silently stops working for every later post.
+		snackbar.setDismissListener(()->{
+			if(postedUndoSnackbar==snackbar)
+				postedUndoSnackbar=null;
+		});
+		postedUndoSnackbar=snackbar;
 		postedUndoSnackbar.show();
 	}
 
