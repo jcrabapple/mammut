@@ -38,6 +38,8 @@ public class GlobalUserPreferences{
 	public static boolean reduceMotion;
 	public static boolean showAltIndicator;
 	public static boolean showNoAltIndicator;
+	// MAMMUT: G14 — inline image descriptions ("The Caption Track")
+	public static boolean showInlineAltText;
 	public static boolean enablePreReleases;
 	public static PrefixRepliesMode prefixReplies;
 	public static boolean collapseLongPosts;
@@ -104,6 +106,8 @@ public class GlobalUserPreferences{
 		reduceMotion=prefs.getBoolean("reduceMotion", false);
 		showAltIndicator=prefs.getBoolean("showAltIndicator", true);
 		showNoAltIndicator=prefs.getBoolean("showNoAltIndicator", true);
+		// MAMMUT: G14 — inline image descriptions ("The Caption Track")
+		showInlineAltText=prefs.getBoolean("showInlineAltText", false);
 		enablePreReleases=prefs.getBoolean("enablePreReleases", false);
 		prefixReplies=PrefixRepliesMode.valueOf(prefs.getString("prefixReplies", PrefixRepliesMode.NEVER.name()));
 		collapseLongPosts=prefs.getBoolean("collapseLongPosts", true);
@@ -180,6 +184,8 @@ public class GlobalUserPreferences{
 				.putBoolean("reduceMotion", reduceMotion)
 				.putBoolean("showAltIndicator", showAltIndicator)
 				.putBoolean("showNoAltIndicator", showNoAltIndicator)
+				// MAMMUT: G14 — inline image descriptions ("The Caption Track")
+				.putBoolean("showInlineAltText", showInlineAltText)
 				.putBoolean("enablePreReleases", enablePreReleases)
 				.putString("prefixReplies", prefixReplies.name())
 				.putBoolean("collapseLongPosts", collapseLongPosts)

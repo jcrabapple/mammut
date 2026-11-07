@@ -45,6 +45,8 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 	private CheckableListItem<Void> enhanceTextSizeItem, marqueeItem, underlinedLinksItem, likeIconItem, spectatorModeItem, hideFabItem;
 	// MAMMUT: phase 2 port from upstream master
 	private CheckableListItem<Void> altIndicatorItem, noAltIndicatorItem, collapsePostsItem;
+	// MAMMUT: G14 — inline image descriptions ("The Caption Track")
+	private CheckableListItem<Void> inlineAltTextItem;
 	// MAMMUT: parity port from upstream master
 	private CheckableListItem<Void> showDividersItem, showNavLabelsItem, doubleTapSearchItem, translateOpenedItem;
 	// MAMMUT: port from upstream master
@@ -85,6 +87,8 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		// MAMMUT: phase 2 port from upstream master
 		items.add(altIndicatorItem=new CheckableListItem<>(R.string.sk_settings_show_alt_indicator, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showAltIndicator, R.drawable.ic_fluent_scan_text_24_regular, this::toggleCheckableItem));
 		items.add(noAltIndicatorItem=new CheckableListItem<>(R.string.sk_settings_show_no_alt_indicator, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showNoAltIndicator, R.drawable.ic_fluent_important_24_regular, this::toggleCheckableItem));
+		// MAMMUT: G14 — inline image descriptions ("The Caption Track")
+		items.add(inlineAltTextItem=new CheckableListItem<>(R.string.sk_settings_inline_alt_text, R.string.sk_settings_inline_alt_text_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showInlineAltText, R.drawable.ic_fluent_scan_text_24_regular, this::toggleCheckableItem));
 		items.add(collapsePostsItem=new CheckableListItem<>(R.string.sk_settings_collapse_long_posts, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.collapseLongPosts, R.drawable.ic_fluent_chevron_down_24_regular, this::toggleCheckableItem));
 		items.add(showDividersItem=new CheckableListItem<>(R.string.mo_enable_dividers, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showDividers, R.drawable.ic_fluent_timeline_24_regular, this::toggleCheckableItem));
 		items.add(showNavLabelsItem=new CheckableListItem<>(R.string.sk_settings_show_labels_in_navigation_bar, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showNavigationLabels, R.drawable.ic_fluent_tag_24_regular, this::toggleCheckableItem));
@@ -132,6 +136,8 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		// MAMMUT: phase 2 port from upstream master
 		GlobalUserPreferences.showAltIndicator=altIndicatorItem.checked;
 		GlobalUserPreferences.showNoAltIndicator=noAltIndicatorItem.checked;
+		// MAMMUT: G14 — inline image descriptions ("The Caption Track")
+		GlobalUserPreferences.showInlineAltText=inlineAltTextItem.checked;
 		GlobalUserPreferences.collapseLongPosts=collapsePostsItem.checked;
 		// MAMMUT: parity port from upstream master — divider colour is baked into the item decoration
 		boolean restartPlease=GlobalUserPreferences.showDividers!=showDividersItem.checked

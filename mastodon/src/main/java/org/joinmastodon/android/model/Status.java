@@ -97,6 +97,9 @@ public class Status extends BaseModel implements DisplayItemsParent, Searchable 
 	// MAMMUT: F2 — reveal state for media blurred by a filter action; deliberately separate from
 	// sensitiveRevealed so revealing filtered media never reveals independently sensitive media
 	public transient boolean filterMediaRevealed;
+	// MAMMUT: G14 — attachments whose inline caption track the user expanded; lives on Status
+	// (like textExpanded) so the expanded state survives rebinding and rotation
+	public transient java.util.Set<String> expandedInlineAltAttachments=new java.util.HashSet<>();
 	public transient boolean preview; // for akkoma compose previews
 
 
