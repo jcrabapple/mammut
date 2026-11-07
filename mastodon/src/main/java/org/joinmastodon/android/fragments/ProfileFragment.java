@@ -802,6 +802,7 @@ public class ProfileFragment extends LoaderFragment implements ScrollableToTop, 
 			return;
 
 		menu.findItem(R.id.mute).setTitle(getString(relationship.muting ? R.string.unmute_user : R.string.mute_user, account.getDisplayUsername()));
+		menu.findItem(R.id.remove_follower).setVisible(relationship.followedBy && UiUtils.supportsRemoveFollower(accountID));
 		menu.findItem(R.id.block).setTitle(makeRedString(getString(relationship.blocking ? R.string.unblock_user : R.string.block_user, account.getDisplayUsername())));
 		menu.findItem(R.id.report).setTitle(makeRedString(getString(R.string.report_user, account.getDisplayUsername())));
 		if(relationship.following)
@@ -833,6 +834,8 @@ public class ProfileFragment extends LoaderFragment implements ScrollableToTop, 
 			UiUtils.openSystemShareSheet(getActivity(), account);
 		}else if(id==R.id.mute){
 			confirmToggleMuted();
+		}else if(id==R.id.remove_follower){
+			confirmRemoveFollower();
 		}else if(id==R.id.block){
 			confirmToggleBlocked();
 		}else if(id==R.id.report){
@@ -1312,6 +1315,10 @@ public class ProfileFragment extends LoaderFragment implements ScrollableToTop, 
 
 	private void confirmToggleMuted(){
 		UiUtils.confirmToggleMuteUser(getActivity(), accountID, account, relationship.muting, this::updateRelationship);
+	}
+
+	private void confirmRemoveFollower(){
+		UiUtils.confirmRemoveFollower(getActivity(), accountID, account, relationship, ()->updateRelationship(relationship));
 	}
 
 	private void confirmToggleBlocked(){

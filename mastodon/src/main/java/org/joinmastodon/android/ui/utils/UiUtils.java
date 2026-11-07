@@ -77,7 +77,9 @@ import org.joinmastodon.android.MainActivity;
 import org.joinmastodon.android.MastodonApp;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.MastodonAPIRequest;
+import org.joinmastodon.android.api.MastodonErrorResponse;
 import org.joinmastodon.android.api.StatusInteractionController;
+import org.joinmastodon.android.api.requests.accounts.RemoveFromFollowers;
 import org.joinmastodon.android.api.requests.accounts.SetAccountBlocked;
 import org.joinmastodon.android.api.requests.accounts.SetAccountFollowed;
 import org.joinmastodon.android.api.requests.accounts.SetAccountMuted;
@@ -755,6 +757,43 @@ public class UiUtils{
 					.wrapProgress(activity, R.string.loading, false)
 					.exec(accountID);
 		}
+	}
+
+	// G10: remove a follower without blocking or muting them (Mastodon 3.5+)
+	public static boolean supportsRemoveFollower(String accountID){
+		// The v2 instance reports api_versions.mastodon starting at 4 (Mastodon 4.3); every such server
+		// supports remove_from_followers. 0 means the version is unknown (older Mastodon or a fork) —
+		// show the action there and let the 404 path report servers that really don't support it.
+		return AccountSessionManager.get(accountID).getInstance().map(i->i.getApiVersion()==0 || i.getApiVersion()>=4).orElse(true);
+	}
+
+	public static void confirmRemoveFollower(Activity activity, String accountID, Account account, Relationship relationship, Runnable resultCallback){
+		showConfirmationAlert(activity,
+				R.string.remove_follower_confirm_title,
+				R.string.remove_follower_confirm_text,
+				R.string.do_remove,
+				()->new RemoveFromFollowers(account.id)
+						.setCallback(new Callback<>(){
+							@Override
+							public void onSuccess(Object result){
+								relationship.followedBy=false;
+								resultCallback.run();
+								new Snackbar.Builder(activity)
+										.setText(activity.getString(R.string.removed_follower_x, account.getDisplayUsername()))
+										.show();
+							}
+
+							@Override
+							public void onError(ErrorResponse error){
+								if(error instanceof MastodonErrorResponse mer && mer.httpStatus==404){
+									Toast.makeText(activity, R.string.remove_follower_not_supported, Toast.LENGTH_SHORT).show();
+								}else{
+									error.showToast(activity);
+								}
+							}
+						})
+						.wrapProgress(activity, R.string.loading, false)
+						.exec(accountID));
 	}
 
 	public static void confirmDeletePost(Activity activity, String accountID, Status status, Consumer<Status> resultCallback){
