@@ -303,13 +303,12 @@ public class NavMenuView extends FrameLayout{
 
 		AnimatorSet scrimAnim=new AnimatorSet();
 		scrimAnim.play(ObjectAnimator.ofFloat(scrim, ALPHA, SCRIM_ALPHA));
-		scrimAnim.setDuration(SCRIM_DURATION);
+		scrimAnim.setDuration(reducedMotion ? REDUCED_MOTION_DURATION : SCRIM_DURATION);
 		runAnims(scrimAnim);
 
 		animateGlyph(true);
 
 		if(reducedMotion){
-			menuPanel.setAlpha(1f);
 			menuPanel.setTranslationY(0);
 			menuPanel.setScaleX(1f);
 			menuPanel.setScaleY(1f);
@@ -318,6 +317,11 @@ public class NavMenuView extends FrameLayout{
 				child.setAlpha(1f);
 				child.setTranslationY(0);
 			}
+			// Reduced motion still fades, just at the shorter duration
+			AnimatorSet panelAnim=new AnimatorSet();
+			panelAnim.play(ObjectAnimator.ofFloat(menuPanel, ALPHA, 1f));
+			panelAnim.setDuration(REDUCED_MOTION_DURATION);
+			runAnims(panelAnim);
 		}else{
 			menuPanel.setPivotX(menuPanel.getWidth());
 			menuPanel.setPivotY(menuPanel.getHeight());
@@ -372,7 +376,7 @@ public class NavMenuView extends FrameLayout{
 
 		AnimatorSet scrimAnim=new AnimatorSet();
 		scrimAnim.play(ObjectAnimator.ofFloat(scrim, ALPHA, 0f));
-		scrimAnim.setDuration(SCRIM_DURATION);
+		scrimAnim.setDuration(reducedMotion ? REDUCED_MOTION_DURATION : SCRIM_DURATION);
 		scrimAnim.addListener(new AnimatorListenerAdapter(){
 			@Override
 			public void onAnimationEnd(Animator animation){
@@ -387,7 +391,11 @@ public class NavMenuView extends FrameLayout{
 		animateGlyph(false);
 
 		if(reducedMotion){
-			menuPanel.setAlpha(0f);
+			// Reduced motion still fades, just at the shorter duration
+			AnimatorSet panelAnim=new AnimatorSet();
+			panelAnim.play(ObjectAnimator.ofFloat(menuPanel, ALPHA, 0f));
+			panelAnim.setDuration(REDUCED_MOTION_DURATION);
+			runAnims(panelAnim);
 		}else{
 			AnimatorSet panelAnim=new AnimatorSet();
 			panelAnim.playTogether(

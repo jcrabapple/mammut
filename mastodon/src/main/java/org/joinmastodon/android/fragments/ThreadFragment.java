@@ -115,12 +115,10 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			knownAccounts.put(inReplyToAccount.id, inReplyToAccount);
 		data.add(mainStatus);
 		onAppendItems(Collections.singletonList(mainStatus));
-		if(GlobalUserPreferences.customEmojiInNames)
-			setTitle(HtmlParser.parseCustomEmoji(getString(R.string.post_from_user, mainStatus.account.displayName), mainStatus.account.emojis));
-		else
-			setTitle(getString(R.string.post_from_user, mainStatus.account.displayName));
-		// MAMMUT: supporting line under the thread title ("From <origin>")
-		setSubtitle(getString(R.string.nav_subtitle_thread_origin, mainStatus.account.displayName));
+		// MAMMUT: destination-style title; the supporting line names the origin
+		// surface instead of repeating the author's display name
+		setTitle(R.string.nav_thread);
+		setSubtitle(getString(R.string.nav_subtitle_thread_origin, getString(R.string.nav_destination_home)));
 		setRefreshEnabled(false);
 		setHasOptionsMenu(true);
 	}
