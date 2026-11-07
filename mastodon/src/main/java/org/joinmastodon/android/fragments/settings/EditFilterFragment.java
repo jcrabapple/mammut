@@ -15,6 +15,7 @@ import org.joinmastodon.android.api.MastodonAPIRequest;
 import org.joinmastodon.android.api.requests.filters.CreateFilter;
 import org.joinmastodon.android.api.requests.filters.DeleteFilter;
 import org.joinmastodon.android.api.requests.filters.UpdateFilter;
+import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.events.SettingsFilterCreatedOrUpdatedEvent;
 import org.joinmastodon.android.events.SettingsFilterDeletedEvent;
 import org.joinmastodon.android.model.Filter;
@@ -54,7 +55,7 @@ public class EditFilterFragment extends BaseSettingsFragment<Void>{
 
 	private Filter filter;
 	private ListItem<Void> durationItem, wordsItem, contextItem;
-	private CheckableListItem<Void> cwItem;
+	private CheckableListItem<Void> warnItem, blurItem, hideItem;
 	private FloatingHintEditTextLayout titleEditLayout;
 	private EditText titleEdit;
 
@@ -76,12 +77,21 @@ public class EditFilterFragment extends BaseSettingsFragment<Void>{
 		super.onCreate(savedInstanceState);
 		filter=Parcels.unwrap(getArguments().getParcelable("filter"));
 		setTitle(filter==null ? R.string.settings_add_filter : R.string.settings_edit_filter);
-		onDataLoaded(List.of(
-				durationItem=new ListItem<>(R.string.settings_filter_duration, 0, this::onDurationClick),
-				wordsItem=new ListItem<>(R.string.settings_filter_muted_words, 0, this::onWordsClick),
-				contextItem=new ListItem<>(R.string.settings_filter_context, 0, this::onContextClick),
-				cwItem=new CheckableListItem<>(R.string.settings_filter_show_cw, R.string.settings_filter_show_cw_explanation, CheckableListItem.Style.SWITCH, filter==null || filter.filterAction==FilterAction.WARN, this::toggleCheckableItem)
-		));
+		// MAMMUT: F2 — unknown/absent actions degrade to Warn, matching the timeline rendering
+		FilterAction initialAction=filter==null || filter.filterAction==null ? FilterAction.WARN : filter.filterAction;
+		ArrayList<ListItem<Void>> items=new ArrayList<>();
+		items.add(durationItem=new ListItem<>(R.string.settings_filter_duration, 0, this::onDurationClick));
+		items.add(wordsItem=new ListItem<>(R.string.settings_filter_muted_words, 0, this::onWordsClick));
+		items.add(contextItem=new ListItem<>(R.string.settings_filter_context, 0, this::onContextClick));
+		items.add(warnItem=new CheckableListItem<>(R.string.settings_filter_show_cw, R.string.settings_filter_show_cw_explanation, CheckableListItem.Style.RADIO, initialAction==FilterAction.WARN, this::onFilterActionClick));
+		// MAMMUT: F2 — Blur needs Mastodon 4.4 (API v5). It is offered only when the cached
+		// instance info reports that capability, unless the filter being edited already uses it
+		// (which can only have come from a server that supports it). Blur results are rendered
+		// regardless of what the instance reports.
+		if(supportsBlurCreation() || initialAction==FilterAction.BLUR)
+			items.add(blurItem=new CheckableListItem<>(R.string.filter_action_blur, R.string.settings_filter_blur_explanation, CheckableListItem.Style.RADIO, initialAction==FilterAction.BLUR, this::onFilterActionClick));
+		items.add(hideItem=new CheckableListItem<>(R.string.filter_action_hide, R.string.settings_filter_hide_explanation, CheckableListItem.Style.RADIO, initialAction==FilterAction.HIDE, this::onFilterActionClick));
+		onDataLoaded(items);
 
 		if(filter!=null){
 			endsAt=filter.expiresAt;
@@ -264,11 +274,12 @@ public class EditFilterFragment extends BaseSettingsFragment<Void>{
 			titleEditLayout.setErrorState(getString(R.string.required_form_field_blank));
 			return;
 		}
+		FilterAction action=getSelectedAction();
 		MastodonAPIRequest<Filter> req;
 		if(filter==null){
-			req=new CreateFilter(titleEdit.getText().toString(), context, cwItem.checked ? FilterAction.WARN : FilterAction.HIDE, endsAt==null ? 0 : (int)(endsAt.getEpochSecond()-Instant.now().getEpochSecond()), keywords);
+			req=new CreateFilter(titleEdit.getText().toString(), context, action, endsAt==null ? 0 : (int)(endsAt.getEpochSecond()-Instant.now().getEpochSecond()), keywords);
 		}else{
-			req=new UpdateFilter(filter.id, titleEdit.getText().toString(), context, cwItem.checked ? FilterAction.WARN : FilterAction.HIDE, endsAt==null ? 0 : (int)(endsAt.getEpochSecond()-Instant.now().getEpochSecond()), keywords, deletedWordIDs);
+			req=new UpdateFilter(filter.id, titleEdit.getText().toString(), context, action, endsAt==null ? 0 : (int)(endsAt.getEpochSecond()-Instant.now().getEpochSecond()), keywords, deletedWordIDs);
 		}
 		req.setCallback(new Callback<>(){
 					@Override
@@ -329,12 +340,33 @@ public class EditFilterFragment extends BaseSettingsFragment<Void>{
 	}
 
 	private boolean isDirty(){
-		return dirty || (filter!=null && !titleEdit.getText().toString().equals(filter.title)) || (filter!=null && (filter.filterAction==FilterAction.WARN)!=cwItem.checked);
+		FilterAction initialAction=filter==null || filter.filterAction==null ? FilterAction.WARN : filter.filterAction;
+		return dirty || (filter!=null && !titleEdit.getText().toString().equals(filter.title)) || getSelectedAction()!=initialAction;
 	}
 
-	@Override
-	protected void toggleCheckableItem(ListItem<?> item){
-		super.toggleCheckableItem(item);
+	private FilterAction getSelectedAction(){
+		if(warnItem.checked)
+			return FilterAction.WARN;
+		if(blurItem!=null && blurItem.checked)
+			return FilterAction.BLUR;
+		return FilterAction.HIDE;
+	}
+
+	private boolean supportsBlurCreation(){
+		return AccountSessionManager.get(accountID).getInstance().map(instance->instance.getApiVersion()>=5).orElse(false);
+	}
+
+	private void onFilterActionClick(CheckableListItem<Void> item){
+		if(item.checked)
+			return;
+		warnItem.setChecked(item==warnItem);
+		if(blurItem!=null)
+			blurItem.setChecked(item==blurItem);
+		hideItem.setChecked(item==hideItem);
+		rebindItem(warnItem);
+		if(blurItem!=null)
+			rebindItem(blurItem);
+		rebindItem(hideItem);
 		updateBackCallback();
 	}
 

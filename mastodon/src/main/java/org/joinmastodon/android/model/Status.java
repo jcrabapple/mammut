@@ -94,6 +94,9 @@ public class Status extends BaseModel implements DisplayItemsParent, Searchable 
 	public boolean localOnly;
 	public boolean isRemote;
 	public transient boolean sensitiveRevealed;
+	// MAMMUT: F2 — reveal state for media blurred by a filter action; deliberately separate from
+	// sensitiveRevealed so revealing filtered media never reveals independently sensitive media
+	public transient boolean filterMediaRevealed;
 	public transient boolean preview; // for akkoma compose previews
 
 
