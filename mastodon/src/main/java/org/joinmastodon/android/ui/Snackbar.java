@@ -54,6 +54,7 @@ public class Snackbar{
 	private boolean dismissedByGesture;
 	private Runnable dismissListener;
 	private boolean ignoreTouchEvents;
+	private int duration=4000;
 	private GestureDetector gestureDetector;
 	private GestureDetector.SimpleOnGestureListener gestureListener=new GestureDetector.SimpleOnGestureListener(){
 		@Override
@@ -73,11 +74,12 @@ public class Snackbar{
 		}
 	};
 
-	private Snackbar(Context context, String text, String action, Runnable onActionClick, int bottomOffset, boolean persistent){
+	private Snackbar(Context context, String text, String action, Runnable onActionClick, int bottomOffset, boolean persistent, int duration){
 		this.context=context;
 		this.bottomOffset=bottomOffset;
 		hasAction=onActionClick!=null;
 		this.persistent=persistent;
+		this.duration=duration;
 
 		gestureDetector=new GestureDetector(context, gestureListener);
 
@@ -176,7 +178,7 @@ public class Snackbar{
 			}
 		});
 		if(!persistent)
-			windowView.postDelayed(dismissRunnable, 4000);
+			windowView.postDelayed(dismissRunnable, duration);
 	}
 
 	private void disableTouchEvents(){
@@ -293,6 +295,7 @@ public class Snackbar{
 		private Runnable onActionClick;
 		private int bottomOffset;
 		private boolean persistent;
+		private int duration=4000;
 
 		public Builder(Context context){
 			this.context=context;
@@ -326,7 +329,7 @@ public class Snackbar{
 		}
 
 		public Snackbar create(){
-			return new Snackbar(context, text, action, onActionClick, bottomOffset, persistent);
+			return new Snackbar(context, text, action, onActionClick, bottomOffset, persistent, duration);
 		}
 
 		public void show(){
@@ -335,6 +338,13 @@ public class Snackbar{
 
 		public Builder setPersistent(){
 			persistent=true;
+			return this;
+		}
+
+		// MAMMUT: G2 — the undo-after-publish window needs a longer, fixed on-screen time
+		// than the default 4 seconds; ignored for persistent snackbars.
+		public Builder setDuration(int duration){
+			this.duration=duration;
 			return this;
 		}
 	}
@@ -390,7 +400,7 @@ public class Snackbar{
 					}
 				}
 				if(!persistent)
-					windowView.postDelayed(dismissRunnable, 4000);
+					windowView.postDelayed(dismissRunnable, duration);
 				swipeDistance=0;
 			}
 			return detectorResult || super.onTouchEvent(ev);
