@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: Catch up — author group header and the collapsible boosts section
+	 header (spec §5, §8). The count travels inside the heading text. Wraps at any
+	 font scale; the 48dp minimum height keeps the boosts toggle a valid touch
+	 target even when the text is short. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:minHeight="48dp"
+	android:orientation="horizontal"
+	android:gravity="center_vertical"
+	android:baselineAligned="false"
+	android:paddingStart="16dp"
+	android:paddingEnd="16dp"
+	android:paddingTop="12dp"
+	android:paddingBottom="4dp">
+
+	<TextView
+		android:id="@+id/title"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_weight="1"
+		android:gravity="center_vertical|start"
+		android:textAlignment="viewStart"
+		android:textAppearance="@style/m3_title_medium"
+		android:textColor="?colorM3OnSurface"
+		tools:text="Mara · 4 posts" />
+
+	<ImageView
+		android:id="@+id/chevron"
+		android:layout_width="24dp"
+		android:layout_height="24dp"
+		android:layout_marginStart="8dp"
+		android:importantForAccessibility="no"
+		android:src="@drawable/ic_arrow_drop_down_24px"
+		android:visibility="gone"
+		tools:visibility="visible" />
+</LinearLayout>

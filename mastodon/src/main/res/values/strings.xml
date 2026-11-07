@@ -524,6 +524,62 @@
 	<string name="timeline_view_label_no_boosts">boosts hidden</string>
 	<string name="timeline_view_label_no_replies">replies hidden</string>
 	<string name="timeline_view_empty_filtered">Everything on this timeline is hidden by your view filters</string>
+	<!-- MAMMUT: Catch up bounded reading view (docs/CATCH-UP-SPEC.md). The copy below is
+		 contract copy: footer variants, state strings and the filter summary are
+		 specified verbatim in the spec and must not drift from it. -->
+	<string name="catch_up">Catch up</string>
+	<string name="catch_up_scope">The last 24 hours</string>
+	<string name="catch_up_scope_cap">The last 24 hours · the most recent %d posts</string>
+	<!-- Shown once "Load older posts" has left the window: no time claim is made. -->
+	<string name="catch_up_scope_extended">Your home timeline</string>
+	<string name="catch_up_fetching">Fetching the last 24 hours…</string>
+	<string name="catch_up_filter_replies_shown">Replies shown</string>
+	<string name="catch_up_filter_replies_hidden">Replies hidden</string>
+	<string name="catch_up_filter_boosts_shown">boosts shown</string>
+	<string name="catch_up_filter_boosts_hidden">no boosts</string>
+	<string name="catch_up_filter_alt_on">image descriptions on</string>
+	<string name="catch_up_filter_alt_off">image descriptions off</string>
+	<plurals name="catch_up_author_header">
+		<item quantity="one">%1$s · %2$d post</item>
+		<item quantity="other">%1$s · %2$d posts</item>
+	</plurals>
+	<plurals name="catch_up_boosts_header">
+		<item quantity="one">Boosts · %d post</item>
+		<item quantity="other">Boosts · %d posts</item>
+	</plurals>
+	<plurals name="catch_up_boosts_expanded">
+		<item quantity="one">Expanded, %d post</item>
+		<item quantity="other">Expanded, %d posts</item>
+	</plurals>
+	<string name="catch_up_state_expanded">Expanded</string>
+	<string name="catch_up_state_collapsed">Collapsed</string>
+	<string name="catch_up_footer_title_done">You’re caught up.</string>
+	<string name="catch_up_footer_title_cap">End of this catch-up</string>
+	<plurals name="catch_up_footer_body_window">
+		<item quantity="one">This view includes the %d post Mammut fetched from the last 24 hours.</item>
+		<item quantity="other">This view includes the %d posts Mammut fetched from the last 24 hours.</item>
+	</plurals>
+	<string name="catch_up_footer_body_cap">Showing the most recent 200 posts from the last 24 hours. Older posts in this window aren’t included.</string>
+	<plurals name="catch_up_footer_body_extended">
+		<item quantity="one">This view includes %d post Mammut fetched.</item>
+		<item quantity="other">This view includes %d posts Mammut fetched.</item>
+	</plurals>
+	<plurals name="catch_up_footer_body_server_end">
+		<item quantity="one">This view includes all %d post this server has for your timeline.</item>
+		<item quantity="other">This view includes all %d posts this server has for your timeline.</item>
+	</plurals>
+	<string name="catch_up_load_older">Load older posts</string>
+	<string name="catch_up_loading_older">Fetching older posts…</string>
+	<string name="catch_up_empty_window">Nothing new in the last 24 hours.</string>
+	<string name="catch_up_empty_filtered">No posts match this view.</string>
+	<plurals name="catch_up_empty_filtered_sub">
+		<item quantity="one">%d post was fetched but doesn’t match this view’s filters</item>
+		<item quantity="other">%d posts were fetched but none match this view’s filters</item>
+	</plurals>
+	<string name="catch_up_change_filters">Change view filters</string>
+	<string name="catch_up_error_offline">Can’t reach %s.</string>
+	<string name="catch_up_error_unchanged">Your place in this timeline is unchanged.</string>
+	<string name="try_again">Try again</string>
 	<string name="settings_delete_filter">Delete filter</string>
 	<string name="filter_duration_forever">Forever</string>
 	<!-- %s is the timestamp ("tomorrow at 12:34") -->

@@ -118,7 +118,13 @@ public abstract class StatusDisplayItem{
 			// MOSHIDON:
 			case DUMMY -> new DummyStatusDisplayItem.Holder(activity);
 			case EMOJI_REACTIONS -> new EmojiReactionsStatusDisplayItem.Holder(activity, parent);
-		};
+			// MAMMUT: Catch up (docs/CATCH-UP-SPEC.md) — grouped reading view. These are
+			// display-item compositions on the existing recycled-view machinery; no new
+			// holder plumbing beyond this switch.
+			case CATCH_UP_HEADER -> new CatchUpHeaderStatusDisplayItem.Holder(activity, parent);
+			case CATCH_UP_FOOTER -> new CatchUpFooterStatusDisplayItem.Holder(activity, parent);
+			case CATCH_UP_PROGRESS -> new CatchUpProgressStatusDisplayItem.Holder(activity, parent);
+			};
 	}
 
 	public static ArrayList<StatusDisplayItem> buildItems(BaseStatusListFragment<?> fragment, Status status, String accountID, DisplayItemsParent parentObject, Map<String, Account> knownAccounts, boolean addFooter){
@@ -324,7 +330,11 @@ public abstract class StatusDisplayItem{
 		NESTED_QUOTE,
 		// MOSHIDON:
 		DUMMY,
-		EMOJI_REACTIONS
+		EMOJI_REACTIONS,
+		// MAMMUT: Catch up bounded reading view (docs/CATCH-UP-SPEC.md)
+		CATCH_UP_HEADER,
+		CATCH_UP_FOOTER,
+		CATCH_UP_PROGRESS
 	}
 
 	public static abstract class Holder<T> extends BindableViewHolder<T> implements UsableRecyclerView.DisableableClickable{

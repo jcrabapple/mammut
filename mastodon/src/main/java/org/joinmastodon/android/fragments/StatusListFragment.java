@@ -61,7 +61,13 @@ public abstract class StatusListFragment extends BaseStatusListFragment<Status>{
 	protected List<StatusDisplayItem> buildDisplayItems(Status s){
 		// MAMMUT: port from upstream master — spectator mode removes the footer, the
 		// media-preview preference swaps thumbnails for attachment rows
-		int flags=0;
+		return buildDisplayItems(s, 0);
+	}
+
+	// MAMMUT: Catch up — extra display flags (e.g. FLAG_NO_HEADER under an author
+	// group header) on top of the flags every timeline row already honors.
+	protected List<StatusDisplayItem> buildDisplayItems(Status s, int extraFlags){
+		int flags=extraFlags;
 		if(GlobalUserPreferences.spectatorMode)
 			flags|=StatusDisplayItem.FLAG_NO_FOOTER;
 		if(!GlobalUserPreferences.showMediaPreview)

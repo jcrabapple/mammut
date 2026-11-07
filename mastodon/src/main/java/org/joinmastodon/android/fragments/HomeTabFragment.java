@@ -467,8 +467,13 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		// MAMMUT: F1 — per-tab view filters: hide the action for tabs that don't support it and
 		// annotate it with the active filters so it's obvious the tab is filtered.
 		if(pager!=null){
-			MenuItem timelineView=m.findItem(R.id.timeline_view);
+			// MAMMUT: Catch up — only the Home tab has a home timeline to catch up
+			// on; offering it on lists/hashtags/custom tabs would fetch data that
+			// is not that tab's (docs/CATCH-UP-SPEC.md §1).
+			MenuItem catchUp=m.findItem(R.id.catch_up);
 			TimelineDefinition current=timelines[pager.getCurrentItem()];
+			catchUp.setVisible(current.getType()==TimelineDefinition.TimelineType.HOME);
+			MenuItem timelineView=m.findItem(R.id.timeline_view);
 			timelineView.setVisible(current.supportsViewFilters());
 			if(current.hasActiveViewFilters()){
 				ArrayList<String> activeFilters=new ArrayList<>(3);
@@ -626,6 +631,10 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 			// MAMMUT: F1 — view filters for the currently visible tab
 			args.putInt(StatusListFragment.EXTRA_TIMELINE_DEF_INDEX, pager.getCurrentItem());
 			Nav.go(getActivity(), TimelineViewSettingsFragment.class, args);
+		} else if (id == R.id.catch_up) {
+			// MAMMUT: Catch up — bounded reading view for the currently visible tab
+			args.putInt(StatusListFragment.EXTRA_TIMELINE_DEF_INDEX, pager.getCurrentItem());
+			Nav.go(getActivity(), CatchUpFragment.class, args);
 		} else if ((list = listItems.get(id)) != null) {
 			args.putString("listID", list.id);
 			args.putString("listTitle", list.title);

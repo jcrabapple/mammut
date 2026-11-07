@@ -6,13 +6,17 @@
 			android:icon="@drawable/ic_fluent_megaphone_24_regular"
 			android:title="@string/sk_announcements" />
 		<item
-			android:id="@+id/edit_timelines"
-			android:icon="@drawable/ic_fluent_edit_24_regular"
-			android:title="@string/sk_edit_timelines" />
+			android:id="@+id/catch_up"
+			android:icon="@drawable/ic_fluent_book_clock_24_regular"
+			android:title="@string/catch_up" />
 		<item
 			android:id="@+id/timeline_view"
 			android:icon="@drawable/ic_fluent_filter_24_regular"
 			android:title="@string/timeline_view" />
+		<item
+			android:id="@+id/edit_timelines"
+			android:icon="@drawable/ic_fluent_edit_24_regular"
+			android:title="@string/sk_edit_timelines" />
 	</group>
 	<group android:id="@+id/bottom">
 		<item
