@@ -46,7 +46,7 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 	// MAMMUT: phase 2 port from upstream master
 	private CheckableListItem<Void> altIndicatorItem, noAltIndicatorItem, collapsePostsItem;
 	// MAMMUT: parity port from upstream master
-	private CheckableListItem<Void> showDividersItem;
+	private CheckableListItem<Void> showDividersItem, showNavLabelsItem, doubleTapSearchItem;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState){
@@ -85,6 +85,8 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		items.add(noAltIndicatorItem=new CheckableListItem<>(R.string.sk_settings_show_no_alt_indicator, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showNoAltIndicator, R.drawable.ic_fluent_important_24_regular, this::toggleCheckableItem));
 		items.add(collapsePostsItem=new CheckableListItem<>(R.string.sk_settings_collapse_long_posts, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.collapseLongPosts, R.drawable.ic_fluent_chevron_down_24_regular, this::toggleCheckableItem));
 		items.add(showDividersItem=new CheckableListItem<>(R.string.mo_enable_dividers, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showDividers, R.drawable.ic_fluent_timeline_24_regular, this::toggleCheckableItem));
+		items.add(showNavLabelsItem=new CheckableListItem<>(R.string.sk_settings_show_labels_in_navigation_bar, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showNavigationLabels, R.drawable.ic_fluent_tag_24_regular, this::toggleCheckableItem));
+		items.add(doubleTapSearchItem=new CheckableListItem<>(R.string.mo_double_tap_to_search, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.doubleTapToSearch, R.drawable.ic_fluent_search_24_regular, this::toggleCheckableItem));
 
 		items.add(showCWsItem=new CheckableListItem<>(R.string.settings_show_cws, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showCWs, R.drawable.ic_warning_24px, this::toggleCheckableItem));
 		items.add(hideSensitiveMediaItem=new CheckableListItem<>(R.string.settings_hide_sensitive_media, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.hideSensitiveMedia, R.drawable.ic_no_adult_content_24px, this::toggleCheckableItem));
@@ -124,8 +126,11 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		GlobalUserPreferences.showNoAltIndicator=noAltIndicatorItem.checked;
 		GlobalUserPreferences.collapseLongPosts=collapsePostsItem.checked;
 		// MAMMUT: parity port from upstream master — divider colour is baked into the item decoration
-		boolean restartPlease=GlobalUserPreferences.showDividers!=showDividersItem.checked;
+		boolean restartPlease=GlobalUserPreferences.showDividers!=showDividersItem.checked
+				|| GlobalUserPreferences.showNavigationLabels!=showNavLabelsItem.checked;
 		GlobalUserPreferences.showDividers=showDividersItem.checked;
+		GlobalUserPreferences.showNavigationLabels=showNavLabelsItem.checked;
+		GlobalUserPreferences.doubleTapToSearch=doubleTapSearchItem.checked;
 		GlobalUserPreferences.save();
 		if(restartPlease)
 			restartActivityToApplyNewTheme();

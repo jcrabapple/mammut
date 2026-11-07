@@ -691,7 +691,9 @@ public class PhotoViewer implements ZoomPanView.Listener{
 			WindowManager.LayoutParams wlp=(WindowManager.LayoutParams) windowView.getLayoutParams();
 			wlp.flags|=WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
 			wm.updateViewLayout(windowView, wlp);
-			activity.getSystemService(AudioManager.class).requestAudioFocus(audioFocusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+			// MAMMUT: port from upstream master — duck other audio instead of pausing it
+			int audiofocus=GlobalUserPreferences.overlayMedia ? AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK : AudioManager.AUDIOFOCUS_GAIN;
+			activity.getSystemService(AudioManager.class).requestAudioFocus(audioFocusListener, AudioManager.STREAM_MUSIC, audiofocus);
 		}
 		screenOnRefCount++;
 	}

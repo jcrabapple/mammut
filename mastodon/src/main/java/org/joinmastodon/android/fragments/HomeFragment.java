@@ -39,6 +39,7 @@ import org.joinmastodon.android.ui.sheets.AccountSwitcherSheet;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.views.TabBar;
 import org.joinmastodon.android.utils.ObjectIdComparator;
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.parceler.Parcels;
 
 import java.util.ArrayList;
@@ -123,6 +124,16 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		tabBar=content.findViewById(R.id.tabbar);
 		tabBar.setListeners(this::onTabSelected, this::onTabLongClick);
 		tabBarWrap=content.findViewById(R.id.tabbar_wrap);
+
+		// MAMMUT: port from upstream master — optionally hide the tab bar labels
+		if(!GlobalUserPreferences.showNavigationLabels){
+			for(int tabId:new int[]{R.id.tab_home, R.id.tab_search, R.id.tab_notifications, R.id.tab_profile}){
+				View tab=tabBar.findViewById(tabId);
+				View label=tab==null ? null : tab.findViewById(R.id.label);
+				if(label!=null)
+					label.setVisibility(View.GONE);
+			}
+		}
 
 		tabBarAvatar=tabBar.findViewById(R.id.tab_profile_ava);
 		tabBarAvatar.setOutlineProvider(OutlineProviders.OVAL);
@@ -238,8 +249,8 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	private void onTabSelected(@IdRes int tab){
 		Fragment newFragment=fragmentForTab(tab);
 
-		// MOSHIDON:
-		if(tab==R.id.tab_search && R.id.tab_search==currentTab){
+		// MOSHIDON: // MAMMUT: port from upstream master — only when the preference allows it
+		if(tab==R.id.tab_search && R.id.tab_search==currentTab && GlobalUserPreferences.doubleTapToSearch){
 			searchFragment.openSearch();
 		}
 

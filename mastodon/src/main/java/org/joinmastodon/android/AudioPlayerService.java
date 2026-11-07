@@ -28,6 +28,7 @@ import android.util.Log;
 import org.joinmastodon.android.model.Attachment;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.ui.text.HtmlParser;
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.parceler.Parcels;
 
 import java.io.IOException;
@@ -174,7 +175,9 @@ public class AudioPlayerService extends Service{
 		}
 
 		updateNotification(false, false);
-		getSystemService(AudioManager.class).requestAudioFocus(audioFocusChangeListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+		// MAMMUT: port from upstream master — duck other audio instead of pausing it
+		int audiofocus=GlobalUserPreferences.overlayMedia ? AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK : AudioManager.AUDIOFOCUS_GAIN;
+		getSystemService(AudioManager.class).requestAudioFocus(audioFocusChangeListener, AudioManager.STREAM_MUSIC, audiofocus);
 
 		player=new MediaPlayer();
 		player.setOnPreparedListener(this::onPlayerPrepared);
