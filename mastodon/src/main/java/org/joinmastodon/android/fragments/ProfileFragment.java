@@ -91,6 +91,8 @@ import org.joinmastodon.android.ui.views.CustomDrawingOrderLinearLayout;
 import org.joinmastodon.android.ui.views.NestedRecyclerScrollView;
 import org.joinmastodon.android.ui.views.ProgressBarButton;
 import org.joinmastodon.android.utils.ElevationOnScrollListener;
+import org.joinmastodon.android.fragments.account_list.MutedAccountsListFragment;
+import org.joinmastodon.android.fragments.account_list.BlockedAccountsListFragment;
 import org.parceler.Parcels;
 
 import java.time.LocalDateTime;
@@ -864,6 +866,25 @@ public class ProfileFragment extends LoaderFragment implements ScrollableToTop, 
 		}else if(id==R.id.save){
 			if(isInEditMode)
 				saveAndExitEditMode();
+		}else if(id==R.id.manage_user_lists){
+			// MAMMUT: port from upstream master
+			Bundle args=new Bundle();
+			args.putString("account", accountID);
+			Nav.go(getActivity(), ManageListsFragment.class, args);
+		}else if(id==R.id.followed_hashtags){
+			Bundle args=new Bundle();
+			args.putString("account", accountID);
+			Nav.go(getActivity(), ManageFollowedHashtagsFragment.class, args);
+		}else if(id==R.id.muted_accounts){
+			Bundle args=new Bundle();
+			args.putString("account", accountID);
+			args.putParcelable("targetAccount", Parcels.wrap(account));
+			Nav.go(getActivity(), MutedAccountsListFragment.class, args);
+		}else if(id==R.id.blocked_accounts){
+			Bundle args=new Bundle();
+			args.putString("account", accountID);
+			args.putParcelable("targetAccount", Parcels.wrap(account));
+			Nav.go(getActivity(), BlockedAccountsListFragment.class, args);
 		}else if(id==R.id.add_to_list){
 			Bundle args=new Bundle();
 			args.putString("account", accountID);

@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
-	<item android:id="@+id/share" android:title="@string/share_user" android:icon="@drawable/ic_share_24px" android:showAsAction="always"/>
+	<!-- MAMMUT: parity with upstream master's own-profile overflow -->
+	<group android:id="@+id/menu_group1">
+		<item android:id="@+id/manage_user_lists" android:title="@string/manage_lists" android:icon="@drawable/ic_fluent_people_24_regular"/>
+		<item android:id="@+id/followed_hashtags" android:title="@string/manage_hashtags" android:icon="@drawable/ic_fluent_number_symbol_24_regular"/>
+		<item android:id="@+id/muted_accounts" android:title="@string/sk_muted_accounts" android:icon="@drawable/ic_fluent_speaker_off_24_regular"/>
+		<item android:id="@+id/blocked_accounts" android:title="@string/sk_blocked_accounts" android:icon="@drawable/ic_fluent_shield_24_regular"/>
+	</group>
+	<group android:id="@+id/menu_group2">
+		<item android:id="@+id/open_in_browser" android:title="@string/open_in_browser" android:icon="@drawable/ic_fluent_globe_24_regular"/>
+		<item android:id="@+id/share" android:title="@string/share_user" android:icon="@drawable/ic_share_24px" android:showAsAction="always"/>
+	</group>
 </menu>
