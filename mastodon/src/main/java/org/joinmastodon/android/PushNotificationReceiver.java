@@ -180,6 +180,18 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 				.setLights(context.getColor(R.color.primary_700), 500, 1000)
 				.setColor(context.getColor(R.color.primary_700))
 				.setGroup(accountID);
+		// MAMMUT: port from upstream master — per-type small icons unless the user wants one uniform icon
+		if(!GlobalUserPreferences.uniformNotificationIcon){
+			builder.setSmallIcon(switch(pn.notificationType){
+				case FAVORITE -> GlobalUserPreferences.likeIcon ? R.drawable.ic_fluent_heart_24_filled : R.drawable.ic_fluent_star_24_filled;
+				case REBLOG -> R.drawable.ic_fluent_arrow_repeat_all_24_filled;
+				case FOLLOW -> R.drawable.ic_fluent_person_add_24_filled;
+				case MENTION -> R.drawable.ic_fluent_mention_24_filled;
+				case POLL -> R.drawable.ic_fluent_poll_24_filled;
+				case STATUS -> R.drawable.ic_fluent_chat_24_filled;
+				default -> R.drawable.ic_ntf_logo;
+			});
+		}
 		if(avatar!=null){
 			builder.setLargeIcon(UiUtils.getBitmapFromDrawable(avatar));
 		}
@@ -230,19 +242,28 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 			builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, GlobalUserPreferences.likeIcon ? R.drawable.ic_fluent_heart_24_filled : R.drawable.ic_star_24px),
 					context.getString(R.string.button_favorite), PendingIntent.getService(context, (accountID+pn.notificationId+"favorite").hashCode(), favIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)).build());
 
-			PendingIntent boostActionIntent;
-			if(notification.status.visibility!=StatusPrivacy.DIRECT){
+			// MAMMUT: port from upstream master — bookmark is the third action by default,
+			// optionally swapped for boost (which is unavailable on direct posts)
+			boolean useBoost=GlobalUserPreferences.swapBookmarkWithBoostAction && notification.status.visibility!=StatusPrivacy.DIRECT;
+			if(useBoost){
 				Intent boostIntent=new Intent(context, NotificationActionHandlerService.class);
 				boostIntent.putExtra("action", "boost");
 				boostIntent.putExtra("account", accountID);
 				boostIntent.putExtra("post", notification.status.id);
 				boostIntent.putExtra("notificationTag", notificationTag);
-				boostActionIntent=PendingIntent.getService(context, (accountID+pn.notificationId+"boost").hashCode(), boostIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+				PendingIntent boostActionIntent=PendingIntent.getService(context, (accountID+pn.notificationId+"boost").hashCode(), boostIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+				builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_boost_24px),
+						context.getString(R.string.button_reblog), boostActionIntent).build());
 			}else{
-				boostActionIntent=null;
+				Intent bookmarkIntent=new Intent(context, NotificationActionHandlerService.class);
+				bookmarkIntent.putExtra("action", "bookmark");
+				bookmarkIntent.putExtra("account", accountID);
+				bookmarkIntent.putExtra("post", notification.status.id);
+				bookmarkIntent.putExtra("notificationTag", notificationTag);
+				PendingIntent bookmarkActionIntent=PendingIntent.getService(context, (accountID+pn.notificationId+"bookmark").hashCode(), bookmarkIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+				builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_fluent_bookmark_24_regular),
+						context.getString(R.string.add_bookmark), bookmarkActionIntent).build());
 			}
-			builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_boost_24px),
-					context.getString(R.string.button_reblog), boostActionIntent).build());
 		}
 		nm.notify(notificationTag, NOTIFICATION_ID, builder.build());
 

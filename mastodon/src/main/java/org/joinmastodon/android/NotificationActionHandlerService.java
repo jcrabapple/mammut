@@ -18,6 +18,7 @@ import org.joinmastodon.android.events.StatusCreatedEvent;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.model.StatusPrivacy;
 import org.joinmastodon.android.GlobalUserPreferences;
+import org.joinmastodon.android.api.requests.statuses.SetStatusBookmarked;
 
 import java.util.UUID;
 
@@ -158,6 +159,42 @@ public class NotificationActionHandlerService extends Service{
 								Notification n=notification.getNotification();
 								n.actions[2].actionIntent=prevActionIntent;
 								n.actions[2].title=getString(R.string.button_reblog);
+								nm.notify(notificationTag, PushNotificationReceiver.NOTIFICATION_ID, n);
+							}
+							error.showToast(NotificationActionHandlerService.this);
+							runningRequestCount--;
+							maybeStopSelf();
+						}
+					})
+					.exec(account);
+		}else if("bookmark".equals(action)){
+			// MAMMUT: port from upstream master — bookmark is the default third notification action
+			PendingIntent prevActionIntent;
+			if(notification!=null){
+				Notification n=notification.getNotification();
+				prevActionIntent=n.actions[2].actionIntent;
+				n.actions[2].actionIntent=null;
+				n.actions[2].title=getString(R.string.button_bookmarked);
+				nm.notify(notificationTag, PushNotificationReceiver.NOTIFICATION_ID, n);
+			}else{
+				prevActionIntent=null;
+			}
+			runningRequestCount++;
+			new SetStatusBookmarked(postID, true)
+					.setCallback(new Callback<>(){
+						@Override
+						public void onSuccess(Status result){
+							E.post(new StatusCountersUpdatedEvent(result, StatusCountersUpdatedEvent.CounterType.BOOKMARKS));
+							runningRequestCount--;
+							maybeStopSelf();
+						}
+
+						@Override
+						public void onError(ErrorResponse error){
+							if(notification!=null){
+								Notification n=notification.getNotification();
+								n.actions[2].actionIntent=prevActionIntent;
+								n.actions[2].title=getString(R.string.add_bookmark);
 								nm.notify(notificationTag, PushNotificationReceiver.NOTIFICATION_ID, n);
 							}
 							error.showToast(NotificationActionHandlerService.this);

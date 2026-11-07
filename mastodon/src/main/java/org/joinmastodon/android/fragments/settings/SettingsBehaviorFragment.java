@@ -30,6 +30,8 @@ public class SettingsBehaviorFragment extends BaseSettingsFragment<Void>{
 	// MAMMUT: phase 1 port from upstream master
 	private ListItem<Void> prefixRepliesItem;
 	private CheckableListItem<Void> hapticFeedbackItem, mentionRebloggerAutomaticallyItem;
+	// MAMMUT: parity port from upstream master
+	private CheckableListItem<Void> loadNewPostsItem, seeNewPostsBtnItem;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState){
@@ -42,6 +44,8 @@ public class SettingsBehaviorFragment extends BaseSettingsFragment<Void>{
 				playGifsItem=new CheckableListItem<>(R.string.settings_gif, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.playGifs, R.drawable.ic_animation_24px, this::toggleCheckableItem),
 				// MAMMUT: phase 1 port from upstream master
 				prefixRepliesItem=new ListItem<>(R.string.sk_settings_prefix_reply_cw_with_re, getPrefixWithRepliesString(), R.drawable.ic_fluent_arrow_reply_24_regular, this::onPrefixRepliesClick),
+				loadNewPostsItem=new CheckableListItem<>(R.string.sk_settings_load_new_posts, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.loadNewPosts, R.drawable.ic_fluent_arrow_sync_24_regular, i->onLoadNewPostsClick()),
+				seeNewPostsBtnItem=new CheckableListItem<>(R.string.sk_settings_see_new_posts_button, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showNewPostsButton, R.drawable.ic_fluent_arrow_up_24_regular, this::toggleCheckableItem),
 				hapticFeedbackItem=new CheckableListItem<>(R.string.mo_haptic_feedback, R.string.mo_setting_haptic_feedback_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.hapticFeedback, R.drawable.ic_fluent_phone_vibrate_24_regular, this::toggleCheckableItem),
 				mentionRebloggerAutomaticallyItem=new CheckableListItem<>(R.string.mo_mention_reblogger_automatically, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.mentionRebloggerAutomatically, R.drawable.ic_fluent_comment_mention_24_regular, this::toggleCheckableItem),
 				confirmUnfollowItem=new CheckableListItem<>(R.string.settings_confirm_unfollow, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.confirmUnfollow, R.drawable.ic_person_remove_24px, this::toggleCheckableItem),
@@ -105,7 +109,18 @@ public class SettingsBehaviorFragment extends BaseSettingsFragment<Void>{
 		GlobalUserPreferences.confirmUnfollow=confirmUnfollowItem.checked;
 		GlobalUserPreferences.confirmBoost=confirmBoostItem.checked;
 		GlobalUserPreferences.confirmDeletePost=confirmDeleteItem.checked;
+		// MAMMUT: parity port from upstream master
+		GlobalUserPreferences.loadNewPosts=loadNewPostsItem.checked;
+		GlobalUserPreferences.showNewPostsButton=seeNewPostsBtnItem.checked;
 		GlobalUserPreferences.save();
+	}
+
+	// MAMMUT: parity port from upstream master
+	private void onLoadNewPostsClick(){
+		toggleCheckableItem(loadNewPostsItem);
+		seeNewPostsBtnItem.checked=loadNewPostsItem.checked;
+		seeNewPostsBtnItem.isEnabled=loadNewPostsItem.checked;
+		rebindItem(seeNewPostsBtnItem);
 	}
 
 	// MAMMUT: phase 1 port from upstream master

@@ -1155,7 +1155,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 		private ArrayList<StatusDisplayItem.Holder<?>> itemsTopToBottom=new ArrayList<>();
 
 		{
-			dividerPaint.setColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OutlineVariant));
+			// MAMMUT: port from upstream master — dividers can be turned off (surface = invisible)
+			dividerPaint.setColor(UiUtils.getThemeColor(getActivity(), GlobalUserPreferences.showDividers ? R.attr.colorM3OutlineVariant : R.attr.colorM3Surface));
 			dividerPaint.setStyle(Paint.Style.STROKE);
 			dividerPaint.setStrokeWidth(V.dp(0.5f));
 		}

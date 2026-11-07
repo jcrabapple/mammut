@@ -70,6 +70,7 @@ import org.joinmastodon.android.ui.views.FixedAspectRatioImageView;
 import org.joinmastodon.android.ui.views.NestedRecyclerScrollView;
 import org.joinmastodon.android.ui.views.NewPostsButtonContainer;
 import org.joinmastodon.android.updater.GithubSelfUpdater;
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.parceler.Parcels;
 
 import java.util.ArrayList;
@@ -224,7 +225,7 @@ public class HomeTimelineFragment extends StatusListFragment implements ToolbarD
 									list.scrollToPosition(0);
 								onDataLoaded(result.items, !result.items.isEmpty());
 								maxID=result.maxID;
-								if(result.isFromCache())
+								if(result.isFromCache() && GlobalUserPreferences.loadNewPosts)
 									loadNewPosts();
 							}
 
@@ -399,7 +400,7 @@ public class HomeTimelineFragment extends StatusListFragment implements ToolbarD
 		if(!getArguments().getBoolean("noAutoLoad")){
 			if(!loaded && !dataLoading){
 				loadData();
-			}else if(!dataLoading){
+			}else if(!dataLoading && GlobalUserPreferences.loadNewPosts){
 				loadNewPosts();
 			}
 		}
@@ -470,7 +471,8 @@ public class HomeTimelineFragment extends StatusListFragment implements ToolbarD
 							AccountSessionManager.get(accountID).filterStatuses(toAdd, FilterContext.HOME);
 						if(!toAdd.isEmpty()){
 							prependItems(toAdd, true);
-							showNewPostsButton();
+							if(GlobalUserPreferences.showNewPostsButton)
+								showNewPostsButton();
 							if(needCache)
 								AccountSessionManager.getInstance().getAccount(accountID).getCacheController().putHomeTimeline(new ArrayList<>(toAdd), false);
 						}
