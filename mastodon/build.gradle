@@ -3,6 +3,13 @@ plugins {
 	id 'com.google.android.libraries.mapsplatform.secrets-gradle-plugin'
 }
 
+// MAMMUT: read local.properties once, and tolerate it being absent (CI has no such file).
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+	localPropsFile.withInputStream { localProps.load(it) }
+}
+
 android {
 	androidResources {
 		generateLocaleConfig = true
@@ -24,24 +31,9 @@ android {
 	signingConfigs {
 		nightly{
 			storeFile = file("keystore/nightly_keystore.jks")
-			storePassword System.getenv("SIGNING_STORE_PASSWORD")
-			if (storePassword == null) {
-				Properties properties = new Properties()
-				properties.load(project.rootProject.file('local.properties').newDataInputStream())
-				storePassword = properties.getProperty('SIGNING_STORE_PASSWORD')
-			}
-			keyAlias System.getenv("SIGNING_KEY_ALIAS")
-			if (keyAlias == null) {
-				Properties properties = new Properties()
-				properties.load(project.rootProject.file('local.properties').newDataInputStream())
-				keyAlias = properties.getProperty('SIGNING_KEY_ALIAS')
-			}
-			keyPassword System.getenv("SIGNING_KEY_PASSWORD")
-			if (keyPassword == null) {
-				Properties properties = new Properties()
-				properties.load(project.rootProject.file('local.properties').newDataInputStream())
-				keyPassword = properties.getProperty('SIGNING_KEY_PASSWORD')
-			}
+			storePassword System.getenv("SIGNING_STORE_PASSWORD") ?: localProps.getProperty('SIGNING_STORE_PASSWORD')
+			keyAlias System.getenv("SIGNING_KEY_ALIAS") ?: localProps.getProperty('SIGNING_KEY_ALIAS')
+			keyPassword System.getenv("SIGNING_KEY_PASSWORD") ?: localProps.getProperty('SIGNING_KEY_PASSWORD')
 		}
 		// MAMMUT: CI/release signing, driven entirely by environment variables so that
 		// local builds are unaffected. Only attached to a build type when the password is present.
@@ -84,13 +76,7 @@ android {
 			}
 		}
 		nightly{
-			if(System.getenv("CURRENT_DATE") != null){
-				versionNameSuffix '-nightly+@' + System.getenv("CURRENT_DATE")
-			} else {
-				Properties properties = new Properties()
-				properties.load(project.rootProject.file('local.properties').newDataInputStream())
-				versionNameSuffix '-nightly+@' + properties.getProperty('CURRENT_DATE')
-			}
+			versionNameSuffix '-nightly+@' + (System.getenv("CURRENT_DATE") ?: localProps.getProperty('CURRENT_DATE') ?: 'localdev')
 			applicationIdSuffix '.nightly'
 
 			signingConfig signingConfigs.nightly

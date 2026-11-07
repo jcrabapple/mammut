@@ -31,6 +31,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The mapsplatform secrets plugin requires local.properties to exist; on CI the
+      # SDK location comes from ANDROID_HOME, so an empty file is enough.
+      - name: Create empty local.properties
+        run: touch local.properties
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
