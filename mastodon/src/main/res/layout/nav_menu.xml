@@ -49,6 +49,8 @@
 			android:layout_height="56dp"
 			android:layout_gravity="bottom|end"
 			android:background="@drawable/bg_nav_fab"
+			android:clipChildren="false"
+			android:clipToPadding="false"
 			android:elevation="3dp"
 			android:clickable="true"
 			android:focusable="true"
@@ -74,24 +76,26 @@
 				android:alpha="0"
 				android:tint="@color/mammut_on_brand_fab"
 				android:src="@drawable/ic_nav_close_24"/>
-		</FrameLayout>
 
-		<TextView
-			android:id="@+id/fab_badge"
-			android:layout_width="wrap_content"
-			android:layout_height="19dp"
-			android:layout_gravity="top|end"
-			android:minWidth="19dp"
-			android:paddingHorizontal="4dp"
-			android:layout_marginTop="-2dp"
-			android:layout_marginEnd="-2dp"
-			android:gravity="center"
-			android:background="@drawable/bg_nav_fab_badge"
-			android:textAppearance="@style/m3_label_small"
-			android:textColor="?colorM3OnPrimary"
-			android:includeFontPadding="false"
-			android:visibility="gone"
+			<TextView
+				android:id="@+id/fab_badge"
+				android:layout_width="wrap_content"
+				android:layout_height="19dp"
+				android:layout_gravity="top|end"
+				android:minWidth="19dp"
+				android:paddingHorizontal="4dp"
+				android:layout_marginTop="-6dp"
+				android:layout_marginEnd="-6dp"
+				android:gravity="center"
+				android:background="@drawable/bg_nav_fab_badge"
+				android:textAppearance="@style/m3_label_small"
+				android:textColor="?colorM3OnPrimary"
+				android:includeFontPadding="false"
+				android:visibility="gone"
 			tools:ignore="RelativeOverlap"
 			tools:text="3"/>
+		</FrameLayout>
+
+
 	</FrameLayout>
 </merge>
