@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: Catch up — the end footer (spec §6, §8). The short rule carries the
+	 leaf job color (completion). Title is an accessibility heading; body copy is
+	 one of the three spec variants; the action extends this view in place. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:orientation="vertical"
+	android:padding="16dp">
+
+	<View
+		android:layout_width="64dp"
+		android:layout_height="3dp"
+		android:background="?colorM3Tertiary" />
+
+	<TextView
+		android:id="@+id/title"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="12dp"
+		android:textAppearance="@style/m3_title_medium"
+		android:textColor="?colorM3OnSurface"
+		tools:text="You’re caught up." />
+
+	<TextView
+		android:id="@+id/body"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="4dp"
+		android:textAppearance="@style/m3_body_medium"
+		android:textColor="?colorM3OnSurfaceVariant"
+		tools:text="This view includes the 126 posts Mammut fetched from the last 24 hours." />
+
+	<Button
+		android:id="@+id/action_btn"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="8dp"
+		android:background="@drawable/bg_button_borderless_rounded"
+		android:paddingStart="8dp"
+		android:paddingEnd="8dp"
+		android:textAppearance="@style/m3_label_large"
+		android:textColor="?colorM3Primary"
+		tools:text="Load older posts" />
+</LinearLayout>

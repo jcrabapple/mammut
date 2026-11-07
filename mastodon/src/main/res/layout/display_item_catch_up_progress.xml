@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: Catch up — inline progress / error row (spec §6, §7): shown where the
+	 next page would be while an extension is in flight, or after a failed page
+	 with "Try again". -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:minHeight="56dp"
+	android:orientation="horizontal"
+	android:gravity="center_vertical"
+	android:padding="16dp">
+
+	<ProgressBar
+		android:id="@+id/progress"
+		style="?android:progressBarStyleSmall"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content" />
+
+	<TextView
+		android:id="@+id/text"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_weight="1"
+		android:layout_marginStart="16dp"
+		android:textAppearance="@style/m3_body_medium"
+		android:textColor="?colorM3OnSurfaceVariant"
+		tools:text="Fetching older posts…" />
+
+	<Button
+		android:id="@+id/button"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:background="@drawable/bg_button_borderless_rounded"
+		android:paddingStart="8dp"
+		android:paddingEnd="8dp"
+		android:textAppearance="@style/m3_label_large"
+		android:textColor="?colorM3Primary"
+		android:visibility="gone"
+		tools:text="Try again"
+		tools:visibility="visible" />
+</LinearLayout>

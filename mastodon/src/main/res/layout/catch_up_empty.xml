@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: Catch up — the empty view (spec §7): empty window and filtered-to-empty.
+	 Everything wraps; nothing is single-line, so 200% font scaling is safe (§8). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent"
+	android:gravity="center"
+	android:orientation="vertical"
+	android:padding="16dp">
+
+	<TextView
+		android:id="@+id/empty_text"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:gravity="center"
+		android:textAppearance="@style/m3_body_large"
+		android:textColor="?colorM3OnSurface"
+		tools:text="Nothing new in the last 24 hours." />
+
+	<TextView
+		android:id="@+id/empty_subtitle"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="8dp"
+		android:gravity="center"
+		android:textAppearance="@style/m3_body_medium"
+		android:textColor="?colorM3OnSurfaceVariant"
+		android:visibility="gone"
+		tools:text="126 posts were fetched but none match this view’s filters"
+		tools:visibility="visible" />
+
+	<Button
+		android:id="@+id/empty_button"
+		style="?attr/appkitEmptyButtonStyle"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="16dp"
+		android:visibility="gone"
+		tools:text="Load older posts"
+		tools:visibility="visible" />
+
+	<Button
+		android:id="@+id/empty_button_secondary"
+		style="?attr/appkitEmptyButtonStyle"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="8dp"
+		android:visibility="gone"
+		tools:text="Load older posts"
+		tools:visibility="visible" />
+</LinearLayout>
