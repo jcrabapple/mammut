@@ -115,7 +115,8 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 			overlays.setMaxWidth(V.dp(MediaGridLayout.MAX_WIDTH));
 			wrapper.addView(overlays, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL));
 
-			hideSensitiveButton=(TextView) activity.getLayoutInflater().inflate(R.layout.alt_text_badge, overlays, false);
+			// MAMMUT: alt_text_badge.xml is a container now, so this pill has its own layout
+			hideSensitiveButton=(TextView) activity.getLayoutInflater().inflate(R.layout.media_grid_badge, overlays, false);
 			hideSensitiveButton.setText(R.string.hide);
 			FrameLayout.LayoutParams lp;
 			overlays.addView(hideSensitiveButton, lp=new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, V.dp(24), Gravity.END | Gravity.BOTTOM));
