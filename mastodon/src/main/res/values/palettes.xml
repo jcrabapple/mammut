@@ -677,4 +677,71 @@
 		<item name="colorNeutral50">@color/tokyo_night_gray_50</item>
 		<item name="colorNeutral25">@color/tokyo_night_gray_25</item>
 	</style>
+
+	<style name="ColorPalette.Mammut">
+		<item name="colorPrimary25">@color/mammut_primary_25</item>
+		<item name="colorPrimary50">@color/mammut_primary_50</item>
+		<item name="colorPrimary100">@color/mammut_primary_100</item>
+		<item name="colorPrimary200">@color/mammut_primary_200</item>
+		<item name="colorPrimary300">@color/mammut_primary_300</item>
+		<item name="colorPrimary400">@color/mammut_primary_400</item>
+		<item name="colorPrimary500">@color/mammut_primary_500</item>
+		<item name="colorPrimary600">@color/mammut_primary_600</item>
+		<item name="colorPrimary700">@color/mammut_primary_700</item>
+		<item name="colorPrimary800">@color/mammut_primary_800</item>
+		<item name="colorPrimary900">@color/mammut_primary_900</item>
+		<item name="colorSecondary25">@color/mammut_secondary_25</item>
+		<item name="colorSecondary50">@color/mammut_secondary_50</item>
+		<item name="colorSecondary100">@color/mammut_secondary_100</item>
+		<item name="colorSecondary200">@color/mammut_secondary_200</item>
+		<item name="colorSecondary300">@color/mammut_secondary_300</item>
+		<item name="colorSecondary400">@color/mammut_secondary_400</item>
+		<item name="colorSecondary500">@color/mammut_secondary_500</item>
+		<item name="colorSecondary600">@color/mammut_secondary_600</item>
+		<item name="colorSecondary700">@color/mammut_secondary_700</item>
+		<item name="colorSecondary800">@color/mammut_secondary_800</item>
+		<item name="colorSecondary900">@color/mammut_secondary_900</item>
+		<item name="colorTertiary25">@color/mammut_tertiary_25</item>
+		<item name="colorTertiary50">@color/mammut_tertiary_50</item>
+		<item name="colorTertiary100">@color/mammut_tertiary_100</item>
+		<item name="colorTertiary200">@color/mammut_tertiary_200</item>
+		<item name="colorTertiary300">@color/mammut_tertiary_300</item>
+		<item name="colorTertiary400">@color/mammut_tertiary_400</item>
+		<item name="colorTertiary500">@color/mammut_tertiary_500</item>
+		<item name="colorTertiary600">@color/mammut_tertiary_600</item>
+		<item name="colorTertiary700">@color/mammut_tertiary_700</item>
+		<item name="colorTertiary800">@color/mammut_tertiary_800</item>
+		<item name="colorTertiary900">@color/mammut_tertiary_900</item>
+
+		<item name="colorFavorite">@color/mammut_favorite</item>
+		<item name="colorLike">@color/mammut_like</item>
+		<item name="colorBookmark">@color/mammut_bookmark</item>
+		<item name="colorPoll">@color/mammut_poll</item>
+
+		<item name="colorGray900">@color/mammut_gray_900</item>
+		<item name="colorGray800">@color/mammut_gray_800</item>
+		<item name="colorGray700">@color/mammut_gray_700</item>
+		<item name="colorGray600">@color/mammut_gray_600</item>
+		<item name="colorGray500">@color/mammut_gray_500</item>
+		<item name="colorGray400">@color/mammut_gray_400</item>
+		<item name="colorGray300">@color/mammut_gray_300</item>
+		<item name="colorGray200">@color/mammut_gray_200</item>
+		<item name="colorGray100">@color/mammut_gray_100</item>
+		<item name="colorGray50">@color/mammut_gray_50</item>
+		<item name="colorGray25">@color/mammut_gray_25</item>
+		<item name="colorGray50t">@color/mammut_gray_50</item>
+		<item name="colorNeutral900">@color/mammut_neutral_900</item>
+		<item name="colorNeutral800">@color/mammut_neutral_800</item>
+		<item name="colorNeutral700">@color/mammut_neutral_700</item>
+		<item name="colorNeutral600">@color/mammut_neutral_600</item>
+		<item name="colorNeutral500">@color/mammut_neutral_500</item>
+		<item name="colorNeutral400">@color/mammut_neutral_400</item>
+		<item name="colorNeutral300">@color/mammut_neutral_300</item>
+		<item name="colorNeutral200">@color/mammut_neutral_200</item>
+		<item name="colorNeutral100">@color/mammut_neutral_100</item>
+		<item name="colorNeutral50">@color/mammut_neutral_50</item>
+		<item name="colorNeutral25">@color/mammut_neutral_25</item>
+		<item name="colorNeutral50t">@color/mammut_neutral_50</item>
+	</style>
+
 </resources>

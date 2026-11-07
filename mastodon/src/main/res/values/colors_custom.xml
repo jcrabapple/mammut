@@ -475,4 +475,70 @@
 	<color name="tokyo_night_favorite">#e0af68</color>
 	<color name="tokyo_night_bookmark_selected">#7dcfff</color>
 	<color name="tokyo_night_like">#f7768e</color>
+
+	<!-- MAMMUT: default palette, from the supplied Coolors set. Primary is Vibrant Coral
+	     #EE6352, secondary Bright Sky #08B2E3, tertiary Jungle Green #57A773, and the neutral
+	     ramp is built from Dusty Grape #484D6D with Lavender Mist #EFE9F4 as its lightest step.
+	     Ramp steps follow the same lightness targets as the other bundled palettes. -->
+	<color name="mammut_primary_25">#FFF8F7</color>
+	<color name="mammut_primary_50">#FEEEEC</color>
+	<color name="mammut_primary_100">#FEDED8</color>
+	<color name="mammut_primary_200">#FEB1A4</color>
+	<color name="mammut_primary_300">#FE7D6B</color>
+	<color name="mammut_primary_400">#E35948</color>
+	<color name="mammut_primary_500">#C1392C</color>
+	<color name="mammut_primary_600">#A2140C</color>
+	<color name="mammut_primary_700">#7E0401</color>
+	<color name="mammut_primary_800">#5A0201</color>
+	<color name="mammut_primary_900">#360000</color>
+	<color name="mammut_secondary_25">#F5FBFE</color>
+	<color name="mammut_secondary_50">#E4F6FE</color>
+	<color name="mammut_secondary_100">#C7EDFE</color>
+	<color name="mammut_secondary_200">#71D6FE</color>
+	<color name="mammut_secondary_300">#1FB9EB</color>
+	<color name="mammut_secondary_400">#079AC5</color>
+	<color name="mammut_secondary_500">#047B9E</color>
+	<color name="mammut_secondary_600">#05607B</color>
+	<color name="mammut_secondary_700">#00485E</color>
+	<color name="mammut_secondary_800">#013242</color>
+	<color name="mammut_secondary_900">#001C26</color>
+	<color name="mammut_tertiary_25">#F0FFF4</color>
+	<color name="mammut_tertiary_50">#D5FFE0</color>
+	<color name="mammut_tertiary_100">#ABFCC4</color>
+	<color name="mammut_tertiary_200">#8CDDA6</color>
+	<color name="mammut_tertiary_300">#6EBE88</color>
+	<color name="mammut_tertiary_400">#50A06C</color>
+	<color name="mammut_tertiary_500">#318351</color>
+	<color name="mammut_tertiary_600">#0B6838</color>
+	<color name="mammut_tertiary_700">#004F28</color>
+	<color name="mammut_tertiary_800">#02371A</color>
+	<color name="mammut_tertiary_900">#001F0C</color>
+	<color name="mammut_gray_25">#EFE9F4</color>
+	<color name="mammut_gray_50">#E7E1EE</color>
+	<color name="mammut_gray_100">#DCD5E6</color>
+	<color name="mammut_gray_200">#C3C6D7</color>
+	<color name="mammut_gray_300">#A5A8B9</color>
+	<color name="mammut_gray_400">#888B9B</color>
+	<color name="mammut_gray_500">#6C6F7E</color>
+	<color name="mammut_gray_600">#535664</color>
+	<color name="mammut_gray_700">#3E404E</color>
+	<color name="mammut_gray_800">#292C39</color>
+	<color name="mammut_gray_900">#151723</color>
+	<color name="mammut_neutral_25">#EFE9F4</color>
+	<color name="mammut_neutral_50">#E7E1EE</color>
+	<color name="mammut_neutral_100">#DCD5E6</color>
+	<color name="mammut_neutral_200">#C3C6D7</color>
+	<color name="mammut_neutral_300">#A5A8B9</color>
+	<color name="mammut_neutral_400">#888B9B</color>
+	<color name="mammut_neutral_500">#6C6F7E</color>
+	<color name="mammut_neutral_600">#535664</color>
+	<color name="mammut_neutral_700">#3E404E</color>
+	<color name="mammut_neutral_800">#292C39</color>
+	<color name="mammut_neutral_900">#151723</color>
+	<color name="mammut_favorite">#E35948</color>
+	<color name="mammut_bookmark">#079AC5</color>
+	<color name="mammut_like">#E35948</color>
+	<color name="mammut_poll">#50A06C</color>
+	<color name="mammut_brand_fab">#E06D3B</color>
+	<color name="mammut_on_brand_fab">#151723</color>
 </resources>

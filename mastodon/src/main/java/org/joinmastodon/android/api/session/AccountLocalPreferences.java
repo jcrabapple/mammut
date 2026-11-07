@@ -114,7 +114,7 @@ public class AccountLocalPreferences{
 
 	// MOSHIDON:
 	public ColorPreference getCurrentColor(){
-		return color!=null ? color : GlobalUserPreferences.color!=null ? GlobalUserPreferences.color : ColorPreference.PURPLE;
+		return color!=null ? color : GlobalUserPreferences.color!=null ? GlobalUserPreferences.color : ColorPreference.MAMMUT;
 	}
 
 	// MOSHIDON:
@@ -130,7 +130,8 @@ public class AccountLocalPreferences{
 		NORD,
 		WHITE,
 		// MAMMUT
-		TOKYO_NIGHT;
+		TOKYO_NIGHT,
+		MAMMUT;
 
 		public @StringRes int getName() {
 			return switch(this){
@@ -145,6 +146,7 @@ public class AccountLocalPreferences{
 				case NORD -> R.string.mo_color_palette_nord;
 				case WHITE -> R.string.mo_color_palette_black_and_white;
 				case TOKYO_NIGHT -> R.string.mo_color_palette_tokyo_night;
+				case MAMMUT -> R.string.mo_color_palette_mammut;
 			};
 		}
 	}

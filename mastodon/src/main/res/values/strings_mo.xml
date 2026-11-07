@@ -154,4 +154,5 @@
 	<string name="mo_up_none_body">Install a UnifiedPush distributor, for example ntfy, to receive push notifications without Google services.</string>
 	<string name="mo_up_failed">Push registration failed</string>
 	<string name="mo_up_no_vapid">This server does not offer UnifiedPush (no VAPID key)</string>
+	<string name="mo_color_palette_mammut">Mammut</string>
 </resources>

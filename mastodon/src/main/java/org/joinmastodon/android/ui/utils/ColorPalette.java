@@ -28,7 +28,8 @@ public class ColorPalette {
             Map.entry(YELLOW, new ColorPalette(R.style.ColorPalette_Yellow)),
             Map.entry(NORD, new ColorPalette(R.style.ColorPalette_Nord)),
             Map.entry(WHITE, new ColorPalette(R.style.ColorPalette_White)),
-            Map.entry(TOKYO_NIGHT, new ColorPalette(R.style.ColorPalette_TokyoNight))
+            Map.entry(TOKYO_NIGHT, new ColorPalette(R.style.ColorPalette_TokyoNight)),
+            Map.entry(MAMMUT, new ColorPalette(R.style.ColorPalette_Mammut))
     );
 
     private @StyleRes int base;
