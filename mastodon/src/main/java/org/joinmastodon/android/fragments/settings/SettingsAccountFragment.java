@@ -50,6 +50,7 @@ public class SettingsAccountFragment extends BaseSettingsFragment<Void>{
 
 		items.add(new ListItem<>(R.string.settings_privacy, 0, R.drawable.ic_privacy_tip_24px, this::onPrivacyClick));
 		items.add(new ListItem<>(R.string.settings_filters, 0, R.drawable.ic_filter_alt_24px, this::onFiltersClick));
+		items.add(new ListItem<>(R.string.settings_hidden_domains, R.string.settings_hidden_domains_explanation, R.drawable.ic_domain_disabled_24px, this::onHiddenDomainsClick));
 		items.add(new ListItem<>(R.string.settings_notifications, 0, R.drawable.ic_notifications_24px, this::onNotificationsClick));
 		items.add(new ListItem<>(R.string.settings_posting_defaults, 0, R.drawable.ic_edit_square_24px, this::onPostingDefaultsClick));
 		// MAMMUT: port from upstream master
@@ -130,6 +131,10 @@ public class SettingsAccountFragment extends BaseSettingsFragment<Void>{
 
 	private void onFiltersClick(ListItem<?> item_){
 		Nav.go(getActivity(), SettingsFiltersFragment.class, makeFragmentArgs());
+	}
+
+	private void onHiddenDomainsClick(ListItem<?> item_){
+		Nav.go(getActivity(), DomainBlocksFragment.class, makeFragmentArgs());
 	}
 
 	private void onNotificationsClick(ListItem<?> item_){
