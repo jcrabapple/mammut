@@ -16,20 +16,20 @@ import org.joinmastodon.android.api.session.AccountLocalPreferences;
 import java.util.Map;
 
 public class ColorPalette {
-    public static final Map<AccountLocalPreferences.ColorPreference, ColorPalette> palettes = Map.of(
-            MATERIAL3, new ColorPalette(R.style.ColorPalette_Material3)
-                    .dark(R.style.ColorPalette_Material3_Dark, R.style.ColorPalette_Material3_AutoLightDark),
-            PINK, new ColorPalette(R.style.ColorPalette_Pink),
-            PURPLE, new ColorPalette(R.style.ColorPalette_Purple),
-            GREEN, new ColorPalette(R.style.ColorPalette_Green),
-            BLUE, new ColorPalette(R.style.ColorPalette_Blue),
-            BROWN, new ColorPalette(R.style.ColorPalette_Brown),
-            RED, new ColorPalette(R.style.ColorPalette_Red),
-            YELLOW, new ColorPalette(R.style.ColorPalette_Yellow),
-			NORD, new ColorPalette(R.style.ColorPalette_Nord),
-			WHITE, new ColorPalette(R.style.ColorPalette_White)
-
-	);
+    public static final Map<AccountLocalPreferences.ColorPreference, ColorPalette> palettes = Map.ofEntries(
+            Map.entry(MATERIAL3, new ColorPalette(R.style.ColorPalette_Material3)
+                    .dark(R.style.ColorPalette_Material3_Dark, R.style.ColorPalette_Material3_AutoLightDark)),
+            Map.entry(PINK, new ColorPalette(R.style.ColorPalette_Pink)),
+            Map.entry(PURPLE, new ColorPalette(R.style.ColorPalette_Purple)),
+            Map.entry(GREEN, new ColorPalette(R.style.ColorPalette_Green)),
+            Map.entry(BLUE, new ColorPalette(R.style.ColorPalette_Blue)),
+            Map.entry(BROWN, new ColorPalette(R.style.ColorPalette_Brown)),
+            Map.entry(RED, new ColorPalette(R.style.ColorPalette_Red)),
+            Map.entry(YELLOW, new ColorPalette(R.style.ColorPalette_Yellow)),
+            Map.entry(NORD, new ColorPalette(R.style.ColorPalette_Nord)),
+            Map.entry(WHITE, new ColorPalette(R.style.ColorPalette_White)),
+            Map.entry(TOKYO_NIGHT, new ColorPalette(R.style.ColorPalette_TokyoNight))
+    );
 
     private @StyleRes int base;
     private @StyleRes int autoDark;

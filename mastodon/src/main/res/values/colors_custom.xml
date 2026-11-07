@@ -445,4 +445,34 @@
 	<color name="white_gray_700">#303030</color>
 	<color name="white_gray_800">#262626</color>
 	<color name="white_gray_900">#1A1A1A</color>
+
+	<!-- MAMMUT: Tokyo Night palette (enkia/tokyo-night-vscode-theme) -->
+	<color name="tokyo_night_primary_25">#eef2ff</color>
+	<color name="tokyo_night_primary_50">#dde6ff</color>
+	<color name="tokyo_night_primary_100">#c6d6ff</color>
+	<color name="tokyo_night_primary_200">#7aa2f7</color>
+	<color name="tokyo_night_primary_300">#6d94e8</color>
+	<color name="tokyo_night_primary_400">#5f86d9</color>
+	<color name="tokyo_night_primary_500">#4f74c4</color>
+	<color name="tokyo_night_primary_600">#3d59a1</color>
+	<color name="tokyo_night_primary_700">#34497f</color>
+	<color name="tokyo_night_primary_800">#2b3c69</color>
+	<color name="tokyo_night_primary_900">#1f2c4d</color>
+
+	<color name="tokyo_night_gray_25">#f2f3fb</color>
+	<color name="tokyo_night_gray_50">#e4e7f5</color>
+	<color name="tokyo_night_gray_50t">#e4e7f5</color>
+	<color name="tokyo_night_gray_100">#c0caf5</color>
+	<color name="tokyo_night_gray_200">#a9b4dd</color>
+	<color name="tokyo_night_gray_300">#7f8ab3</color>
+	<color name="tokyo_night_gray_400">#565f89</color>
+	<color name="tokyo_night_gray_500">#3b4261</color>
+	<color name="tokyo_night_gray_600">#292e42</color>
+	<color name="tokyo_night_gray_700">#1f2335</color>
+	<color name="tokyo_night_gray_800">#1a1b26</color>
+	<color name="tokyo_night_gray_900">#16161e</color>
+
+	<color name="tokyo_night_favorite">#e0af68</color>
+	<color name="tokyo_night_bookmark_selected">#7dcfff</color>
+	<color name="tokyo_night_like">#f7768e</color>
 </resources>

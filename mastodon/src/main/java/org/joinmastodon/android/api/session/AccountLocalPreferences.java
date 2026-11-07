@@ -128,7 +128,9 @@ public class AccountLocalPreferences{
 		RED,
 		YELLOW,
 		NORD,
-		WHITE;
+		WHITE,
+		// MAMMUT
+		TOKYO_NIGHT;
 
 		public @StringRes int getName() {
 			return switch(this){
@@ -142,6 +144,7 @@ public class AccountLocalPreferences{
 				case YELLOW -> R.string.sk_color_palette_yellow;
 				case NORD -> R.string.mo_color_palette_nord;
 				case WHITE -> R.string.mo_color_palette_black_and_white;
+				case TOKYO_NIGHT -> R.string.mo_color_palette_tokyo_night;
 			};
 		}
 	}

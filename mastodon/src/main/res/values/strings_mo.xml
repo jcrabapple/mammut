@@ -147,4 +147,5 @@
 	<string name="mo_error_display_copy_error_details">Copy details</string>
 	<string name="mo_trending_link_read">Read</string>
 	<string name="mo_icon_gnome" translatable="false">GNOME</string>
+	<string name="mo_color_palette_tokyo_night">Tokyo Night</string>
 </resources>

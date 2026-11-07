@@ -633,4 +633,48 @@
 		<item name="colorNeutral50">@color/white_gray_50</item>
 		<item name="colorNeutral25">@color/white_gray_25</item>
 	</style>
+
+	<style name="ColorPalette.TokyoNight">
+		<item name="colorPrimary25">@color/tokyo_night_primary_25</item>
+		<item name="colorPrimary50">@color/tokyo_night_primary_50</item>
+		<item name="colorPrimary100">@color/tokyo_night_primary_100</item>
+		<item name="colorPrimary200">@color/tokyo_night_primary_200</item>
+		<item name="colorPrimary300">@color/tokyo_night_primary_300</item>
+		<item name="colorPrimary400">@color/tokyo_night_primary_400</item>
+		<item name="colorPrimary500">@color/tokyo_night_primary_500</item>
+		<item name="colorPrimary600">@color/tokyo_night_primary_600</item>
+		<item name="colorPrimary700">@color/tokyo_night_primary_700</item>
+		<item name="colorPrimary800">@color/tokyo_night_primary_800</item>
+		<item name="colorPrimary900">@color/tokyo_night_primary_900</item>
+
+		<item name="colorBookmark">@color/tokyo_night_bookmark_selected</item>
+		<item name="colorFavorite">@color/tokyo_night_favorite</item>
+		<item name="colorLike">@color/tokyo_night_like</item>
+
+		<item name="colorGray900">@color/tokyo_night_gray_900</item>
+		<item name="colorGray800">@color/tokyo_night_gray_800</item>
+		<item name="colorGray700">@color/tokyo_night_gray_700</item>
+		<item name="colorGray600">@color/tokyo_night_gray_600</item>
+		<item name="colorGray500">@color/tokyo_night_gray_500</item>
+		<item name="colorGray400">@color/tokyo_night_gray_400</item>
+		<item name="colorGray300">@color/tokyo_night_gray_300</item>
+		<item name="colorGray200">@color/tokyo_night_gray_200</item>
+		<item name="colorGray100">@color/tokyo_night_gray_100</item>
+		<item name="colorGray50t">@color/tokyo_night_gray_50t</item>
+		<item name="colorGray50">@color/tokyo_night_gray_50</item>
+		<item name="colorGray25">@color/tokyo_night_gray_25</item>
+
+		<item name="colorNeutral900">@color/tokyo_night_gray_900</item>
+		<item name="colorNeutral800">@color/tokyo_night_gray_800</item>
+		<item name="colorNeutral700">@color/tokyo_night_gray_700</item>
+		<item name="colorNeutral600">@color/tokyo_night_gray_600</item>
+		<item name="colorNeutral500">@color/tokyo_night_gray_500</item>
+		<item name="colorNeutral400">@color/tokyo_night_gray_400</item>
+		<item name="colorNeutral300">@color/tokyo_night_gray_300</item>
+		<item name="colorNeutral200">@color/tokyo_night_gray_200</item>
+		<item name="colorNeutral100">@color/tokyo_night_gray_100</item>
+		<item name="colorNeutral50t">@color/tokyo_night_gray_50t</item>
+		<item name="colorNeutral50">@color/tokyo_night_gray_50</item>
+		<item name="colorNeutral25">@color/tokyo_night_gray_25</item>
+	</style>
 </resources>
