@@ -41,7 +41,10 @@ public class NavToolbarUtils{
 	public static void addAvatarButton(Activity activity, Toolbar toolbar, Fragment hostFragment, String accountID){
 		if(toolbar.findViewById(R.id.nav_toolbar_avatar)!=null)
 			return;
-		ImageButton avatar=new ImageButton(activity, null, 0, R.style.Widget_Mastodon_M3_Button_Icon);
+		// MAMMUT: no M3 Icon style here — it paints a persistent tonal tile behind the avatar,
+		// which reads as a stuck ripple and does not match the borderless controls beside it
+		ImageButton avatar=new ImageButton(activity);
+		avatar.setBackground(activity.getDrawable(R.drawable.bg_round_ripple));
 		avatar.setId(R.id.nav_toolbar_avatar);
 		int size=V.dp(40);
 		Toolbar.LayoutParams lp=new Toolbar.LayoutParams(size, size, Gravity.START|Gravity.CENTER_VERTICAL);
