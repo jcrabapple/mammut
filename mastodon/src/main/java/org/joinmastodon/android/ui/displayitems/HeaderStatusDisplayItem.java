@@ -35,6 +35,7 @@ import org.joinmastodon.android.fragments.AddAccountToListsFragment;
 import org.joinmastodon.android.fragments.ComposeFragment;
 import org.joinmastodon.android.fragments.NotificationsListFragment;
 import org.joinmastodon.android.fragments.ProfileFragment;
+import org.joinmastodon.android.fragments.ThreadFragment;
 import org.joinmastodon.android.fragments.report.ReportReasonChoiceFragment;
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.model.Attachment;
@@ -353,7 +354,9 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 			Relationship relationship=item.callbacks.getRelationship(account.id);
 			Menu menu=optionsMenu.getMenu();
 			boolean isOwnPost=AccountSessionManager.getInstance().isSelf(item.accountID, account);
-			boolean canTranslate=item.status!=null && item.status.getContentStatus().isEligibleForTranslation();
+			// MAMMUT: port from upstream master — optionally only offer translation on opened posts
+			boolean canTranslate=item.status!=null && item.status.getContentStatus().isEligibleForTranslation()
+					&& (!GlobalUserPreferences.translateButtonOpenedOnly || item.callbacks instanceof ThreadFragment);
 			MenuItem translate=menu.findItem(R.id.translate);
 			translate.setVisible(canTranslate);
 			if(canTranslate){
