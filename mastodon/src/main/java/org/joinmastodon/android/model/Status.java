@@ -9,6 +9,7 @@ import org.joinmastodon.android.api.ObjectValidationException;
 import org.joinmastodon.android.api.RequiredField;
 import org.joinmastodon.android.events.StatusCountersUpdatedEvent;
 import org.joinmastodon.android.ui.text.HtmlParser;
+import org.joinmastodon.android.events.StatusMuteChangedEvent;
 import org.parceler.Parcel;
 
 import java.lang.reflect.Type;
@@ -194,6 +195,11 @@ public class Status extends BaseModel implements DisplayItemsParent, Searchable 
 	@Override
 	public String getAccountID(){
 		return getContentStatus().account.id;
+	}
+
+	// MAMMUT: port from upstream master
+	public void update(StatusMuteChangedEvent ev){
+		muted=ev.muted;
 	}
 
 	public void update(StatusCountersUpdatedEvent ev){

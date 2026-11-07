@@ -309,6 +309,7 @@
 	<string name="instance_signup_closed">This server does not accept new registrations.</string>
 	<string name="text_copied">Copied to clipboard</string>
 	<string name="add_bookmark">Bookmark</string>
+	<string name="do_unmute">Unmute</string>
 	<string name="button_bookmarked">Bookmarked</string>
 	<string name="remove_bookmark">Remove bookmark</string>
 	<string name="bookmarks">Bookmarks</string>

@@ -17,6 +17,8 @@ import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.ui.displayitems.ExtendedFooterStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.FooterStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.StatusDisplayItem;
+import org.joinmastodon.android.events.StatusMuteChangedEvent;
+import org.joinmastodon.android.ui.displayitems.HeaderStatusDisplayItem;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -184,6 +186,21 @@ public abstract class StatusListFragment extends BaseStatusListFragment<Status>{
 	}
 
 	public class EventListener{
+
+		@Subscribe
+		public void onStatusMuteChanged(StatusMuteChangedEvent ev){
+			// MAMMUT: port from upstream master
+			for(Status s:data){
+				if(s.getContentStatus().id.equals(ev.id)){
+					s.update(ev);
+					for(int i=0;i<list.getChildCount();i++){
+						RecyclerView.ViewHolder holder=list.getChildViewHolder(list.getChildAt(i));
+						if(holder instanceof HeaderStatusDisplayItem.Holder header && header.getItem().status==s.getContentStatus())
+							header.rebind();
+					}
+				}
+			}
+		}
 
 		@Subscribe
 		public void onStatusCountersUpdated(StatusCountersUpdatedEvent ev){

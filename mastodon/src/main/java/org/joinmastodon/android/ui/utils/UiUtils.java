@@ -116,6 +116,10 @@ import org.joinmastodon.android.ui.text.CustomEmojiSpan;
 import org.joinmastodon.android.ui.text.SpacerSpan;
 import org.joinmastodon.android.ui.viewholders.ListItemViewHolder;
 import org.joinmastodon.android.utils.Tracking;
+import org.joinmastodon.android.api.requests.notifications.DismissNotification;
+import org.joinmastodon.android.api.requests.statuses.SetStatusConversationMuted;
+import org.joinmastodon.android.events.StatusMuteChangedEvent;
+import org.joinmastodon.android.model.Notification;
 import org.parceler.Parcels;
 
 import java.io.File;
@@ -488,6 +492,51 @@ public class UiUtils{
 				.setPositiveButton(confirmButton, (dlg, i)->onConfirmed.run())
 				.setNegativeButton(R.string.cancel, null)
 				.show();
+	}
+
+	// MAMMUT: port from upstream master — per-notification / clear-all dismissal
+	public static void confirmDeleteNotification(Activity activity, String accountID, Notification notification, Runnable callback){
+		showConfirmationAlert(activity,
+				notification==null ? R.string.sk_clear_all_notifications : R.string.sk_delete_notification,
+				notification==null ? R.string.sk_clear_all_notifications_confirm : R.string.sk_delete_notification_confirm,
+				notification==null ? R.string.sk_clear_all_notifications_confirm_action : R.string.sk_delete_notification_confirm_action,
+				()->new DismissNotification(notification!=null ? notification.id : null)
+						.setCallback(new Callback<>(){
+							@Override
+							public void onSuccess(Object result){
+								callback.run();
+							}
+
+							@Override
+							public void onError(ErrorResponse error){
+								error.showToast(activity);
+							}
+						})
+						.exec(accountID));
+	}
+
+	// MAMMUT: port from upstream master — mute/unmute a conversation with confirmation
+	public static void confirmToggleMuteConversation(Activity activity, String accountID, Status status, Runnable resultCallback){
+		showConfirmationAlert(activity,
+				status.muted ? R.string.mo_unmute_conversation : R.string.mo_mute_conversation,
+				status.muted ? R.string.mo_confirm_to_unmute_conversation : R.string.mo_confirm_to_mute_conversation,
+				status.muted ? R.string.do_unmute : R.string.do_mute,
+				()->new SetStatusConversationMuted(status.id, !status.muted)
+						.setCallback(new Callback<Status>(){
+							@Override
+							public void onSuccess(Status result){
+								resultCallback.run();
+								Toast.makeText(activity, result.muted ? R.string.mo_muted_conversation_successfully : R.string.mo_unmuted_conversation_successfully, Toast.LENGTH_SHORT).show();
+								E.post(new StatusMuteChangedEvent(result));
+							}
+
+							@Override
+							public void onError(ErrorResponse error){
+								error.showToast(activity);
+							}
+						})
+						.wrapProgress(activity, status.muted ? R.string.mo_unmuting : R.string.mo_muting, false)
+						.exec(accountID));
 	}
 
 	public static void confirmToggleBlockUser(Activity activity, String accountID, Account account, boolean currentlyBlocked, Consumer<Relationship> resultCallback){

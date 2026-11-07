@@ -239,21 +239,8 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 							.wrapProgress(activity, R.string.loading, true)
 							.exec(item.accountID);
 				}else if(id==R.id.mute_conversation){
-					new SetStatusConversationMuted(item.status.id, !item.status.muted)
-							.setCallback(new Callback<>(){
-								@Override
-								public void onSuccess(Status result){
-									// TODO snackbar?
-									item.status.muted=result.muted;
-								}
-
-								@Override
-								public void onError(ErrorResponse error){
-									error.showToast(activity);
-								}
-							})
-							.wrapProgress(activity, R.string.loading, true)
-							.exec(item.accountID);
+					// MAMMUT: port from upstream master — confirm, toast and broadcast the change
+					UiUtils.confirmToggleMuteConversation(activity, item.accountID, item.status, ()->{});
 				}else if(id==R.id.change_quote_policy){
 					ComposerVisibilitySheet sheet=new ComposerVisibilitySheet(activity, item.status.visibility, item.status.quoteApproval.toQuotePolicy(),
 							false, false, StatusPrivacy.PUBLIC, item.accountID, (s, visibility, policy)->{
