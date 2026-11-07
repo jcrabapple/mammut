@@ -1,41 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MAMMUT: adaptive launcher foreground. Geometric mammoth emblem authored on a 512 grid,
-     scaled so the mark spans ~72dp of the 108dp canvas and stays inside the 66dp safe circle.
-     Design: Kimi K3.1 Pro (designer profile); trunk simplified for 32px legibility. -->
+<!-- MAMMUT: adaptive launcher foreground. Geometric mammoth emblem designed by Kimi K3.1 Pro
+     (designer profile), authored on a 512 grid and scaled to a 72dp span of the 108dp canvas so
+     the mark sits inside the 66dp safe circle. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
 	android:width="108dp"
 	android:height="108dp"
 	android:viewportWidth="108"
 	android:viewportHeight="108">
 	<group
-		android:translateX="2.8"
-		android:translateY="2.8"
-		android:scaleX="0.2"
-		android:scaleY="0.2">
-
+		android:translateX="1.65"
+		android:translateY="1.44"
+		android:scaleX="0.2045"
+		android:scaleY="0.2045">
 		<path
 			android:fillColor="#A7A2DF"
-			android:pathData="M157 128L116 137L96 174L109 211L145 226L166 183Z"/>
+			android:pathData="M153 179L123 186L105 214L116 244L151 250L165 218Z"/>
 		<path
 			android:fillColor="#A7A2DF"
-			android:pathData="M355 128L396 137L416 174L403 211L367 226L346 183Z"/>
+			android:pathData="M359 179L389 186L407 214L396 244L361 250L347 218Z"/>
 		<path
 			android:fillColor="#C2BDFB"
-			android:pathData="M256 78L340 106L382 158L370 260L327 307L277 325H235L185 307L142 260L130 158L172 106Z"/>
+			android:pathData="M256 80L337 116L374 192L350 281L303 319H209L162 281L138 192L175 116Z"/>
+		<path
+			android:fillColor="#A7A2DF"
+			android:pathData="M256 80L337 116L310 178L256 148L202 178L175 116Z"/>
+		<path
+			android:fillColor="#F2F2F7"
+			android:pathData="M210 238L176 254L154 310L139 354L112 371L91 350L82 307L101 199L99 280L108 318L122 327L135 292L153 246L184 213Z"/>
+		<path
+			android:fillColor="#F2F2F7"
+			android:pathData="M302 238L336 254L358 310L373 354L400 371L421 350L430 307L411 199L413 280L404 318L390 327L377 292L359 246L328 213Z"/>
 		<path
 			android:fillColor="#C2BDFB"
-			android:pathData="M226 294H286V376Q286 412 256 412Q226 412 226 376Z"/>
-		<path
-			android:fillColor="#F2F2F7"
-			android:pathData="M204 228L157 242L122 273L102 313L94 350L99 379L82 350L76 310L86 270L99 238L98 276L126 300L154 270L207 252Z"/>
-		<path
-			android:fillColor="#F2F2F7"
-			android:pathData="M308 228L355 242L390 273L410 313L418 350L413 379L430 350L436 310L426 270L413 238L414 276L386 300L358 270L305 252Z"/>
+			android:pathData="M218 286H294L286 374L270 418L244 434L218 423L207 399L221 378L238 382L232 399L242 405L253 391L256 334H218Z"/>
 		<path
 			android:fillColor="#1F1948"
-			android:pathData="M184 191L218 183V207L184 215Z"/>
+			android:pathData="M177 210L216 201L222 224L183 233Z"/>
 		<path
 			android:fillColor="#1F1948"
-			android:pathData="M328 191L294 183V207L328 215Z"/>
+			android:pathData="M335 210L296 201L290 224L329 233Z"/>
 	</group>
 </vector>
