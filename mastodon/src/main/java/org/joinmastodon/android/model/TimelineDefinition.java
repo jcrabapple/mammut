@@ -44,6 +44,12 @@ public class TimelineDefinition {
 	private @Nullable List<String> hashtagNone;
 	private boolean hashtagLocalOnly;
 
+	// MAMMUT: F1 per-tab timeline view filters (docs/FEATURE-PLAN.md §3). Defaults keep everything
+	// visible; gson keeps these values for timelines persisted before this feature existed.
+	private boolean showBoosts=true;
+	private boolean showReplies=true;
+	private boolean mediaOnly=false;
+
 	public static TimelineDefinition ofList(String listId, String listTitle, boolean listIsExclusive) {
 		TimelineDefinition def = new TimelineDefinition(TimelineType.LIST);
 		def.listId = listId;
@@ -117,6 +123,43 @@ public class TimelineDefinition {
 
 	public boolean isHashtagLocalOnly() {
 		return hashtagLocalOnly;
+	}
+
+	// MAMMUT: F1 per-tab view filter accessors. These are view state, not identity: they are
+	// excluded from equals()/hashCode() on purpose.
+	public boolean isShowBoosts(){
+		return showBoosts;
+	}
+
+	public void setShowBoosts(boolean showBoosts){
+		this.showBoosts=showBoosts;
+	}
+
+	public boolean isShowReplies(){
+		return showReplies;
+	}
+
+	public void setShowReplies(boolean showReplies){
+		this.showReplies=showReplies;
+	}
+
+	public boolean isMediaOnly(){
+		return mediaOnly;
+	}
+
+	public void setMediaOnly(boolean mediaOnly){
+		this.mediaOnly=mediaOnly;
+	}
+
+	public boolean hasActiveViewFilters(){
+		return !showBoosts || !showReplies || mediaOnly;
+	}
+
+	public boolean supportsViewFilters(){
+		return switch(type){
+			case BOOKMARKS, FAVORITES, POST_NOTIFICATIONS -> false;
+			default -> true;
+		};
 	}
 
 	public void setTitle(String title) {
@@ -231,6 +274,9 @@ public class TimelineDefinition {
 		def.hashtagAll = hashtagAll;
 		def.hashtagNone = hashtagNone;
 		def.icon = icon == null ? null : Icon.values()[icon.ordinal()];
+		def.showBoosts = showBoosts;
+		def.showReplies = showReplies;
+		def.mediaOnly = mediaOnly;
 		return def;
 	}
 

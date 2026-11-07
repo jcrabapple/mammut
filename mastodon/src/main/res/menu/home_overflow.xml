@@ -13,6 +13,10 @@
 			android:id="@+id/edit_timelines"
 			android:icon="@drawable/ic_fluent_edit_24_regular"
 			android:title="@string/sk_edit_timelines" />
+		<item
+			android:id="@+id/timeline_view"
+			android:icon="@drawable/ic_fluent_filter_24_regular"
+			android:title="@string/timeline_view" />
 	</group>
 	<group android:id="@+id/bottom">
 		<item

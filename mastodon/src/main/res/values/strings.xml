@@ -511,6 +511,19 @@
 	<string name="filter_action_hide">Hide</string>
 	<string name="settings_filter_hide_explanation">Remove matching posts from your timelines entirely</string>
 	<string name="media_blurred_by_filter_x">Media blurred by filter “%s”</string>
+	<string name="timeline_view">Timeline view</string>
+	<string name="timeline_view_explanation">Applies only to this tab on this account. Hidden posts stay loaded and reappear when you turn the filters off.</string>
+	<string name="timeline_view_show_boosts">Show boosts</string>
+	<string name="timeline_view_show_boosts_explanation">Boosts from other people appear in this tab. Boosts of your own posts always stay visible.</string>
+	<string name="timeline_view_show_replies">Show replies</string>
+	<string name="timeline_view_show_replies_explanation">Replies that do not mention you appear in this tab. Replies that mention you always stay visible.</string>
+	<string name="timeline_view_media_only">Media only</string>
+	<string name="timeline_view_media_only_explanation">Only posts with media attachments appear in this tab</string>
+	<string name="timeline_view_menu_active">Timeline view (%s)</string>
+	<string name="timeline_view_label_media_only">media only</string>
+	<string name="timeline_view_label_no_boosts">boosts hidden</string>
+	<string name="timeline_view_label_no_replies">replies hidden</string>
+	<string name="timeline_view_empty_filtered">Everything on this timeline is hidden by your view filters</string>
 	<string name="settings_delete_filter">Delete filter</string>
 	<string name="filter_duration_forever">Forever</string>
 	<!-- %s is the timestamp ("tomorrow at 12:34") -->
