@@ -495,12 +495,12 @@ public class UiUtils{
 	}
 
 	// MAMMUT: port from upstream master — per-notification / clear-all dismissal
-	public static void confirmDeleteNotification(Activity activity, String accountID, Notification notification, Runnable callback){
+	public static void confirmDeleteNotification(Activity activity, String accountID, String notificationID, Runnable callback){
 		showConfirmationAlert(activity,
-				notification==null ? R.string.sk_clear_all_notifications : R.string.sk_delete_notification,
-				notification==null ? R.string.sk_clear_all_notifications_confirm : R.string.sk_delete_notification_confirm,
-				notification==null ? R.string.sk_clear_all_notifications_confirm_action : R.string.sk_delete_notification_confirm_action,
-				()->new DismissNotification(notification!=null ? notification.id : null)
+				notificationID==null ? R.string.sk_clear_all_notifications : R.string.sk_delete_notification,
+				notificationID==null ? R.string.sk_clear_all_notifications_confirm : R.string.sk_delete_notification_confirm,
+				notificationID==null ? R.string.sk_clear_all_notifications_confirm_action : R.string.sk_delete_notification_confirm_action,
+				()->new DismissNotification(notificationID)
 						.setCallback(new Callback<>(){
 							@Override
 							public void onSuccess(Object result){

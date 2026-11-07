@@ -60,6 +60,7 @@ import org.joinmastodon.android.api.requests.accounts.GetFollowRequests;
 import org.joinmastodon.android.events.FollowRequestHandledEvent;
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.model.HeaderPaginationList;
+import org.joinmastodon.android.GlobalUserPreferences;
 
 public class NotificationsListFragment extends BaseNotificationsListFragment{
 	private boolean onlyMentions;
@@ -266,6 +267,9 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 		MenuItem filters=menu.findItem(R.id.filters);
 		filters.setVisible(lastPolicy!=null);
 		// MAMMUT: port from upstream master
+		MenuItem clear=menu.findItem(R.id.clear_notifications);
+		if(clear!=null)
+			clear.setVisible(GlobalUserPreferences.enableDeleteNotifications);
 		followRequestsItem=menu.findItem(R.id.follow_requests);
 		if(followRequestsItem!=null){
 			followRequestsItem.setVisible(hasPendingFollowRequests);
@@ -282,6 +286,9 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 			resetUnreadBackground();
 		}else if(id==R.id.filters){
 			showFiltersAlert();
+		}else if(id==R.id.clear_notifications){
+			// MAMMUT: port from upstream master
+			UiUtils.confirmDeleteNotification(getActivity(), accountID, null, this::refresh);
 		}else if(id==R.id.follow_requests){
 			Bundle args=new Bundle();
 			args.putString("account", accountID);

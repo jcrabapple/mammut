@@ -26,6 +26,7 @@ import org.joinmastodon.android.ui.text.LinkSpan;
 import org.joinmastodon.android.ui.text.NonColoredLinkSpan;
 import org.joinmastodon.android.ui.utils.CustomEmojiHelper;
 import org.joinmastodon.android.ui.utils.UiUtils;
+import org.joinmastodon.android.fragments.BaseNotificationsListFragment;
 import org.parceler.Parcels;
 
 import java.util.List;
@@ -126,7 +127,11 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 		return avaRequests.size()+emojiHelper.getImageCount();
 	}
 
-	@Override
+	// MAMMUT: needed by the delete action in the holder
+	public String getAccountID(){
+		return accountID;
+	}
+
 	public ImageLoaderRequest getImageRequest(int index){
 		if(index>=avaRequests.size()){
 			return emojiHelper.getImageRequest(index-avaRequests.size());
@@ -139,6 +144,8 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 		private final TextView text;
 		private final ImageView[] avatars;
 		private final View avatarsContainer;
+		private final ImageView deleteButton;
+		private final Activity activity;
 
 		public Holder(Activity activity, ViewGroup parent){
 			super(activity, R.layout.display_item_notification_header, parent);
@@ -153,6 +160,10 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 					findViewById(R.id.avatar6),
 			};
 			avatarsContainer=findViewById(R.id.avatars);
+			// MAMMUT: port from upstream master
+			this.activity=activity;
+			deleteButton=findViewById(R.id.delete_notification);
+			deleteButton.setOnClickListener(this::onDeleteClick);
 
 			int i=0;
 			for(ImageView avatar:avatars){
@@ -182,9 +193,19 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 				ImageLoaderViewHolder.super.clearImage(index);
 		}
 
+		// MAMMUT: port from upstream master
+		private void onDeleteClick(View v){
+			UiUtils.confirmDeleteNotification(activity, item.getAccountID(), item.notification.notification.mostRecentNotificationId, ()->{
+				if(item.callbacks instanceof BaseNotificationsListFragment notifications)
+					notifications.removeNotification(item.notification);
+			});
+		}
+
 		@Override
 		public void onBind(NotificationHeaderStatusDisplayItem item){
 			text.setText(item.text);
+			// MAMMUT: port from upstream master
+			deleteButton.setVisibility(GlobalUserPreferences.enableDeleteNotifications && item.notification.notification.mostRecentNotificationId!=null ? View.VISIBLE : View.GONE);
 
 			if(item.notification.notification.type==NotificationType.POLL || item.notification.notification.type==NotificationType.UPDATE){
 				avatarsContainer.setVisibility(View.GONE);

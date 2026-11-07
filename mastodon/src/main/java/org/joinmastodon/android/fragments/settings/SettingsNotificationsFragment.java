@@ -45,7 +45,7 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 
 	private CheckableListItem<Void> mentionsItem, boostsItem, favoritesItem, followersItem, pollsItem, statusesItem, quotesItem;
 	// MAMMUT: parity port from upstream master
-	private CheckableListItem<Void> uniformIconItem, swapBookmarkWithReblogItem;
+	private CheckableListItem<Void> uniformIconItem, swapBookmarkWithReblogItem, deleteNotificationsItem;
 	private List<CheckableListItem<Void>> typeItems;
 	private boolean needUpdateNotificationSettings;
 	private boolean notificationsAllowed=true;
@@ -69,7 +69,8 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 				statusesItem=new CheckableListItem<>(R.string.notification_type_status, 0, CheckableListItem.Style.CHECKBOX, pushSubscription.alerts.status, this::toggleCheckableItem),
 				quotesItem=new CheckableListItem<>(R.string.notification_type_quote, 0, CheckableListItem.Style.CHECKBOX, pushSubscription.alerts.quote, this::toggleCheckableItem),
 				uniformIconItem=new CheckableListItem<>(R.string.sk_settings_uniform_icon_for_notifications, R.string.mo_setting_uniform_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.uniformNotificationIcon, R.drawable.ic_ntf_logo, this::toggleCheckableItem),
-				swapBookmarkWithReblogItem=new CheckableListItem<>(R.string.mo_swap_bookmark_with_reblog, R.string.mo_swap_bookmark_with_reblog_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.swapBookmarkWithBoostAction, R.drawable.ic_boost, this::toggleCheckableItem)
+				swapBookmarkWithReblogItem=new CheckableListItem<>(R.string.mo_swap_bookmark_with_reblog, R.string.mo_swap_bookmark_with_reblog_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.swapBookmarkWithBoostAction, R.drawable.ic_boost, this::toggleCheckableItem),
+				deleteNotificationsItem=new CheckableListItem<>(R.string.sk_settings_enable_delete_notifications, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.enableDeleteNotifications, R.drawable.ic_fluent_mail_inbox_dismiss_24_regular, this::toggleCheckableItem)
 		));
 
 		typeItems=List.of(mentionsItem, boostsItem, favoritesItem, followersItem, pollsItem, statusesItem, quotesItem);
@@ -95,6 +96,7 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 		// MAMMUT: parity port from upstream master
 		GlobalUserPreferences.uniformNotificationIcon=uniformIconItem.checked;
 		GlobalUserPreferences.swapBookmarkWithBoostAction=swapBookmarkWithReblogItem.checked;
+		GlobalUserPreferences.enableDeleteNotifications=deleteNotificationsItem.checked;
 		GlobalUserPreferences.save();
 		if(needUpdateNotificationSettings && PushSubscriptionManager.arePushNotificationsAvailable()){
 			ps.alerts.mention=mentionsItem.checked;
