@@ -100,6 +100,12 @@ public class MediaAttachmentViewController{
 	}
 
 	public void bind(Attachment attachment, Status status){
+		bind(attachment, status, false);
+	}
+
+	// MAMMUT: G14 — hideAltBadges: timeline renders descriptions as an inline caption track,
+	// so the ALT / no-ALT badges on the image itself would be a duplicate (or a nag)
+	public void bind(Attachment attachment, Status status, boolean hideAltBadges){
 		this.status=status;
 		this.attachment=attachment;
 		crossfadeDrawable.setSize(attachment.getWidth(), attachment.getHeight());
@@ -111,9 +117,9 @@ public class MediaAttachmentViewController{
 		if(altButton!=null){
 			boolean hasAltText=!TextUtils.isEmpty(attachment.description);
 			// MAMMUT: phase 2 port from upstream master
-			altButton.setVisibility(hasAltText && GlobalUserPreferences.showAltIndicator ? View.VISIBLE : View.GONE);
+			altButton.setVisibility(hasAltText && GlobalUserPreferences.showAltIndicator && !hideAltBadges ? View.VISIBLE : View.GONE);
 			if(noAltButton!=null)
-				noAltButton.setVisibility(!hasAltText && GlobalUserPreferences.showNoAltIndicator ? View.VISIBLE : View.GONE);
+				noAltButton.setVisibility(!hasAltText && GlobalUserPreferences.showNoAltIndicator && !hideAltBadges ? View.VISIBLE : View.GONE);
 		}
 		if(type==MediaGridStatusDisplayItem.GridItemType.VIDEO){
 			duration.setText(UiUtils.formatMediaDuration((int)attachment.getDuration()));

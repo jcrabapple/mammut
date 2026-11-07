@@ -5,14 +5,18 @@ import android.content.Context;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
+import android.text.Layout;
+import android.text.StaticLayout;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.model.Attachment;
 import org.joinmastodon.android.model.Status;
@@ -93,8 +97,15 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 	}
 
 	public static class Holder extends StatusDisplayItem.Holder<MediaGridStatusDisplayItem> implements ImageLoaderViewHolder{
+		private final Activity activity;
+		private final ViewGroup recyclerParent;
 		private final FrameLayout wrapper;
+		private final LinearLayout content;
+		// MAMMUT: G14 — the grid + overlays keep their exact original structure, just reparented
+		// into this container so the caption track can hang below them as a sibling
+		private final FrameLayout gridContainer;
 		private final MediaGridLayout layout;
+		private final LinearLayout captions;
 		private final View.OnClickListener clickListener=this::onViewClick, altTextClickListener=this::onAltTextClick;
 		private final ArrayList<MediaAttachmentViewController> controllers=new ArrayList<>();
 
@@ -109,14 +120,23 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 
 		public Holder(Activity activity, ViewGroup parent){
 			super(new FrameLayoutThatOnlyMeasuresFirstChild(activity));
+			this.activity=activity;
+			this.recyclerParent=parent;
 			wrapper=(FrameLayout)itemView;
-			layout=new MediaGridLayout(activity);
-			wrapper.addView(layout);
+			content=new LinearLayout(activity);
+			content.setOrientation(LinearLayout.VERTICAL);
+			wrapper.addView(content);
 			wrapper.setClipToPadding(false);
+
+			gridContainer=new FrameLayout(activity);
+			content.addView(gridContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+			layout=new MediaGridLayout(activity);
+			gridContainer.addView(layout);
 
 			overlays=new MaxWidthFrameLayout(activity);
 			overlays.setMaxWidth(V.dp(MediaGridLayout.MAX_WIDTH));
-			wrapper.addView(overlays, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL));
+			gridContainer.addView(overlays, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL));
 
 			// MAMMUT: alt_text_badge.xml is a container now, so this pill has its own layout
 			hideSensitiveButton=(TextView) activity.getLayoutInflater().inflate(R.layout.media_grid_badge, overlays, false);
@@ -138,6 +158,13 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 			hideSensitiveButton.setOnClickListener(v->hideSensitive());
 
 			sensitiveText=findViewById(R.id.sensitive_text);
+
+			// MAMMUT: G14 — caption track container; stays GONE unless inline alt text is on and
+			// at least one attachment has a description, so toggle-off is byte-identical
+			captions=new LinearLayout(activity);
+			captions.setOrientation(LinearLayout.VERTICAL);
+			captions.setVisibility(View.GONE);
+			content.addView(captions, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 		}
 
 		@Override
@@ -197,7 +224,7 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 						}
 					}
 				}
-				c.bind(att, item.status);
+				c.bind(att, item.status, GlobalUserPreferences.showInlineAltText);
 				i++;
 			}
 
@@ -214,6 +241,7 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 				sensitiveText.setText(item.sensitiveTitle);
 			else
 				sensitiveText.setText(R.string.sensitive_content_explain);
+			bindCaptionTrack();
 		}
 
 		@Override
@@ -261,6 +289,7 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 
 		public void setClipChildren(boolean clip){
 			layout.setClipChildren(clip);
+			gridContainer.setClipChildren(clip);
 			wrapper.setClipChildren(clip);
 		}
 
@@ -277,6 +306,7 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 				item.status.filterMediaRevealed=true;
 			V.setVisibilityAnimated(sensitiveOverlay, View.GONE);
 			layout.setVisibility(View.VISIBLE);
+			bindCaptionTrack();
 		}
 
 		private void hideSensitive(){
@@ -284,7 +314,66 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 				return;
 			updateBlurhashInSensitiveOverlay();
 			item.sensitiveRevealed=false;
+			captions.setVisibility(View.GONE);
 			V.setVisibilityAnimated(sensitiveOverlay, View.VISIBLE, ()->layout.setVisibility(View.INVISIBLE));
+		}
+
+		// MAMMUT: G14 — "The Caption Track": one full-width caption band per described attachment,
+		// clamped to two lines with an in-place expand affordance. Rebuilt wholesale on every bind
+		// so a recycled row can never keep a caption from a previous post.
+		private void bindCaptionTrack(){
+			captions.removeAllViews();
+			if(GlobalUserPreferences.showInlineAltText && item.sensitiveRevealed){
+				for(Attachment att:item.attachments){
+					if(TextUtils.isEmpty(att.description))
+						continue;
+					View band=activity.getLayoutInflater().inflate(R.layout.media_caption_band, captions, false);
+					TextView captionText=band.findViewById(R.id.caption_text);
+					TextView toggle=band.findViewById(R.id.caption_toggle);
+					String attachmentID=att.id;
+					boolean expanded=attachmentID!=null && item.status.expandedInlineAltAttachments.contains(attachmentID);
+					captionText.setText(att.description);
+					applyCaptionExpansion(captionText, toggle, expanded);
+					boolean truncated=isCaptionTruncated(captionText, att.description, 2);
+					// Never truncate silently: the affordance shows whenever more text exists
+					toggle.setVisibility(expanded || truncated ? View.VISIBLE : View.GONE);
+					toggle.setOnClickListener(v->{
+						boolean nowExpanded=attachmentID==null || !item.status.expandedInlineAltAttachments.contains(attachmentID);
+						if(attachmentID!=null){
+							if(nowExpanded)
+								item.status.expandedInlineAltAttachments.add(attachmentID);
+							else
+								item.status.expandedInlineAltAttachments.remove(attachmentID);
+						}
+						applyCaptionExpansion(captionText, toggle, nowExpanded);
+						toggle.setVisibility(nowExpanded || isCaptionTruncated(captionText, att.description, 2) ? View.VISIBLE : View.GONE);
+					});
+					captions.addView(band);
+				}
+			}
+			captions.setVisibility(captions.getChildCount()>0 ? View.VISIBLE : View.GONE);
+		}
+
+		private void applyCaptionExpansion(TextView captionText, TextView toggle, boolean expanded){
+			captionText.setMaxLines(expanded ? Integer.MAX_VALUE : 2);
+			captionText.setEllipsize(expanded ? null : TextUtils.TruncateAt.END);
+			toggle.setText(expanded ? R.string.sk_collapse : R.string.sk_read_full_description);
+		}
+
+		// Bind-time measure, same approach as TextStatusDisplayItem's collapseLongPosts check:
+		// lay the text out at the caption's real width and compare line counts. Wraps (never
+		// clips) under font scaling because the band is wrap_content height in both states.
+		private boolean isCaptionTruncated(TextView captionText, String text, int maxLines){
+			int width=recyclerParent.getWidth()!=0 ? recyclerParent.getWidth() : item.fullWidth ? 4096 : 3072;
+			width-=wrapper.getPaddingStart()+wrapper.getPaddingEnd();
+			if(width<=0)
+				return false;
+			StaticLayout layout=StaticLayout.Builder.obtain(text, 0, text.length(), captionText.getPaint(), width)
+					.setAlignment(Layout.Alignment.ALIGN_NORMAL)
+					.setLineSpacing(captionText.getLineSpacingExtra(), captionText.getLineSpacingMultiplier())
+					.setIncludePad(false)
+					.build();
+			return layout.getLineCount()>maxLines;
 		}
 
 		public MediaGridLayout getLayout(){

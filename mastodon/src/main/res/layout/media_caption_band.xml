@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: G14 — inline image description ("The Caption Track"), one band per described attachment -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:orientation="vertical">
+
+	<TextView
+		android:id="@+id/caption_text"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:paddingHorizontal="12dp"
+		android:paddingTop="6dp"
+		android:textAppearance="@style/m3_body_small"
+		android:textColor="?colorM3OnSurfaceVariant"
+		android:maxLines="2"
+		android:ellipsize="end" />
+
+	<!-- Visible whenever the description does not fit the clamped caption — never truncate silently -->
+	<TextView
+		android:id="@+id/caption_toggle"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:paddingHorizontal="12dp"
+		android:paddingTop="2dp"
+		android:paddingBottom="6dp"
+		android:textAppearance="@style/m3_label_medium"
+		android:textColor="?colorM3Primary"
+		android:text="@string/sk_read_full_description"
+		android:visibility="gone" />
+
+</LinearLayout>
