@@ -18,6 +18,11 @@ public interface HasAccountID {
 		return getInstance().map(Instance::isAkkoma).orElse(false);
 	}
 
+	// MAMMUT: port from upstream master
+	default boolean isInstanceIceshrimp() {
+		return getInstance().map(Instance::isIceshrimp).orElse(false);
+	}
+
 	default boolean isInstancePixelfed() {
 		return getInstance().map(Instance::isPixelfed).orElse(false);
 	}

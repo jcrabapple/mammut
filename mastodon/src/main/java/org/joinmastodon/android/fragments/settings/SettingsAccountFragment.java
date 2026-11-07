@@ -52,6 +52,8 @@ public class SettingsAccountFragment extends BaseSettingsFragment<Void>{
 		items.add(new ListItem<>(R.string.settings_filters, 0, R.drawable.ic_filter_alt_24px, this::onFiltersClick));
 		items.add(new ListItem<>(R.string.settings_notifications, 0, R.drawable.ic_notifications_24px, this::onNotificationsClick));
 		items.add(new ListItem<>(R.string.settings_posting_defaults, 0, R.drawable.ic_edit_square_24px, this::onPostingDefaultsClick));
+		// MAMMUT: port from upstream master
+		items.add(new ListItem<>(R.string.sk_settings_instance, 0, R.drawable.ic_fluent_server_24_regular, this::onInstanceClick));
 
 		items.add(new SectionHeaderListItem(account.domain));
 		items.add(new ListItem<>(getString(R.string.settings_about_this_server), getString(R.string.settings_server_explanation), R.drawable.ic_dns_24px, this::onServerClick));
@@ -136,6 +138,13 @@ public class SettingsAccountFragment extends BaseSettingsFragment<Void>{
 
 	private void onPostingDefaultsClick(ListItem<?> item_){
 		Nav.go(getActivity(), SettingsPostingDefaultsFragment.class, makeFragmentArgs());
+	}
+
+	// MAMMUT: port from upstream master
+	private void onInstanceClick(ListItem<?> item_){
+		Bundle args=new Bundle();
+		args.putString("account", accountID);
+		Nav.go(getActivity(), SettingsInstanceFragment.class, args);
 	}
 
 	private void onServerClick(ListItem<?> item_){
