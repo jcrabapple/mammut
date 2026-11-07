@@ -42,4 +42,6 @@
 	<item name="menu_add_timeline" type="id" />
 	<item name="menu_back" type="id" />
 	<item name="menu_add_local_timelines" type="id" />
+	<!-- MAMMUT: FAB navigation -->
+	<item name="nav_toolbar_avatar" type="id" />
 </resources>

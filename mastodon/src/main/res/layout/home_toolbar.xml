@@ -2,6 +2,15 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
 	android:layout_width="match_parent"
 	android:layout_height="match_parent">
+	<ImageButton
+		android:id="@+id/toolbar_avatar"
+		android:layout_width="40dp"
+		android:layout_height="40dp"
+		android:layout_gravity="center_vertical|start"
+		android:layout_marginStart="4dp"
+		android:background="@drawable/bg_round_ripple"
+		android:scaleType="centerCrop"
+		android:contentDescription="@string/my_profile"/>
     <LinearLayout
 		android:id="@+id/switcher_btn"
 		style="@style/Widget.Mastodon.M3.Button.Text"
@@ -9,7 +18,7 @@
 		android:layout_width="wrap_content"
 		android:layout_height="match_parent"
 		android:layout_gravity="center_vertical|start"
-		android:layout_marginStart="4dp"
+		android:layout_marginStart="48dp"
 		android:minWidth="48dp"
 		android:tooltipText="@string/sk_switch_timeline"
 		android:paddingStart="12dp"
@@ -32,14 +41,26 @@
 				android:layout_gravity="center_vertical"
 				android:src="@drawable/ic_fluent_chevron_down_16_filled"
 				android:visibility="gone"/>
-			<TextView
-				style="@style/action_bar_title"
-				android:id="@+id/timeline_title"
+			<LinearLayout
 				android:layout_width="wrap_content"
 				android:layout_height="wrap_content"
 				android:layout_marginStart="16dp"
-				android:drawablePadding="8dp"
-				android:drawableEnd="@drawable/ic_fluent_chevron_down_16_filled"/>
+				android:orientation="vertical">
+				<TextView
+					style="@style/action_bar_title"
+					android:id="@+id/timeline_title"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:drawablePadding="8dp"
+					android:drawableEnd="@drawable/ic_fluent_chevron_down_16_filled"/>
+				<TextView
+					android:id="@+id/timeline_subtitle"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:textAppearance="@style/m3_label_medium"
+					android:textColor="?colorM3OnSurfaceVariant"
+					android:visibility="gone"/>
+			</LinearLayout>
 		</FrameLayout>
 	</LinearLayout>
 	<FrameLayout

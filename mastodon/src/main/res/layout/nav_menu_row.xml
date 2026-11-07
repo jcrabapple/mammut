@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:minHeight="48dp"
+	android:layout_marginTop="2dp"
+	android:layout_marginBottom="2dp"
+	android:orientation="horizontal"
+	android:gravity="center_vertical"
+	android:paddingStart="16dp"
+	android:paddingEnd="16dp"
+	android:background="@drawable/bg_nav_menu_row"
+	android:clickable="true"
+	android:focusable="true">
+
+	<View
+		android:id="@+id/selection_bar"
+		android:layout_width="3dp"
+		android:layout_height="20dp"
+		android:layout_marginEnd="12dp"
+		android:background="@drawable/bg_nav_menu_selection_bar"
+		android:visibility="gone"/>
+
+	<ImageView
+		android:id="@+id/icon"
+		android:layout_width="24dp"
+		android:layout_height="24dp"
+		android:layout_marginEnd="12dp"
+		android:scaleType="center"
+		android:importantForAccessibility="no"
+		android:tint="@color/nav_menu_row_icon"
+		tools:src="@drawable/ic_nav_home_24"/>
+
+	<TextView
+		android:id="@+id/label"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_weight="1"
+		android:textAppearance="@style/m3_label_large"
+		android:textColor="@color/nav_menu_row_label"
+		android:maxLines="2"
+		android:ellipsize="none"
+		tools:text="Federated"/>
+
+	<TextView
+		android:id="@+id/badge"
+		android:layout_width="wrap_content"
+		android:layout_height="20dp"
+		android:layout_marginStart="8dp"
+		android:minWidth="20dp"
+		android:paddingHorizontal="5dp"
+		android:gravity="center"
+		android:background="@drawable/bg_nav_menu_row_badge"
+		android:textAppearance="@style/m3_label_small"
+		android:textColor="?colorM3OnPrimaryContainer"
+		android:includeFontPadding="false"
+		android:visibility="gone"
+		tools:text="3"/>
+</LinearLayout>

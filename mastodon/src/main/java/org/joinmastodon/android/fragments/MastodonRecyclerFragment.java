@@ -32,6 +32,14 @@ public abstract class MastodonRecyclerFragment<T> extends BaseRecyclerFragment<T
 		super(layout, perPage);
 	}
 
+	/**
+	 * MAMMUT: the FAB navigation's scroll rule needs access to the list even from
+	 * outside the fragment hierarchy (e.g. from HomeFragment).
+	 */
+	public androidx.recyclerview.widget.RecyclerView getList(){
+		return list;
+	}
+
 	protected List<View> getViewsForElevationEffect(){
 		Toolbar toolbar=getToolbar();
 		return toolbar!=null ? Collections.singletonList(toolbar) : Collections.emptyList();

@@ -1,6 +1,5 @@
 package org.joinmastodon.android.fragments;
 
-import android.annotation.SuppressLint;
 import android.app.Fragment;
 import android.app.NotificationManager;
 import android.app.assist.AssistContent;
@@ -9,70 +8,46 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewTreeObserver;
 import android.view.WindowInsets;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.TextView;
 
 import com.squareup.otto.Subscribe;
 
-import org.joinmastodon.android.BuildConfig;
 import org.joinmastodon.android.E;
 import org.joinmastodon.android.PushNotificationReceiver;
 import org.joinmastodon.android.R;
-import org.joinmastodon.android.api.requests.notifications.GetNotificationsV1;
-import org.joinmastodon.android.api.requests.notifications.GetUnreadNotificationsCount;
-import org.joinmastodon.android.api.session.AccountSession;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.events.NotificationsMarkerUpdatedEvent;
 import org.joinmastodon.android.events.StatusDisplaySettingsChangedEvent;
-import org.joinmastodon.android.fragments.discover.DiscoverFragment;
-import org.joinmastodon.android.fragments.onboarding.OnboardingFollowSuggestionsFragment;
-import org.joinmastodon.android.model.Account;
-import org.joinmastodon.android.model.Instance;
-import org.joinmastodon.android.model.Notification;
-import org.joinmastodon.android.model.NotificationType;
-import org.joinmastodon.android.ui.OutlineProviders;
-import org.joinmastodon.android.ui.sheets.AccountSwitcherSheet;
-import org.joinmastodon.android.ui.utils.UiUtils;
-import org.joinmastodon.android.ui.views.TabBar;
-import org.joinmastodon.android.utils.ObjectIdComparator;
-import org.joinmastodon.android.GlobalUserPreferences;
-import org.parceler.Parcels;
+import org.joinmastodon.android.fragments.discover.FederatedTimelineFragment;
+import org.joinmastodon.android.fragments.discover.LocalTimelineFragment;
+import org.joinmastodon.android.ui.NavDestination;
+import org.joinmastodon.android.ui.NavMenuController;
+import org.joinmastodon.android.ui.utils.NavToolbarUtils;
+import org.joinmastodon.android.ui.utils.UnreadNotificationCounter;
 
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
-
-import androidx.annotation.IdRes;
 import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.RecyclerView;
 import me.grishka.appkit.FragmentStackActivity;
 import me.grishka.appkit.Nav;
-import me.grishka.appkit.api.Callback;
-import me.grishka.appkit.api.ErrorResponse;
 import me.grishka.appkit.fragments.AppKitFragment;
 import me.grishka.appkit.fragments.LoaderFragment;
-import me.grishka.appkit.imageloader.ViewImageLoader;
-import me.grishka.appkit.imageloader.requests.UrlImageLoaderRequest;
-import me.grishka.appkit.utils.V;
 import me.grishka.appkit.views.FragmentRootLinearLayout;
 
-public class HomeFragment extends AppKitFragment implements AssistContentProviderFragment, HasAccountID {
+public class HomeFragment extends AppKitFragment implements AssistContentProviderFragment, HasAccountID, NavMenuController.Host{
 	private FragmentRootLinearLayout content;
+	private FrameLayout mainContainer;
 	private HomeTabFragment homeTabFragment;
+	private LocalTimelineFragment localTimelineFragment;
+	private FederatedTimelineFragment federatedTimelineFragment;
 	private NotificationsListFragment notificationsFragment;
-	private DiscoverFragment searchFragment;
-	private ProfileFragment profileFragment;
-	private TabBar tabBar;
-	private View tabBarWrap;
-	private ImageView tabBarAvatar;
-	@IdRes
-	private int currentTab=R.id.tab_home;
-	private TextView notificationsBadge;
+	private NavMenuController navMenuController;
+	private NavDestination currentDestination=NavDestination.HOME;
+	private boolean backCallbackRegistered;
 
 	private String accountID;
+
+	private final Runnable backCallback=this::onBackPressedInternal;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState){
@@ -83,6 +58,15 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.N)
 			setRetainInstance(true);
 
+		navMenuController=new NavMenuController(this);
+
+		if(savedInstanceState!=null && savedInstanceState.containsKey("selectedDestination")){
+			currentDestination=NavDestination.valueOf(savedInstanceState.getString("selectedDestination"));
+		}else if("notifications".equals(getArguments().getString("tab"))){
+			// MainActivity notification-tap entry point
+			currentDestination=NavDestination.NOTIFICATIONS;
+		}
+
 		if(savedInstanceState==null){
 			Bundle args=new Bundle();
 			args.putString("account", accountID);
@@ -90,15 +74,12 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 			homeTabFragment.setArguments(args);
 			args=new Bundle(args);
 			args.putBoolean("noAutoLoad", true);
-			searchFragment=new DiscoverFragment();
-			searchFragment.setArguments(args);
+			localTimelineFragment=new LocalTimelineFragment();
+			localTimelineFragment.setArguments(new Bundle(args));
+			federatedTimelineFragment=new FederatedTimelineFragment();
+			federatedTimelineFragment.setArguments(new Bundle(args));
 			notificationsFragment=new NotificationsListFragment();
-			notificationsFragment.setArguments(args);
-			args=new Bundle(args);
-			args.putParcelable("profileAccount", Parcels.wrap(AccountSessionManager.getInstance().getAccount(accountID).self));
-			args.putBoolean("noAutoLoad", true);
-			profileFragment=new ProfileFragment();
-			profileFragment.setArguments(args);
+			notificationsFragment.setArguments(new Bundle(args));
 		}
 
 		E.register(this);
@@ -114,58 +95,33 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	@Override
 	public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState){
 		content=new FragmentRootLinearLayout(getActivity());
-		content.setOrientation(LinearLayout.VERTICAL);
+		content.setOrientation(FragmentRootLinearLayout.VERTICAL);
+
+		mainContainer=new FrameLayout(getActivity());
+		content.addView(mainContainer, new FragmentRootLinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
 		FrameLayout fragmentContainer=new FrameLayout(getActivity());
 		fragmentContainer.setId(me.grishka.appkit.R.id.fragment_wrap);
-		content.addView(fragmentContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-
-		inflater.inflate(R.layout.tab_bar, content);
-		tabBar=content.findViewById(R.id.tabbar);
-		tabBar.setListeners(this::onTabSelected, this::onTabLongClick);
-		tabBarWrap=content.findViewById(R.id.tabbar_wrap);
-
-		// MAMMUT: port from upstream master — optionally hide the tab bar labels
-		if(!GlobalUserPreferences.showNavigationLabels){
-			for(int tabId:new int[]{R.id.tab_home, R.id.tab_search, R.id.tab_notifications, R.id.tab_profile}){
-				View tab=tabBar.findViewById(tabId);
-				View label=tab==null ? null : tab.findViewById(R.id.label);
-				if(label!=null)
-					label.setVisibility(View.GONE);
-			}
-		}
-
-		tabBarAvatar=tabBar.findViewById(R.id.tab_profile_ava);
-		tabBarAvatar.setOutlineProvider(OutlineProviders.OVAL);
-		tabBarAvatar.setClipToOutline(true);
-		Account self=AccountSessionManager.getInstance().getAccount(accountID).self;
-		ViewImageLoader.loadWithoutAnimation(tabBarAvatar, null, new UrlImageLoaderRequest(self.avatar, V.dp(24), V.dp(24)));
-
-		notificationsBadge=tabBar.findViewById(R.id.notifications_badge);
-		notificationsBadge.setVisibility(View.GONE);
+		mainContainer.addView(fragmentContainer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
 		if(savedInstanceState==null){
+			Fragment current=fragmentForDestination(currentDestination);
 			getChildFragmentManager().beginTransaction()
 					.add(me.grishka.appkit.R.id.fragment_wrap, homeTabFragment)
-					.add(me.grishka.appkit.R.id.fragment_wrap, searchFragment).hide(searchFragment)
+					.add(me.grishka.appkit.R.id.fragment_wrap, localTimelineFragment).hide(localTimelineFragment)
+					.add(me.grishka.appkit.R.id.fragment_wrap, federatedTimelineFragment).hide(federatedTimelineFragment)
 					.add(me.grishka.appkit.R.id.fragment_wrap, notificationsFragment).hide(notificationsFragment)
-					.add(me.grishka.appkit.R.id.fragment_wrap, profileFragment).hide(profileFragment)
+					.show(current)
 					.commit();
-
-			String defaultTab=getArguments().getString("tab");
-			if("notifications".equals(defaultTab)){
-				tabBar.selectTab(R.id.tab_notifications);
-				fragmentContainer.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener(){
-					@Override
-					public boolean onPreDraw(){
-						fragmentContainer.getViewTreeObserver().removeOnPreDrawListener(this);
-						onTabSelected(R.id.tab_notifications);
-						return true;
-					}
-				});
-			}
+			maybeTriggerLoading(current);
 		}
-		tabBar.selectTab(currentTab);
+
+		navMenuController.attach(mainContainer);
+		navMenuController.setDestination(currentDestination);
+		// Re-point the scroll rule whenever the home pager flips to another timeline
+		homeTabFragment.addPageChangeListener(this::updateScrollTarget);
+		content.post(this::updateScrollTarget);
+		updateBackCallback();
 
 		return content;
 	}
@@ -174,103 +130,105 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	public void onViewStateRestored(Bundle savedInstanceState){
 		super.onViewStateRestored(savedInstanceState);
 
-		// MOSHIDON: we must restore the homeTabFragment
-		if(savedInstanceState==null /*|| homeTabFragment!=null*/)
+		// MOSHIDON: we must restore the child fragments
+		if(savedInstanceState==null)
 			return;
 		homeTabFragment=(HomeTabFragment) getChildFragmentManager().getFragment(savedInstanceState, "homeTabFragment");
-		searchFragment=(DiscoverFragment) getChildFragmentManager().getFragment(savedInstanceState, "searchFragment");
+		homeTabFragment.addPageChangeListener(this::updateScrollTarget);
+		localTimelineFragment=(LocalTimelineFragment) getChildFragmentManager().getFragment(savedInstanceState, "localTimelineFragment");
+		federatedTimelineFragment=(FederatedTimelineFragment) getChildFragmentManager().getFragment(savedInstanceState, "federatedTimelineFragment");
 		notificationsFragment=(NotificationsListFragment) getChildFragmentManager().getFragment(savedInstanceState, "notificationsFragment");
-		profileFragment=(ProfileFragment) getChildFragmentManager().getFragment(savedInstanceState, "profileFragment");
-		currentTab=savedInstanceState.getInt("selectedTab");
-		tabBar.selectTab(currentTab);
-		Fragment current=fragmentForTab(currentTab);
+		Fragment current=fragmentForDestination(currentDestination);
 		getChildFragmentManager().beginTransaction()
 				.hide(homeTabFragment)
-				.hide(searchFragment)
+				.hide(localTimelineFragment)
+				.hide(federatedTimelineFragment)
 				.hide(notificationsFragment)
-				.hide(profileFragment)
 				.show(current)
 				.commit();
 		maybeTriggerLoading(current);
+		content.post(this::updateScrollTarget);
 	}
 
 	@Override
 	public void onHiddenChanged(boolean hidden){
 		super.onHiddenChanged(hidden);
-		fragmentForTab(currentTab).onHiddenChanged(hidden);
+		fragmentForDestination(currentDestination).onHiddenChanged(hidden);
 	}
 
 	@Override
 	public boolean wantsLightStatusBar(){
-		return !UiUtils.isDarkTheme();
+		return !org.joinmastodon.android.ui.utils.UiUtils.isDarkTheme();
 	}
 
 	@Override
 	public boolean wantsLightNavigationBar(){
-		return !UiUtils.isDarkTheme();
+		return !org.joinmastodon.android.ui.utils.UiUtils.isDarkTheme();
 	}
 
 	@Override
 	public void onApplyWindowInsets(WindowInsets insets){
 		if(Build.VERSION.SDK_INT>=27){
-			int inset=insets.getSystemWindowInsetBottom();
-			tabBarWrap.setPadding(0, 0, 0, inset>0 ? Math.max(inset, V.dp(24)) : 0);
+			// MAMMUT: the tab bar is gone; the timelines extend to the bottom inset and
+			// the navigation FAB floats 16dp above it
+			navMenuController.setBottomInset(insets.getSystemWindowInsetBottom());
 			super.onApplyWindowInsets(insets.replaceSystemWindowInsets(insets.getSystemWindowInsetLeft(), 0, insets.getSystemWindowInsetRight(), 0));
 		}else{
 			super.onApplyWindowInsets(insets.replaceSystemWindowInsets(insets.getSystemWindowInsetLeft(), 0, insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom()));
 		}
 		WindowInsets topOnlyInsets=insets.replaceSystemWindowInsets(0, insets.getSystemWindowInsetTop(), 0, 0);
 		homeTabFragment.onApplyWindowInsets(topOnlyInsets);
-		searchFragment.onApplyWindowInsets(topOnlyInsets);
+		localTimelineFragment.onApplyWindowInsets(topOnlyInsets);
+		federatedTimelineFragment.onApplyWindowInsets(topOnlyInsets);
 		notificationsFragment.onApplyWindowInsets(topOnlyInsets);
-		profileFragment.onApplyWindowInsets(topOnlyInsets);
 	}
 
-	private Fragment fragmentForTab(@IdRes int tab){
-		if(tab==R.id.tab_home){
-			return homeTabFragment;
-		}else if(tab==R.id.tab_search){
-			return searchFragment;
-		}else if(tab==R.id.tab_notifications){
-			return notificationsFragment;
-		}else if(tab==R.id.tab_profile){
-			return profileFragment;
-		}
-		throw new IllegalArgumentException();
+	private Fragment fragmentForDestination(NavDestination destination){
+		return switch(destination){
+			case HOME -> homeTabFragment;
+			case LOCAL -> localTimelineFragment;
+			case FEDERATED -> federatedTimelineFragment;
+			case NOTIFICATIONS -> notificationsFragment;
+		};
 	}
 
-	public void setCurrentTab(@IdRes int tab){
-		if(tab==currentTab)
-			return;
-		tabBar.selectTab(tab);
-		onTabSelected(tab);
-	}
-
-	private void onTabSelected(@IdRes int tab){
-		Fragment newFragment=fragmentForTab(tab);
-
-		// MOSHIDON: // MAMMUT: port from upstream master — only when the preference allows it
-		if(tab==R.id.tab_search && R.id.tab_search==currentTab && GlobalUserPreferences.doubleTapToSearch){
-			searchFragment.openSearch();
-		}
-
-		if(tab==currentTab){
-			if(newFragment instanceof ScrollableToTop scrollable)
+	/**
+	 * Switches the visible root destination. Used by the navigation FAB menu and by
+	 * MainActivity/AccountSwitcherSheet entry points.
+	 */
+	public void setDestination(NavDestination destination){
+		if(destination==currentDestination){
+			navMenuController.closeMenu();
+			Fragment current=fragmentForDestination(currentDestination);
+			if(current instanceof ScrollableToTop scrollable)
 				scrollable.scrollToTop();
 			return;
 		}
-		getChildFragmentManager().beginTransaction().hide(fragmentForTab(currentTab)).show(newFragment).commit();
+		navMenuController.closeMenu();
+		Fragment current=fragmentForDestination(currentDestination);
+		Fragment newFragment=fragmentForDestination(destination);
+		getChildFragmentManager().beginTransaction().hide(current).show(newFragment).commit();
 		maybeTriggerLoading(newFragment);
-		currentTab=tab;
+		currentDestination=destination;
+		navMenuController.setDestination(destination);
+		navMenuController.showFab();
+		updateScrollTarget();
+		updateBackCallback();
 		((FragmentStackActivity)getActivity()).invalidateSystemBarColors(this);
+	}
+
+	/**
+	 * Opens the signed-in user's profile, the entry point that replaced the old
+	 * profile tab (the avatar in the top app bar and the account switcher sheet).
+	 */
+	public void openSelfProfile(){
+		NavToolbarUtils.openSelfProfile(getActivity(), accountID);
 	}
 
 	private void maybeTriggerLoading(Fragment newFragment){
 		if(newFragment instanceof LoaderFragment lf){
 			if(!lf.loaded && !lf.dataLoading)
 				lf.loadData();
-		}else if(newFragment instanceof DiscoverFragment){
-			((DiscoverFragment) newFragment).loadData();
 		}
 		if(newFragment instanceof NotificationsListFragment){
 			NotificationManager nm=getActivity().getSystemService(NotificationManager.class);
@@ -278,124 +236,78 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		}
 	}
 
-	private boolean onTabLongClick(@IdRes int tab){
-		if(tab==R.id.tab_search){
-			if(currentTab!=R.id.tab_search){
-				// MOSHIDON: I don't know why using setCurrentTab leads to visual glitches
-				// when initially loading the fragment. This solves it somehow
-				onTabSelected(R.id.tab_search);
-				tabBar.selectTab(R.id.tab_search);
-			}
-			searchFragment.openSearch();
-			return true;
-		}
+	private void updateScrollTarget(){
+		if(navMenuController==null || !isAdded())
+			return;
+		Fragment f=fragmentForDestination(currentDestination);
+		if(f==homeTabFragment)
+			f=homeTabFragment.getCurrentFragment();
+		RecyclerView target=null;
+		if(f instanceof MastodonRecyclerFragment<?> mrf)
+			target=mrf.getList();
+		navMenuController.setScrollTarget(target);
+	}
 
-		if(tab==R.id.tab_profile){
-			ArrayList<String> options=new ArrayList<>();
-			for(AccountSession session:AccountSessionManager.getInstance().getLoggedInAccounts()){
-				options.add(session.self.displayName+"\n("+session.self.username+"@"+session.domain+")");
-			}
-			new AccountSwitcherSheet(getActivity(), this).show();
-			return true;
+	private void onBackPressedInternal(){
+		if(navMenuController.isMenuOpen()){
+			navMenuController.closeMenu();
+		}else if(currentDestination!=NavDestination.HOME){
+			setDestination(NavDestination.HOME);
 		}
-		if(tab==R.id.tab_home && BuildConfig.DEBUG){
-			Bundle args=new Bundle();
-			args.putString("account", accountID);
-			Nav.go(getActivity(), OnboardingFollowSuggestionsFragment.class, args);
+		updateBackCallback();
+	}
+
+	private void updateBackCallback(){
+		boolean active=navMenuController!=null && (navMenuController.isMenuOpen() || currentDestination!=NavDestination.HOME);
+		if(active && !backCallbackRegistered){
+			addBackCallback(backCallback);
+			backCallbackRegistered=true;
+		}else if(!active && backCallbackRegistered){
+			removeBackCallback(backCallback);
+			backCallbackRegistered=false;
 		}
-		return false;
+	}
+
+	@Override
+	public void onNavDestinationSelected(NavDestination destination){
+		setDestination(destination);
+	}
+
+	@Override
+	public void onNavComposeSelected(){
+		navMenuController.closeMenu();
+		Bundle args=new Bundle();
+		args.putString("account", accountID);
+		Nav.go(getActivity(), ComposeFragment.class, args);
+	}
+
+	@Override
+	public void onNavMenuOpenChanged(boolean open){
+		updateBackCallback();
 	}
 
 	@Override
 	public void onSaveInstanceState(Bundle outState){
 		super.onSaveInstanceState(outState);
-		outState.putInt("selectedTab", currentTab);
+		outState.putString("selectedDestination", currentDestination.name());
 
 		// MOSHIDON: we use the isAdded because of user themes
-		if (homeTabFragment.isAdded()) getChildFragmentManager().putFragment(outState, "homeTabFragment", homeTabFragment);
-
-		if (searchFragment.isAdded()) getChildFragmentManager().putFragment(outState, "searchFragment", searchFragment);
-
-		if (notificationsFragment.isAdded()) getChildFragmentManager().putFragment(outState, "notificationsFragment", notificationsFragment);
-
-		if (profileFragment.isAdded()) getChildFragmentManager().putFragment(outState, "profileFragment", profileFragment);
+		if(homeTabFragment.isAdded()) getChildFragmentManager().putFragment(outState, "homeTabFragment", homeTabFragment);
+		if(localTimelineFragment.isAdded()) getChildFragmentManager().putFragment(outState, "localTimelineFragment", localTimelineFragment);
+		if(federatedTimelineFragment.isAdded()) getChildFragmentManager().putFragment(outState, "federatedTimelineFragment", federatedTimelineFragment);
+		if(notificationsFragment.isAdded()) getChildFragmentManager().putFragment(outState, "notificationsFragment", notificationsFragment);
 	}
 
 	@Override
 	protected void onShown(){
 		super.onShown();
 		reloadNotificationsForUnreadCount();
+		navMenuController.showFab();
+		updateScrollTarget();
 	}
 
 	private void reloadNotificationsForUnreadCount(){
-		Instance instance=AccountSessionManager.get(accountID).getInstanceInfo();
-		if(instance==null)
-			return;
-		if(instance.getApiVersion()>=2){
-			new GetUnreadNotificationsCount(EnumSet.allOf(NotificationType.class), NotificationType.getGroupableTypes())
-					.setCallback(new Callback<>(){
-						@Override
-						public void onSuccess(GetUnreadNotificationsCount.Response result){
-							updateUnreadNotificationsBadge(result.count, false);
-						}
-
-						@Override
-						public void onError(ErrorResponse error){
-
-						}
-					})
-					.exec(accountID);
-		}else{
-			List<Notification>[] notifications=new List[]{null};
-			String[] marker={null};
-			AccountSessionManager.get(accountID).reloadNotificationsMarker(m->{
-				marker[0]=m;
-				if(notifications[0]!=null){
-					updateUnreadCountV1(notifications[0], marker[0]);
-				}
-			});
-
-			new GetNotificationsV1(null, 40, EnumSet.allOf(NotificationType.class))
-					.setCallback(new Callback<>(){
-						@Override
-						public void onSuccess(List<Notification> result){
-							notifications[0]=result;
-							if(marker[0]!=null)
-								updateUnreadCountV1(notifications[0], marker[0]);
-						}
-
-						@Override
-						public void onError(ErrorResponse error){}
-					}).exec(accountID);
-		}
-	}
-
-	@SuppressLint("DefaultLocale")
-	private void updateUnreadCountV1(List<Notification> notifications, String marker){
-		if(notifications.isEmpty() || ObjectIdComparator.INSTANCE.compare(notifications.get(0).id, marker)<=0){
-			updateUnreadNotificationsBadge(0, false);
-		}else{
-			if(ObjectIdComparator.INSTANCE.compare(notifications.get(notifications.size()-1).id, marker)>0){
-				updateUnreadNotificationsBadge(notifications.size(), true);
-			}else{
-				int count=0;
-				for(Notification n:notifications){
-					if(n.id.equals(marker))
-						break;
-					count++;
-				}
-				updateUnreadNotificationsBadge(count, false);
-			}
-		}
-	}
-
-	private void updateUnreadNotificationsBadge(int count, boolean more){
-		if(count==0){
-			notificationsBadge.setVisibility(View.GONE);
-		}else{
-			notificationsBadge.setVisibility(View.VISIBLE);
-			notificationsBadge.setText(String.format(more ? "%d+" : "%d", count));
-		}
+		UnreadNotificationCounter.load(accountID, (count, more)->navMenuController.setUnreadCount(count, more));
 	}
 
 	@Subscribe
@@ -403,29 +315,25 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		if(!ev.accountID.equals(accountID))
 			return;
 		if(ev.clearUnread)
-			notificationsBadge.setVisibility(View.GONE);
+			navMenuController.setUnreadCount(0, false);
 	}
 
 	@Subscribe
 	public void onStatusDisplaySettingsChanged(StatusDisplaySettingsChangedEvent ev){
 		if(!ev.accountID.equals(accountID))
 			return;
-
-		// FIXME: figure this out
-//		if(homeTabFragment.loaded)
-//			homeTabFragment.rebuildAllDisplayItems();
 		if(notificationsFragment.loaded)
 			notificationsFragment.rebuildAllDisplayItems();
 	}
 
 	@Override
-	public String getAccountID() {
+	public String getAccountID(){
 		return accountID;
 	}
 
 	@Override
 	public void onProvideAssistContent(AssistContent content){
-		if(fragmentForTab(currentTab) instanceof AssistContentProviderFragment provider){
+		if(fragmentForDestination(currentDestination) instanceof AssistContentProviderFragment provider){
 			provider.onProvideAssistContent(content);
 		}
 	}

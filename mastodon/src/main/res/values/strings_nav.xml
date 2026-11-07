@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- MAMMUT: FAB navigation -->
+	<string name="nav_menu_fab">Navigation menu</string>
+	<string name="nav_state_closed">Navigation menu, closed</string>
+	<string name="nav_state_open">Navigation menu, open</string>
+	<plurals name="nav_unread_notifications">
+		<item quantity="one">%d unread notification</item>
+		<item quantity="other">%d unread notifications</item>
+	</plurals>
+	<string name="nav_destination_home">Home</string>
+	<string name="nav_destination_local">Local</string>
+	<string name="nav_destination_federated">Federated</string>
+	<string name="nav_subtitle_home">Your timeline</string>
+	<string name="nav_subtitle_local">This server</string>
+	<string name="nav_subtitle_federated">The known fediverse</string>
+	<string name="nav_subtitle_notifications">Mentions &amp; activity</string>
+	<string name="nav_thread">Thread</string>
+	<string name="nav_subtitle_thread_origin">From %s</string>
+	<string name="nav_cd_home_timeline">Home timeline</string>
+	<string name="nav_cd_local_timeline">Local timeline</string>
+	<string name="nav_cd_federated_timeline">Federated timeline</string>
+	<string name="nav_cd_compose">Compose new post</string>
+	<plurals name="nav_cd_notifications_unread">
+		<item quantity="one">Notifications, %d unread</item>
+		<item quantity="other">Notifications, %d unread</item>
+	</plurals>
+</resources>

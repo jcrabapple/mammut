@@ -37,6 +37,7 @@ import org.joinmastodon.android.ui.M3AlertDialogBuilder;
 import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.adapters.GenericListItemsAdapter;
 import org.joinmastodon.android.ui.displayitems.StatusDisplayItem;
+import org.joinmastodon.android.ui.utils.NavToolbarUtils;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.viewcontrollers.GenericListItemsViewController;
 import org.joinmastodon.android.ui.views.NestedRecyclerScrollView;
@@ -103,6 +104,8 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 	public void onAttach(Activity activity){
 		super.onAttach(activity);
 		setTitle(R.string.notifications);
+		// MAMMUT: supporting line under the destination title
+		setSubtitle(R.string.nav_subtitle_notifications);
 	}
 
 	@Override
@@ -205,6 +208,10 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 				}
 			}
 		}, 0);
+
+		// MAMMUT: root destinations carry the avatar/account-switcher entry point
+		if(getParentFragment() instanceof HomeFragment)
+			NavToolbarUtils.addAvatarButton(getActivity(), getToolbar(), getParentFragment(), accountID);
 	}
 
 	@Override
@@ -263,6 +270,9 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 	@Override
 	public void onCreateOptionsMenu(Menu menu, MenuInflater inflater){
 		inflater.inflate(R.menu.notifications, menu);
+		// MAMMUT: search entry point for the notifications root destination
+		if(getParentFragment() instanceof HomeFragment)
+			inflater.inflate(R.menu.nav_toolbar, menu);
 		markAllReadItem=menu.findItem(R.id.mark_all_read);
 		MenuItem filters=menu.findItem(R.id.filters);
 		filters.setVisible(lastPolicy!=null);
@@ -281,6 +291,11 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item){
 		int id=item.getItemId();
+		if(id==R.id.nav_search){
+			// MAMMUT: search entry point moved into the top app bar
+			NavToolbarUtils.openDiscover(getActivity(), accountID);
+			return true;
+		}
 		if(id==R.id.mark_all_read){
 			markAsRead(true);
 			resetUnreadBackground();

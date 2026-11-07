@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<org.joinmastodon.android.ui.views.NavMenuView xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent"
+	android:focusable="false">
+
+	<View
+		android:id="@+id/scrim"
+		android:layout_width="match_parent"
+		android:layout_height="match_parent"
+		android:background="#000"
+		android:alpha="0"
+		android:visibility="gone"/>
+
+	<FrameLayout
+		android:id="@+id/anchor"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_gravity="bottom|end"
+		android:layout_marginEnd="16dp"
+		android:layout_marginBottom="16dp"
+		android:clipChildren="false"
+		android:clipToPadding="false">
+
+		<ScrollView
+			android:id="@+id/menu_scroller"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_gravity="bottom"
+			android:layout_marginBottom="68dp"
+			android:overScrollMode="never"
+			android:scrollbars="none"
+			android:visibility="gone">
+
+			<LinearLayout
+				android:id="@+id/menu_panel"
+				android:layout_width="216dp"
+				android:layout_height="wrap_content"
+				android:orientation="vertical"
+				android:padding="8dp"
+				android:background="@drawable/bg_nav_menu_panel"
+				android:elevation="3dp"/>
+		</ScrollView>
+
+		<FrameLayout
+			android:id="@+id/fab"
+			android:layout_width="56dp"
+			android:layout_height="56dp"
+			android:layout_gravity="bottom|end"
+			android:background="@drawable/bg_nav_fab"
+			android:elevation="3dp"
+			android:clickable="true"
+			android:focusable="true"
+			android:contentDescription="@string/nav_menu_fab">
+
+			<ImageView
+				android:id="@+id/fab_glyph_lines"
+				android:layout_width="24dp"
+				android:layout_height="24dp"
+				android:layout_gravity="center"
+				android:scaleType="center"
+				android:importantForAccessibility="no"
+				android:tint="@color/mammut_on_brand_fab"
+				android:src="@drawable/ic_nav_lines_24"/>
+
+			<ImageView
+				android:id="@+id/fab_glyph_close"
+				android:layout_width="24dp"
+				android:layout_height="24dp"
+				android:layout_gravity="center"
+				android:scaleType="center"
+				android:importantForAccessibility="no"
+				android:alpha="0"
+				android:tint="@color/mammut_on_brand_fab"
+				android:src="@drawable/ic_nav_close_24"/>
+		</FrameLayout>
+
+		<TextView
+			android:id="@+id/fab_badge"
+			android:layout_width="wrap_content"
+			android:layout_height="19dp"
+			android:layout_gravity="top|end"
+			android:minWidth="19dp"
+			android:paddingHorizontal="4dp"
+			android:layout_marginTop="-2dp"
+			android:layout_marginEnd="-2dp"
+			android:gravity="center"
+			android:background="@drawable/bg_nav_fab_badge"
+			android:textAppearance="@style/m3_label_small"
+			android:textColor="?colorM3OnPrimary"
+			android:includeFontPadding="false"
+			android:visibility="gone"
+			tools:ignore="RelativeOverlap"
+			tools:text="3"/>
+	</FrameLayout>
+</org.joinmastodon.android.ui.views.NavMenuView>
