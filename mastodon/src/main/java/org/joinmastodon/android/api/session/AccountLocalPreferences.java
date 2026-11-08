@@ -123,6 +123,9 @@ public class AccountLocalPreferences{
 
 	// MOSHIDON:
 	public enum ColorPreference{
+		// MAMMUT: the fork's own palette leads the list and is the default; the order here is
+		// the order the display settings show, so the theme this app is built around comes first.
+		MAMMUT,
 		MATERIAL3,
 		PURPLE,
 		PINK,
@@ -134,8 +137,7 @@ public class AccountLocalPreferences{
 		NORD,
 		WHITE,
 		// MAMMUT
-		TOKYO_NIGHT,
-		MAMMUT;
+		TOKYO_NIGHT;
 
 		public @StringRes int getName() {
 			return switch(this){

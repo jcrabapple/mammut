@@ -1,7 +1,7 @@
 package org.joinmastodon.android;
 
 import static org.joinmastodon.android.api.MastodonAPIController.gson;
-import static org.joinmastodon.android.api.session.AccountLocalPreferences.ColorPreference.MATERIAL3;
+import static org.joinmastodon.android.api.session.AccountLocalPreferences.ColorPreference.MAMMUT;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -123,7 +123,7 @@ public class GlobalUserPreferences{
 		overlayMedia=prefs.getBoolean("overlayMedia", false);
 		showSuicideHelp=prefs.getBoolean("showSuicideHelp", true);
 		underlinedLinks=prefs.getBoolean("underlinedLinks", true);
-		color=AccountLocalPreferences.ColorPreference.valueOf(prefs.getString("color", MATERIAL3.name()));
+		color=AccountLocalPreferences.ColorPreference.valueOf(prefs.getString("color", MAMMUT.name()));
 		likeIcon=prefs.getBoolean("likeIcon", false);
 		uniformNotificationIcon=prefs.getBoolean("uniformNotificationIcon", false);
 		showDividers =prefs.getBoolean("showDividers", false);

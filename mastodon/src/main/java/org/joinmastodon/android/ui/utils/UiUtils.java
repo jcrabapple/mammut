@@ -977,7 +977,7 @@ public class UiUtils{
 		});
 
 		AccountLocalPreferences prefs=session!=null ? session.getLocalPreferences() : null;
-		AccountLocalPreferences.ColorPreference color=prefs!=null ? prefs.getCurrentColor() : AccountLocalPreferences.ColorPreference.MATERIAL3;
+		AccountLocalPreferences.ColorPreference color=prefs!=null ? prefs.getCurrentColor() : AccountLocalPreferences.ColorPreference.MAMMUT;
 		ColorPalette palette = ColorPalette.palettes.get(color);
 		if (palette != null) palette.apply(context, theme);
 
