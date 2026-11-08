@@ -99,6 +99,13 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 	private ConversationChain chain;
 	private MenuItem unrollMenuItem;
 	private int savedFirstVisiblePosition=-1;
+	/** §5.4: a marker tap asks the conversation to open at a post; the restore runnable
+	 *  posted by setUnrollMode(false) would otherwise win and drop the reader back where
+	 *  they left the conversation.
+	 */
+	private String pendingConversationScrollId;
+	private final Runnable unrollBackCallback=()->setUnrollMode(false);
+	private boolean unrollBackRegistered;
 	private int savedFirstVisibleOffset=0;
 	private boolean highlightDecorationAdded=false;
 	private NewRepliesHighlightDecoration highlightDecoration=new NewRepliesHighlightDecoration();
@@ -585,6 +592,7 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			View first=list.getChildAt(0);
 			savedFirstVisibleOffset=first==null ? 0 : first.getTop();
 		}
+		updateUnrollBackCallback();
 		rebuildList();
 		updateSubtitle();
 		if(getActivity()!=null)
@@ -595,6 +603,11 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 				return;
 			if(unrollMode){
 				list.scrollToPosition(0);
+			}else if(pendingConversationScrollId!=null){
+				// §5.4: a marker tap names the post to open at; that beats the restore.
+				String id=pendingConversationScrollId;
+				pendingConversationScrollId=null;
+				scrollToStatusIn(displayItems, id);
 			}else if(savedFirstVisiblePosition>=0 && list.getLayoutManager() instanceof LinearLayoutManager llm){
 				llm.scrollToPositionWithOffset(savedFirstVisiblePosition, savedFirstVisibleOffset);
 			}
@@ -632,13 +645,43 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 	}
 
 	private void showInFullConversation(String statusID){
-		if(unrollMode)
+		if(unrollMode){
+			// Resolve the position in the conversation list, which setUnrollMode(false)
+			// rebuilds synchronously, and let its posted scroll do the moving.
+			pendingConversationScrollId=statusID;
 			setUnrollMode(false);
-		for(int i=0;i<displayItems.size();i++){
-			if(statusID.equals(displayItems.get(i).parentID)){
+		}else{
+			scrollToStatusIn(displayItems, statusID);
+		}
+	}
+
+	private void scrollToStatusIn(List<StatusDisplayItem> items, String statusID){
+		if(list==null)
+			return;
+		for(int i=0;i<items.size();i++){
+			if(statusID.equals(items.get(i).parentID)){
 				list.scrollToPosition(i);
 				return;
 			}
+		}
+	}
+
+	@Override
+	public void onDetach(){
+		if(unrollBackRegistered){
+			removeBackCallback(unrollBackCallback);
+			unrollBackRegistered=false;
+		}
+		super.onDetach();
+	}
+
+	private void updateUnrollBackCallback(){
+		if(unrollMode && !unrollBackRegistered){
+			addBackCallback(unrollBackCallback);
+			unrollBackRegistered=true;
+		}else if(!unrollMode && unrollBackRegistered){
+			removeBackCallback(unrollBackCallback);
+			unrollBackRegistered=false;
 		}
 	}
 
