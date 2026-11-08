@@ -1132,4 +1132,29 @@
 <string name="cancel_scheduled_post_action">Cancel post</string>
 <string name="keep">Keep</string>
 <string name="view">View</string>
+<!-- MAMMUT: Search operator chips (G11) -->
+<string name="search_chip_media">Media</string>
+<string name="search_chip_links">Links</string>
+<string name="search_chip_polls">Polls</string>
+<string name="search_chip_replies">Replies</string>
+<string name="search_chip_sensitive">Sensitive</string>
+<string name="search_chip_my_posts">My posts</string>
+<string name="search_chip_my_library">My library</string>
+<string name="search_chip_help">\?</string>
+<string name="search_chip_help_description">Search operator help</string>
+<string name="search_filters_need_keyword">Add a word to search with filters.</string>
+<string name="search_help_title">Search operators</string>
+<string name="search_help_group_filters">Filters</string>
+<string name="search_help_filters">has:image  has:video  has:audio  has:media\nhas:poll  has:link  has:embed\nis:reply  is:quote  is:sensitive</string>
+<string name="search_help_group_people">People</string>
+<string name="search_help_people">from:me\nfrom:@user@server</string>
+<string name="search_help_group_time">Time</string>
+<string name="search_help_time">before:YYYY-MM-DD\nafter:YYYY-MM-DD\nduring:YYYY-MM-DD</string>
+<string name="search_help_group_language">Language</string>
+<string name="search_help_language">language:en</string>
+<string name="search_help_group_scope">Scope</string>
+<string name="search_help_scope">in:library\nin:public</string>
+<string name="search_help_group_syntax">Syntax</string>
+<string name="search_help_syntax">\"exact phrase\"\n-word\n+word</string>
+<string name="search_help_keyword_rule">A filter without a word is rejected: cat has:media</string>
 </resources>
