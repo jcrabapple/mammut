@@ -80,23 +80,32 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 			public void onTabReselected(TabLayout.Tab tab){}
 		});
 		if(savedInstanceState==null){
-			Bundle args=new Bundle();
-			args.putString("account", accountID);
-			draftsPage=new DraftsPageFragment();
-			draftsPage.setArguments(args);
-			scheduledPage=new ScheduledPageFragment();
-			scheduledPage.setArguments(args);
-			getChildFragmentManager().beginTransaction()
-					.add(R.id.drafts_page_container, draftsPage, "drafts")
-					.add(R.id.drafts_page_container, scheduledPage, "scheduled")
-					.hide(scheduledPage)
-					.commit();
+			createPages();
 		}else{
 			draftsPage=(DraftsPageFragment) getChildFragmentManager().findFragmentByTag("drafts");
 			scheduledPage=(ScheduledPageFragment) getChildFragmentManager().findFragmentByTag("scheduled");
+			if(draftsPage==null || scheduledPage==null){
+				// The child fragments died without saved tags (retained parent)
+				// — rebuild the pages instead of rendering empty tabs (N1).
+				createPages();
+			}
 		}
 		visiblePage=draftsPage;
 		return view;
+	}
+
+	private void createPages(){
+		Bundle args=new Bundle();
+		args.putString("account", accountID);
+		draftsPage=new DraftsPageFragment();
+		draftsPage.setArguments(args);
+		scheduledPage=new ScheduledPageFragment();
+		scheduledPage.setArguments(args);
+		getChildFragmentManager().beginTransaction()
+				.add(R.id.drafts_page_container, draftsPage, "drafts")
+				.add(R.id.drafts_page_container, scheduledPage, "scheduled")
+				.hide(scheduledPage)
+				.commit();
 	}
 
 	private void showPage(int position){
@@ -128,6 +137,17 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 		public void onCreate(Bundle savedInstanceState){
 			super.onCreate(savedInstanceState);
 			accountID=getArguments().getString("account");
+		}
+
+		@Override
+		public void onResume(){
+			super.onResume();
+			// MAMMUT: Composer 2.0 (N1) — returning from the composer (or from
+			// a delete elsewhere) must not show stale rows: a deleted draft's
+			// row would still be listed and tappable. First creation loads in
+			// onCreateView instead, so this only fires on later visits.
+			if(loaded && list!=null)
+				loadDrafts();
 		}
 
 		@Override

@@ -1101,4 +1101,8 @@
 		<item quantity="one">%d media item</item>
 		<item quantity="other">%d media items</item>
 	</plurals>
+	<!-- MAMMUT: Composer 2.0 review fixes (M1/M2/M4) — honest failure and context surfaces -->
+	<string name="draft_save_failed">Couldn\'t save the draft. Your text is still in the composer.</string>
+	<string name="draft_context_lost_title">Reply or quote not restored</string>
+	<string name="draft_context_lost">This draft was saved as a reply or a quote, and that context can\'t be restored yet. Publishing it now will create a new top-level post. Your text and media are intact.</string>
 </resources>

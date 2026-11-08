@@ -17,4 +17,12 @@ public class Segment{
 	public List<DraftAttachment> attachments=new ArrayList<>();
 	/** Nullable, first segment only */
 	public PollDraft poll;
+	/**
+	 * MAMMUT: Composer 2.0 (§4) — the Idempotency-Key for this segment's
+	 * CreateStatus call. Generated once, when the segment is first
+	 * snapshotted into a draft, and persisted so a retry from the resumed
+	 * draft reuses it instead of minting a fresh key (a fresh key can
+	 * double-post the one failure §4 names).
+	 */
+	public String idempotencyKey;
 }

@@ -40,7 +40,6 @@ import androidx.annotation.Nullable;
 
 import org.joinmastodon.android.MastodonApp;
 import org.joinmastodon.android.R;
-import org.joinmastodon.android.TweakedFileProvider;
 import org.joinmastodon.android.api.MastodonAPIController;
 import org.joinmastodon.android.api.ProgressListener;
 import org.joinmastodon.android.api.requests.statuses.CreateStatus;
@@ -848,18 +847,34 @@ public class ComposeMediaViewController{
 	// a metadata suggestion.
 
 	/**
-	 * Builds the durable attachment list for a draft save. Attachments already
+	 * MAMMUT: Composer 2.0 (M5) — UI-thread snapshot of the attachment list.
+	 * The copy is made here, on the thread that owns the list, and passed
+	 * into the draft-save runnable; the worker thread then only touches the
+	 * snapshot, so it can never iterate the live list while the UI thread
+	 * adds or removes attachments.
+	 */
+	public List<DraftMediaAttachment> snapshotAttachments(){
+		return new ArrayList<>(attachments);
+	}
+
+	/**
+	 * Builds the durable attachment list for a draft save from a UI-thread
+	 * snapshot (see {@link #snapshotAttachments()}). Attachments already
 	 * copied into this draft directory on a previous save are reused; fresh
 	 * picker attachments are copied in via the shared store (§2: media is
-	 * copied in, never referenced). Must run on a background thread.
+	 * copied in, never referenced).
+	 * <p>
+	 * MAMMUT (M4): an attachment that cannot be persisted — no mime type, no
+	 * source to copy from, or a failed copy — fails the whole save with an
+	 * IOException. The draft is never saved with silently missing media, and
+	 * ComposeFragment surfaces the failure to the author (§6).
+	 * Must run on a background thread.
 	 */
-	public List<DraftAttachment> buildDraftAttachments(DraftStore store, String draftId){
+	public List<DraftAttachment> buildDraftAttachments(List<DraftMediaAttachment> snapshot, DraftStore store, String draftId) throws IOException{
 		List<DraftAttachment> result=new ArrayList<>();
-		// Iterate a copy: the UI thread may add or remove attachments while a
-		// big media copy from a previous save is still running.
-		for(DraftMediaAttachment att:new ArrayList<>(attachments)){
+		for(DraftMediaAttachment att:snapshot){
 			if(att.mimeType==null)
-				continue;
+				throw new IOException("attachment has no mime type to persist");
 			DraftAttachment da=new DraftAttachment();
 			da.mimeType=att.mimeType;
 			da.description=att.description;
@@ -867,15 +882,9 @@ public class ComposeMediaViewController{
 			if(existing!=null && new File(existing).exists()){
 				da.filePath=existing;
 			}else if(att.uri!=null){
-				try{
-					da.filePath=store.importMedia(draftId, att.uri, att.mimeType);
-					att.draftFilePath=da.filePath;
-				}catch(IOException x){
-					Log.w(TAG, "buildDraftAttachments: failed to copy "+att.uri, x);
-					continue;
-				}
+				da.filePath=store.importMedia(draftId, att.uri, att.mimeType);
 			}else{
-				continue;
+				throw new IOException("attachment has no source to copy from");
 			}
 			result.add(da);
 		}
@@ -885,12 +894,11 @@ public class ComposeMediaViewController{
 	/**
 	 * Re-adds an attachment from a resumed draft, queued for upload. The stored
 	 * description is the author's text, not a suggestion — this method never
-	 * runs the Caption Track metadata prefill. The file is served through the
-	 * app FileProvider as a content:// URI because the upload pipeline
-	 * (ContentUriRequestBody) queries OpenableColumns.SIZE, which only
-	 * content:// URIs answer; the prefill guard (content-scheme check in
-	 * prefillDescriptionFromMetadata) is not a risk since prefill is only
-	 * invoked from addMediaAttachment, never from here.
+	 * runs the Caption Track metadata prefill. The file stays a {@code file://}
+	 * URI: the upload pipeline reads it through the app's own resolver, so no
+	 * FileProvider (and no cross-account exposure of the drafts directory) is
+	 * needed — the request bodies stat {@code file://} URIs directly, and
+	 * ContentResolver.openInputStream serves them like any content URI.
 	 */
 	public void addRestoredAttachment(DraftAttachment da){
 		if(da.filePath==null)
@@ -898,8 +906,7 @@ public class ComposeMediaViewController{
 		File f=new File(da.filePath);
 		if(!f.exists())
 			return;
-		Uri uri=TweakedFileProvider.getUriForFile(fragment.getActivity(),
-				fragment.getActivity().getPackageName()+".fileprovider", f);
+		Uri uri=Uri.fromFile(f);
 		DraftMediaAttachment draft=new DraftMediaAttachment();
 		draft.uri=uri;
 		draft.draftFilePath=da.filePath;
@@ -966,7 +973,7 @@ public class ComposeMediaViewController{
 	}
 
 	@Parcel
-	static class DraftMediaAttachment{
+	public static class DraftMediaAttachment{
 		public Attachment serverAttachment;
 		public Uri uri;
 		public transient UploadAttachment uploadRequest;

@@ -22,6 +22,8 @@ public class ComposeDraft{
 	public long updatedAt;
 	/** Nullable: the id of the post this draft replies to */
 	public String replyToStatusId;
+	/** Nullable: the id of the post this draft quotes */
+	public String quotedStatusId;
 	/** Applies to the whole draft; per-segment visibility does not exist (§6) */
 	public StatusPrivacy visibility;
 	public List<Segment> segments=new ArrayList<>();
