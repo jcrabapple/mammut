@@ -121,7 +121,8 @@ previous one gets at publish time.
 **Result.** On success: snackbar **"Scheduled for Sat 9:00 PM"** with a **View** action that opens the
 Scheduled tab. The composer closes and the draft is deleted — the server now owns that text.
 
-**Scheduled tab.** Rows from `GET /api/v1/scheduled_statuses`, newest scheduled time first, showing the
+**Scheduled tab.** Rows from `GET /api/v1/scheduled_statuses`, soonest scheduled time first (the next
+thing to go out belongs at the top), showing the
 scheduled time (absolute, with relative in parentheses), text preview, and media count. Overflow:
 **Cancel** with a confirmation, calling `DELETE /api/v1/scheduled_statuses/:id`. Cancelling deletes the
 post on the server; the text is not recovered locally, and the confirmation says so.
