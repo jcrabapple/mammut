@@ -268,7 +268,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private View addSegmentBtn;
 	private View segmentOneHeader;
 	private TextView segmentOneNumber;
-	private ImageButton segmentOneOverflow, segmentOneMoveUp, segmentOneMoveDown;
+	private ImageButton segmentOneDelete, segmentOneMoveUp, segmentOneMoveDown;
 	/** "Posting 2 of 4" — lives on the sending overlay */
 	private TextView postingProgressText;
 	/** The segment the bottom-bar buttons act on; 0 is the main surface */
@@ -540,7 +540,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		addSegmentBtn=view.findViewById(R.id.add_segment);
 		segmentOneHeader=view.findViewById(R.id.segment_one_header);
 		segmentOneNumber=view.findViewById(R.id.segment_number_one);
-		segmentOneOverflow=view.findViewById(R.id.segment_overflow_one);
+		segmentOneDelete=view.findViewById(R.id.segment_delete_one);
 		addSegmentBtn.setOnClickListener(v->{
 			ThreadSegment ts=addThreadSegment(null);
 			ts.text.requestFocus();
@@ -548,7 +548,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			if(imm!=null)
 				imm.showSoftInput(ts.text, 0);
 		});
-		segmentOneOverflow.setOnClickListener(v->showSegmentOverflow(segmentOneOverflow, 0));
+		segmentOneDelete.setOnClickListener(v->deleteSegment(0));
 		segmentOneMoveUp=view.findViewById(R.id.segment_move_up_one);
 		segmentOneMoveDown=view.findViewById(R.id.segment_move_down_one);
 		segmentOneMoveUp.setOnClickListener(v->moveSegment(0, -1));
@@ -2508,7 +2508,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		ts.card=card;
 		ts.number=card.findViewById(R.id.segment_number);
 		ts.counter=card.findViewById(R.id.segment_counter);
-		ts.overflowBtn=card.findViewById(R.id.segment_overflow);
+		ts.deleteBtn=card.findViewById(R.id.segment_delete);
 		ts.moveUpBtn=card.findViewById(R.id.segment_move_up);
 		ts.moveDownBtn=card.findViewById(R.id.segment_move_down);
 		ts.moveUpBtn.setOnClickListener(v->moveSegment(extraSegments.indexOf(ts)+1, -1));
@@ -2568,7 +2568,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		ts.text.setOnFocusChangeListener(focusListener);
 		ts.spoilerEdit.setOnFocusChangeListener(focusListener);
 		ts.cwBtn.setOnClickListener(v->toggleSpoiler());
-		ts.overflowBtn.setOnClickListener(v->showSegmentOverflow(ts.overflowBtn, extraSegments.indexOf(ts)+1));
+		ts.deleteBtn.setOnClickListener(v->deleteSegment(extraSegments.indexOf(ts)+1));
 		ts.mediaController.setView(card, mediaSavedState);
 		// Rebuilding an existing holder (rotation): views were destroyed,
 		// the state was not.
@@ -2637,18 +2637,6 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			ts.number.setText(String.valueOf(i+2));
 			ts.number.setContentDescription(getString(R.string.thread_post_number, i+2));
 		}
-	}
-
-	private void showSegmentOverflow(View anchor, int index){
-		PopupMenu popup=new PopupMenu(getActivity(), anchor);
-		popup.inflate(R.menu.compose_segment_overflow);
-		popup.getMenu().findItem(R.id.delete).setVisible(extraSegments.size()+1>1);
-		popup.setOnMenuItemClickListener(item->{
-			if(item.getItemId()==R.id.delete)
-				deleteSegment(index);
-			return true;
-		});
-		popup.show();
 	}
 
 	/**
@@ -2743,7 +2731,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private class ThreadSegment{
 		View card;
 		TextView number, counter;
-		ImageButton overflowBtn, cwBtn, moveUpBtn, moveDownBtn;
+		ImageButton deleteBtn, cwBtn, moveUpBtn, moveDownBtn;
 		ComposeEditText text;
 		View spoilerWrap;
 		EditText spoilerEdit;
