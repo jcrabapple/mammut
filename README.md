@@ -46,6 +46,14 @@ at all, and a donation matters more than a star on any fork:
   modal chore.
 - **Undo** for a few seconds after posting.
 
+### Sharing
+
+- **Share a post as an image**: one action in a post's menu renders it as a 1080 px card — text with
+  its custom emoji, links and mentions, its media, a quoted post, poll results with percentages, and
+  the post's own content warning — then hands the PNG to the system share sheet, or saves it to
+  `Pictures/Mammut`. Media the author marked sensitive is blurred in the file itself, so sharing a
+  post can never quietly reveal what the timeline was hiding.
+
 ### Finding
 
 - **Search operator chips** for `has:media`, `has:link`, `has:poll`, `is:reply`, `is:sensitive`,
