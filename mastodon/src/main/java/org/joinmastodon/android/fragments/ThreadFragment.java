@@ -243,12 +243,19 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 	 * string carries the full name (§5).
 	 */
 	private ReblogOrReplyLineCustomStatusDisplayItem buildAddressLine(Status s){
-		Status parentStatus=s.inReplyToId!=null ? knownStatuses.get(s.inReplyToId) : null;
-		ThreadAddressRule.Input in=addressInputFor(s, parentStatus);
+		// M3: parent presence comes from the active conversation
+		// (getStatusByID over data/preloadedData) — the never-pruned
+		// knownStatuses cache would keep a deleted or foreign cached parent at
+		// "Replying to X" instead of "Replying to X · parent post not shown".
+		// knownStatuses survives only as the account fallback in
+		// resolveParentAccount.
+		Status parentStatus=s.inReplyToId!=null ? getStatusByID(s.inReplyToId) : null;
+		Status cachedParent=s.inReplyToId!=null ? knownStatuses.get(s.inReplyToId) : null;
+		ThreadAddressRule.Input in=addressInputFor(s, parentStatus, cachedParent);
 		ThreadAddressRule.Result r=ThreadAddressRule.evaluate(in);
 		if(r.state==ThreadAddressRule.State.NONE)
 			return null;
-		Account parentAccount=resolveParentAccount(s, parentStatus);
+		Account parentAccount=resolveParentAccount(s, cachedParent);
 		// §2: the row inset is the layout's own content inset — 16 dp from the
 		// edge in full width, 16 dp inside the item (64 dp from the edge) in the
 		// indented layout. No left outRect anywhere (§7).
@@ -270,20 +277,31 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 
 	/**
 	 * §4: resolve the rule inputs once, when the display items are built. Parent
-	 * name: inReplyToAccountId → knownAccounts, falling back to the parent status
-	 * in the fetched context. An id is never rendered and a name never invented.
+	 * name: inReplyToAccountId → knownAccounts, falling back to the cached parent
+	 * status (knownStatuses — M3). An id is never rendered and a name never
+	 * invented.
 	 * Chain bounds are filled only when ConversationChain calls the chain
 	 * eligible and the status is a member (§1.4/§1.5).
 	 */
-	private ThreadAddressRule.Input addressInputFor(Status s, Status parentStatus){
+	private ThreadAddressRule.Input addressInputFor(Status s, Status parentStatus, Status cachedParent){
 		ThreadAddressRule.Input in=new ThreadAddressRule.Input();
-		in.reply=s.inReplyToAccountId!=null;
+		// M5: a reply can carry inReplyToId without inReplyToAccountId — either
+		// id makes it a reply; without both it is §1.6 (no row, no placeholder).
+		in.reply=s.inReplyToId!=null || s.inReplyToAccountId!=null;
 		if(!in.reply)
 			return in;
-		in.sameAuthor=s.account!=null && s.inReplyToAccountId.equals(s.account.id);
-		Account parentAccount=resolveParentAccount(s, parentStatus);
-		if(parentAccount!=null)
-			in.parentName=!TextUtils.isEmpty(parentAccount.displayName) ? parentAccount.displayName : parentAccount.username;
+		in.sameAuthor=s.account!=null && s.inReplyToAccountId!=null && s.inReplyToAccountId.equals(s.account.id);
+		Account parentAccount=resolveParentAccount(s, cachedParent);
+		if(parentAccount!=null){
+			// M4: a blank (or whitespace-only) name must never reach the rule,
+			// where it would render a dangling "Replying to ". Fall back to
+			// the username; when even that is blank, pass null so the rule
+			// picks §1.3 ("Replying to a post that isn't shown").
+			String name=parentAccount.displayName;
+			if(name==null || name.trim().isEmpty())
+				name=parentAccount.username;
+			in.parentName=(name==null || name.trim().isEmpty()) ? null : name;
+		}
 		in.parentPostPresent=parentStatus!=null;
 		if(in.sameAuthor && chain!=null && chain.eligible){
 			int idx=chain.indexOf(s.id);
@@ -305,10 +323,10 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		return in;
 	}
 
-	private Account resolveParentAccount(Status s, Status parentStatus){
+	private Account resolveParentAccount(Status s, Status cachedParent){
 		Account a=knownAccounts.get(s.inReplyToAccountId);
-		if(a==null && parentStatus!=null)
-			a=parentStatus.account;
+		if(a==null && cachedParent!=null)
+			a=cachedParent.account;
 		return a;
 	}
 
@@ -327,13 +345,16 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			Status s=getStatusByID(line.parentID);
 			if(s==null)
 				continue;
-			Status parentStatus=s.inReplyToId!=null ? knownStatuses.get(s.inReplyToId) : null;
-			ThreadAddressRule.Result r=ThreadAddressRule.evaluate(addressInputFor(s, parentStatus));
+			// M3: presence from the active conversation; knownStatuses only for
+			// the account fallback (same split as buildAddressLine).
+			Status parentStatus=s.inReplyToId!=null ? getStatusByID(s.inReplyToId) : null;
+			Status cachedParent=s.inReplyToId!=null ? knownStatuses.get(s.inReplyToId) : null;
+			ThreadAddressRule.Result r=ThreadAddressRule.evaluate(addressInputFor(s, parentStatus, cachedParent));
 			if(r.state==ThreadAddressRule.State.NONE)
 				continue;
 			if(r.visible.equals(line.addressVisible) && Objects.equals(r.accessibility, line.addressAccessibility))
 				continue;
-			Account parentAccount=resolveParentAccount(s, parentStatus);
+			Account parentAccount=resolveParentAccount(s, cachedParent);
 			line.updateAddressLine(r.visible, parentAccount!=null ? parentAccount.emojis : null, r.accessibility);
 			adapter.notifyItemChanged(i);
 		}

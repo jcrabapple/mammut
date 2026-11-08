@@ -95,7 +95,9 @@ public class ThreadAddressRule{
 		if(!in.reply)
 			return new Result(State.NONE, null, null);
 		if(in.sameAuthor){
-			if(in.chainIndex>=0 && in.chainSize>0){
+			// §1.4, M-review: the number is claimed only for in-bounds chain
+			// positions — never "Thread 0/0" or "Thread -1/0".
+			if(in.chainSize>0 && in.chainIndex>=0 && in.chainIndex<in.chainSize){
 				// §1.4: n is this post's index in the fetched chain (1-based).
 				return new Result(State.THREAD_NUMBERED,
 						format(in.tmplThreadNumbered, in.chainIndex+1, in.chainSize),
@@ -104,7 +106,9 @@ public class ThreadAddressRule{
 			// §1.5: a number is a claim; without eligible bounds the badge stays bare.
 			return new Result(State.THREAD_BARE, in.tmplThreadBare, in.tmplA11yThreadBare);
 		}
-		if(in.parentName==null)
+		// M4: a blank (or whitespace-only) name is unresolved too — the row
+		// must never dangle at "Replying to ".
+		if(in.parentName==null || in.parentName.trim().isEmpty())
 			return new Result(State.REPLY_UNRESOLVED, in.tmplReplyingToUnresolved, in.tmplA11yReplyingToUnresolved);
 		String visibleName=clampName(in.parentName);
 		if(in.parentPostPresent){

@@ -187,12 +187,11 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 			// otherwise — decided at bind time from the precomputed leadingInsetPx,
 			// never by insetting the body or reserving an outRect (§7). Other rows
 			// keep the layout's own 16 dp paddingHorizontal.
-			itemView.setPaddingRelative(item.leadingInsetPx>=0 ? item.leadingInsetPx : V.dp(16), itemView.getPaddingTop(), itemView.getPaddingEnd(), itemView.getPaddingBottom());
+			itemView.setPaddingRelative(item.leadingInsetPx>=0 ? item.leadingInsetPx : V.dp(16), itemView.getPaddingTop(), itemView.getPaddingEnd(), item.needBottomPadding ? V.dp(16) : 0);
 			bindLine(item, text);
 			if (item.extra != null) bindLine(item.extra, extraText);
 			extraText.setVisibility(item.extra == null ? View.GONE : View.VISIBLE);
 			separator.setVisibility(item.extra == null ? View.GONE : View.VISIBLE);
-			itemView.setPadding(itemView.getPaddingLeft(), itemView.getPaddingTop(), itemView.getPaddingRight(), item.needBottomPadding ? V.dp(16) : 0);
 		}
 
 		@Override

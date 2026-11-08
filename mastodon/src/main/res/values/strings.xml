@@ -649,7 +649,7 @@
 	<string name="address_line_a11y_thread_numbered">Self-reply, thread %1$d of %2$d</string>
 	<string name="address_line_a11y_thread_bare">Self-reply, part of a thread</string>
 	<plurals name="thread_end_line">
-		<item quantity="one">End of the %d posts Mammut fetched</item>
+		<item quantity="one">End of the %d post Mammut fetched</item>
 		<item quantity="other">End of the %d posts Mammut fetched</item>
 	</plurals>
 	<string name="catch_up_error_unchanged">Your place in this timeline is unchanged.</string>

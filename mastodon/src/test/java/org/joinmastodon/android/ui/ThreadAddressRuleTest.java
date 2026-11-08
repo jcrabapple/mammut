@@ -233,4 +233,101 @@ public class ThreadAddressRuleTest{
 	}
 
 	//endregion
+
+	//region M4: a blank parent name is unresolved, never a dangling row
+
+	@Test
+	public void emptyParentNameIsUnresolved(){
+		// The fragment must not send this (M4), but the rule guards anyway:
+		// no "Replying to " with nothing after it, in either string.
+		ThreadAddressRule.Input in=input();
+		in.reply=true;
+		in.parentName="";
+		in.parentPostPresent=true;
+		in.sameAuthor=false;
+		ThreadAddressRule.Result r=ThreadAddressRule.evaluate(in);
+		assertEquals(ThreadAddressRule.State.REPLY_UNRESOLVED, r.state);
+		assertEquals("Replying to a post that isn't shown", r.visible);
+		assertEquals("Replying to a post that isn't shown", r.accessibility);
+	}
+
+	@Test
+	public void whitespaceOnlyParentNameIsUnresolved(){
+		ThreadAddressRule.Input in=input();
+		in.reply=true;
+		in.parentName="   ";
+		in.parentPostPresent=false;
+		in.sameAuthor=false;
+		ThreadAddressRule.Result r=ThreadAddressRule.evaluate(in);
+		assertEquals(ThreadAddressRule.State.REPLY_UNRESOLVED, r.state);
+		assertEquals("Replying to a post that isn't shown", r.visible);
+		assertEquals("Replying to a post that isn't shown", r.accessibility);
+	}
+
+	//endregion
+
+	//region M5: a reply id without an account id still renders §1.3
+
+	@Test
+	public void replyWithOnlyPostIdIsUnresolved(){
+		// M5: the fragment feeds in.reply=true when only inReplyToId is
+		// present; with no account id, sameAuthor is false and no name
+		// resolves — the row must be §1.3, never NONE.
+		ThreadAddressRule.Input in=input();
+		in.reply=true;
+		in.parentName=null;
+		in.parentPostPresent=false;
+		in.sameAuthor=false;
+		ThreadAddressRule.Result r=ThreadAddressRule.evaluate(in);
+		assertEquals(ThreadAddressRule.State.REPLY_UNRESOLVED, r.state);
+		assertEquals("Replying to a post that isn't shown", r.visible);
+		assertEquals("Replying to a post that isn't shown", r.accessibility);
+	}
+
+	//endregion
+
+	//region M-review: chain bounds are defensive — "Thread n/N" only in-bounds
+
+	@Test
+	public void selfReplyWithZeroChainSizeIsBare(){
+		// Never "Thread 1/0": a zero size means the chain is absent.
+		ThreadAddressRule.Input in=input();
+		in.reply=true;
+		in.sameAuthor=true;
+		in.chainIndex=0;
+		in.chainSize=0;
+		ThreadAddressRule.Result r=ThreadAddressRule.evaluate(in);
+		assertEquals(ThreadAddressRule.State.THREAD_BARE, r.state);
+		assertEquals("Thread", r.visible);
+		assertEquals("Self-reply, part of a thread", r.accessibility);
+	}
+
+	@Test
+	public void selfReplyWithNegativeChainIndexIsBare(){
+		// Never "Thread 0/0": a negative index means the position is absent.
+		ThreadAddressRule.Input in=input();
+		in.reply=true;
+		in.sameAuthor=true;
+		in.chainIndex=-1;
+		in.chainSize=3;
+		ThreadAddressRule.Result r=ThreadAddressRule.evaluate(in);
+		assertEquals(ThreadAddressRule.State.THREAD_BARE, r.state);
+		assertEquals("Thread", r.visible);
+	}
+
+	@Test
+	public void selfReplyWithOutOfBoundsChainIndexIsBare(){
+		// Never "Thread 4/3": an index at or past the size is not a claim
+		// the row may print.
+		ThreadAddressRule.Input in=input();
+		in.reply=true;
+		in.sameAuthor=true;
+		in.chainIndex=3;
+		in.chainSize=3;
+		ThreadAddressRule.Result r=ThreadAddressRule.evaluate(in);
+		assertEquals(ThreadAddressRule.State.THREAD_BARE, r.state);
+		assertEquals("Thread", r.visible);
+	}
+
+	//endregion
 }
