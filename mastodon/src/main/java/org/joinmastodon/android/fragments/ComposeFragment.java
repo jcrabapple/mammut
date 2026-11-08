@@ -49,17 +49,24 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.twitter.twittertext.TwitterTextEmojiRegex;
 
 import org.joinmastodon.android.E;
 import org.joinmastodon.android.GlobalUserPreferences;
+import org.joinmastodon.android.MastodonApp;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.MastodonErrorResponse;
+import org.joinmastodon.android.api.MastodonAPIController;
 import org.joinmastodon.android.api.requests.statuses.CreateStatus;
 import org.joinmastodon.android.api.requests.statuses.EditStatus;
 import org.joinmastodon.android.api.session.AccountSession;
 import org.joinmastodon.android.api.session.AccountSessionManager;
+import org.joinmastodon.android.drafts.ComposeDraft;
+import org.joinmastodon.android.drafts.DraftAttachment;
+import org.joinmastodon.android.drafts.DraftStore;
+import org.joinmastodon.android.drafts.Segment;
 import org.joinmastodon.android.events.StatusCountersUpdatedEvent;
 import org.joinmastodon.android.events.StatusCreatedEvent;
 import org.joinmastodon.android.events.StatusUpdatedEvent;
@@ -108,6 +115,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -197,6 +206,40 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private boolean prevHadDraft;
 	private boolean keyboardVisible;
 
+	// MAMMUT: Composer 2.0 (§2/§3) — draft autosave and resume. The composer
+	// holds one draftId for its lifetime so repeat saves update one draft;
+	// editing an existing status never touches any of this.
+	private DraftStore draftStore;
+	private String draftId;
+	private ComposeDraft draftToRestore;
+	/**
+	 * MAMMUT: Composer 2.0 (§3) — true once a resumed draft's explicit
+	 * visibility has been applied. Replaces the old restoringDraft latch,
+	 * which was never reset and so suppressed the account-default visibility
+	 * override for the rest of the fragment's life (review N3): the draft's
+	 * visibility must win over defaults for this session, and only until
+	 * the user starts a fresh composer.
+	 */
+	private boolean restoredDraftVisibility;
+	/**
+	 * MAMMUT: Composer 2.0 (§4) — the persisted per-segment idempotency key.
+	 * Seeded from a resumed draft, generated on the first snapshot otherwise,
+	 * so a retry from the draft reuses the same CreateStatus key.
+	 */
+	private String draftIdempotencyKey;
+	/**
+	 * MAMMUT: Composer 2.0 (§1/§6) — reply/quote context ids carried by a
+	 * resumed draft. Slice 1 cannot rebuild the in-memory Status objects
+	 * from ids (that is threads-slice work), but re-saving the resumed
+	 * draft must not wipe the context from the model.
+	 */
+	private String restoredReplyToStatusId, restoredQuotedStatusId;
+	/**
+	 * Set after a successful publish or an explicit, confirmed discard.
+	 * Volatile: read by the draft-save runnable on the worker thread.
+	 */
+	private volatile boolean finished;
+
 	public ComposeFragment(){
 		super(R.layout.toolbar_fragment_with_progressbar);
 	}
@@ -218,6 +261,26 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		if(instance==null){
 			Nav.finish(this);
 			return;
+		}
+		draftStore=new DraftStore(MastodonApp.context, accountID);
+		if(savedInstanceState!=null){
+			draftId=savedInstanceState.getString("draftId");
+		}else if(getArguments().containsKey("draftId")){
+			// MAMMUT: Composer 2.0 (§3) — resuming a draft from the drafts screen
+			draftId=getArguments().getString("draftId");
+			draftToRestore=draftStore.load(draftId);
+			if(draftToRestore==null){
+				draftId=null;
+			}else{
+				// §4: reuse the persisted per-segment idempotency key, and
+				// keep the reply/quote context ids in the model across
+				// re-saves even though slice 1 cannot rebuild the Status
+				// objects themselves (M2).
+				if(!draftToRestore.segments.isEmpty())
+					draftIdempotencyKey=draftToRestore.segments.get(0).idempotencyKey;
+				restoredReplyToStatusId=draftToRestore.replyToStatusId;
+				restoredQuotedStatusId=draftToRestore.quotedStatusId;
+			}
 		}
 		if(customEmojis.isEmpty()){
 			AccountSessionManager.getInstance().updateInstanceInfo(instanceDomain);
@@ -427,6 +490,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private void removeQuote(){
 		if(quotedStatus!=null){
 			quotedStatus=null;
+			// MAMMUT: the author explicitly removed the quote; a re-save must
+			// not resurrect the resumed draft's stored quotedStatusId.
+			restoredQuotedStatusId=null;
 			quotedPostWrap.setVisibility(View.GONE);
 			updateMediaPollStates();
 			mainEditText.setHint(R.string.compose_hint);
@@ -440,6 +506,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		mediaViewController.onSaveInstanceState(outState);
 		outState.putBoolean("hasSpoiler", hasSpoiler);
 		outState.putSerializable("visibility", statusVisibility);
+		outState.putString("draftId", draftId);
 		outState.putParcelable("postLang", Parcels.wrap(postLang));
 		if(currentAutocompleteSpan!=null){
 			Editable e=mainEditText.getText();
@@ -451,6 +518,114 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	@Override
 	public void onResume(){
 		super.onResume();
+	}
+
+	@Override
+	public void onPause(){
+		super.onPause();
+		// MAMMUT: Composer 2.0 (§3) — autosave on backgrounding. Back while
+		// there is content goes through confirmDiscardDraftAndFinish instead.
+		// An empty composer writes nothing, and the edit path never autosaves.
+		if(editingStatus==null && !finished && hasDraft()){
+			// §6/N5: the autosave is awaited, not fire-and-forget — a process
+			// kill in the gap between scheduling and the write would silently
+			// lose the draft. The wait is bounded so a slow media copy can
+			// only delay, never wedge, the UI thread.
+			CountDownLatch saveDone=saveDraft(null);
+			if(saveDone!=null){
+				try{
+					saveDone.await(3, TimeUnit.SECONDS);
+				}catch(InterruptedException ignored){}
+			}
+		}
+	}
+
+	/**
+	 * MAMMUT: Composer 2.0 (§3) — snapshots the composer into the shared store
+	 * on a background thread, holding one draftId for the fragment's lifetime
+	 * so repeat saves update the same draft instead of creating another.
+	 * <p>
+	 * When {@code onSaved} is non-null (the discard dialog's Save-draft
+	 * button) the save must be observed, not merely scheduled: the callback —
+	 * which sets {@code finished} and finishes the fragment — runs only after
+	 * the store write has landed, so the publish-cleanup guard can no longer
+	 * swallow the write (review M1).
+	 * <p>
+	 * Returns a latch counted down when the write attempt completes (whether
+	 * it wrote, was skipped, or failed), so {@link #onPause()} can wait out
+	 * the autosave before the process can die.
+	 */
+	private CountDownLatch saveDraft(Runnable onSaved){
+		if(editingStatus!=null)
+			return null;
+		final ComposeDraft d=new ComposeDraft();
+		d.id=draftId!=null ? draftId : UUID.randomUUID().toString();
+		d.updatedAt=System.currentTimeMillis();
+		d.visibility=statusVisibility;
+		d.replyToStatusId=replyTo!=null ? replyTo.id : restoredReplyToStatusId;
+		d.quotedStatusId=quotedStatus!=null ? quotedStatus.id : restoredQuotedStatusId;
+		// Note: a resumed draft carries replyToStatusId/quotedStatusId (§1)
+		// but rebuilding the in-memory reply/quote context from an id alone
+		// is threads-slice work; applyDraft tells the author instead of
+		// dropping it silently (M2).
+		Segment seg=new Segment();
+		seg.text=mainEditText.getText().toString();
+		if(hasSpoiler){
+			seg.spoilerText=spoilerEdit.length()>0 ? spoilerEdit.getText().toString() : null;
+			seg.sensitive=spoilerEdit.length()==0;
+		}
+		seg.poll=pollViewController.getDraftPoll();
+		// §4: one key per segment, generated at first snapshot, reused on
+		// every later save of this composer session and on resume.
+		seg.idempotencyKey=draftIdempotencyKey!=null ? draftIdempotencyKey : (draftIdempotencyKey=UUID.randomUUID().toString());
+		d.segments.add(seg);
+		draftId=d.id;
+		// Snapshot the attachment list on the UI thread (M5): the copy itself
+		// used to run on the worker and could throw mid-iteration while the
+		// UI thread added or removed attachments, silently skipping the save.
+		final List<ComposeMediaViewController.DraftMediaAttachment> attachmentSnapshot=mediaViewController.snapshotAttachments();
+		final CountDownLatch saveDone=new CountDownLatch(1);
+		MastodonAPIController.runInBackground(()->{
+			try{
+				// The single worker thread serializes this with a publish-cleanup
+				// delete. The finished guard covers the fire-and-forget paths
+				// (onPause autosave) once the user has published or discarded;
+				// the explicit Save-draft button passes a callback and must
+				// write even while the fragment is leaving — its finished is
+				// only set from that callback, after the write.
+				if(onSaved==null && finished)
+					return;
+				try{
+					seg.attachments=mediaViewController.buildDraftAttachments(attachmentSnapshot, draftStore, d.id);
+					draftStore.save(d);
+				}catch(Exception x){
+					android.util.Log.w(TAG, "saveDraft: failed", x);
+					// §6: a failed save is surfaced, never silent — the
+					// composer stays open with the text still in it.
+					UiUtils.runOnUiThread(()->{
+						if(getActivity()!=null)
+							Toast.makeText(getActivity(), R.string.draft_save_failed, Toast.LENGTH_LONG).show();
+					});
+					return;
+				}
+				if(onSaved!=null)
+					UiUtils.runOnUiThread(onSaved);
+			}finally{
+				saveDone.countDown();
+			}
+		});
+		return saveDone;
+	}
+
+	/**
+	 * MAMMUT: Composer 2.0 (§2/§6) — a draft disappears only after a successful
+	 * publish or an explicit, confirmed discard.
+	 */
+	private void deleteDraftIfAny(){
+		final String id=draftId;
+		draftId=null;
+		if(id!=null)
+			MastodonAPIController.runInBackground(()->draftStore.delete(id));
 	}
 
 	@Override
@@ -635,7 +810,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				mediaViewController.onViewCreated(savedInstanceState);
 			}else{
 				String prefilledText=getArguments().getString("prefilledText");
-				if(!TextUtils.isEmpty(prefilledText)){
+				if(draftToRestore==null && !TextUtils.isEmpty(prefilledText)){
 					mainEditText.setText(prefilledText);
 					ignoreSelectionChanges=true;
 					mainEditText.setSelection(mainEditText.length());
@@ -643,7 +818,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 					initialText=prefilledText;
 				}
 				ArrayList<Uri> mediaUris=getArguments().getParcelableArrayList("mediaAttachments");
-				if(mediaUris!=null && !mediaUris.isEmpty()){
+				if(draftToRestore==null && mediaUris!=null && !mediaUris.isEmpty()){
 					for(Uri uri:mediaUris){
 						mediaViewController.addMediaAttachment(uri, null);
 					}
@@ -657,6 +832,62 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			visibilityBtn.setAlpha(0.5f);
 		}
 		updateMediaPollStates();
+		if(draftToRestore!=null){
+			// MAMMUT: Composer 2.0 (§3) — a resumed draft wins over defaults
+			applyDraft(draftToRestore);
+			draftToRestore=null;
+		}
+	}
+
+	/**
+	 * MAMMUT: Composer 2.0 (§3) — restores text, CW, sensitivity, visibility,
+	 * media with descriptions, and the poll. Restored media goes through
+	 * {@link ComposeMediaViewController#addRestoredAttachment}, which never
+	 * runs the Caption Track metadata prefill: a restored description is the
+	 * author's text, not a suggestion.
+	 */
+	private void applyDraft(ComposeDraft d){
+		if(d.segments.isEmpty())
+			return;
+		Segment seg=d.segments.get(0);
+		if(d.visibility!=null){
+			statusVisibility=d.visibility;
+			// The draft's visibility wins over account defaults for this
+			// session (N3): this flag replaces the never-reset latch.
+			restoredDraftVisibility=true;
+			updateVisibilityButton(false);
+		}
+		if(d.replyToStatusId!=null || d.quotedStatusId!=null){
+			// MAMMUT: Composer 2.0 (§1/§6, M2) — the ids are persisted, but
+			// slice 1 cannot rebuild the in-memory reply/quote Status objects
+			// from ids alone (that fetch is threads-slice work). Say so
+			// plainly: publishing this resumed draft now would post a new
+			// top-level status, and that must never be a silent surprise.
+			new M3AlertDialogBuilder(getActivity())
+					.setTitle(R.string.draft_context_lost_title)
+					.setMessage(R.string.draft_context_lost)
+					.setPositiveButton(R.string.ok, null)
+					.show();
+		}
+		if(!TextUtils.isEmpty(seg.text)){
+			mainEditText.setText(seg.text);
+			ignoreSelectionChanges=true;
+			mainEditText.setSelection(mainEditText.length());
+			ignoreSelectionChanges=false;
+		}
+		if(seg.spoilerText!=null || seg.sensitive){
+			hasSpoiler=true;
+			spoilerWrap.setVisibility(View.VISIBLE);
+			spoilerBtn.setSelected(true);
+			if(seg.spoilerText!=null)
+				spoilerEdit.setText(seg.spoilerText);
+		}
+		pollViewController.restorePoll(seg.poll);
+		for(DraftAttachment da:seg.attachments)
+			mediaViewController.addRestoredAttachment(da);
+		updateCharCounter();
+		updateMediaPollStates();
+		updateDraftState();
 	}
 
 	@Override
@@ -870,12 +1101,19 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			req.quoteApprovalPolicy=statusQuotePolicy;
 		if(quotedStatus!=null)
 			req.quotedStatusId=quotedStatus.id;
+		// MAMMUT: Composer 2.0 (§4) — a draft resumed from the store publishes
+		// with its persisted per-segment key, so a retry after failure cannot
+		// double-post. Fresh composers mint one as before.
 		if(uuid==null)
-			uuid=UUID.randomUUID().toString();
+			uuid=draftIdempotencyKey!=null ? draftIdempotencyKey : UUID.randomUUID().toString();
 
 		Callback<Status> resCallback=new Callback<>(){
 			@Override
 			public void onSuccess(Status result){
+				// MAMMUT: Composer 2.0 (§2/§6) — a successful publish retires
+				// the draft; nothing autosaves after this point.
+				finished=true;
+				deleteDraftIfAny();
 				wm.removeView(sendingOverlay);
 				sendingOverlay=null;
 				removeBackCallback(sendingBackButtonBlocker);
@@ -1002,11 +1240,40 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	}
 
 	private void confirmDiscardDraftAndFinish(){
+		if(editingStatus!=null){
+			new M3AlertDialogBuilder(getActivity())
+					.setTitle(R.string.discard_changes)
+					.setPositiveButton(R.string.discard, (dialog, which)->{
+						removeBackCallback(discardConfirmationCallback);
+						Nav.finish(this);
+					})
+					.setNegativeButton(R.string.cancel, null)
+					.show();
+			return;
+		}
+		// MAMMUT: Composer 2.0 (§3) — the discard confirmation gains a third
+		// outcome when there is content: Save draft. Discarding an existing
+		// autosaved draft is a confirmed, explicit delete; Save draft writes
+		// the draft and leaves; Cancel keeps composing.
 		new M3AlertDialogBuilder(getActivity())
-				.setTitle(editingStatus==null ? R.string.discard_draft : R.string.discard_changes)
+				.setTitle(R.string.discard_draft)
 				.setPositiveButton(R.string.discard, (dialog, which)->{
+					finished=true;
+					deleteDraftIfAny();
 					removeBackCallback(discardConfirmationCallback);
 					Nav.finish(this);
+				})
+				.setNeutralButton(R.string.save_draft, (dialog, which)->{
+					// MAMMUT (§3/§6, M1): the save is observed, not scheduled —
+					// finished and Nav.finish happen inside the completion
+					// callback, which runs only after the store write has landed
+					// on the worker thread, so the publish-cleanup guard can no
+					// longer win the race and swallow the write.
+					saveDraft(()->{
+						finished=true;
+						removeBackCallback(discardConfirmationCallback);
+						Nav.finish(this);
+					});
 				})
 				.setNegativeButton(R.string.cancel, null)
 				.show();
@@ -1157,8 +1424,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			statusVisibility=StatusPrivacy.UNLISTED;
 		}
 
-		// Only override the reply visibility if our preference is more private
-		if(prefs.postingDefaultVisibility.isLessVisibleThan(statusVisibility)){
+		// Only override the reply visibility if our preference is more private.
+		// MAMMUT: Composer 2.0 — a resumed draft's visibility wins over defaults.
+		if(!restoredDraftVisibility && prefs.postingDefaultVisibility.isLessVisibleThan(statusVisibility)){
 			statusVisibility=prefs.postingDefaultVisibility;
 		}
 

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<me.grishka.appkit.views.FragmentRootLinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
+	android:orientation="vertical"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent">
+
+	<org.joinmastodon.android.ui.tabs.TabLayout
+		android:id="@+id/tabbar"
+		android:layout_width="match_parent"
+		android:layout_height="48dp"
+		app:tabGravity="start"
+		app:tabIndicator="@drawable/tab_indicator_m3"
+		app:tabIndicatorAnimationMode="elastic"
+		app:tabIndicatorColor="?colorM3Primary"
+		app:tabIndicatorFullWidth="false"
+		app:tabMinWidth="90dp"
+		app:tabMode="auto"
+		android:background="?colorM3Surface"/>
+
+	<View
+		android:layout_width="match_parent"
+		android:layout_height="1dp"
+		android:background="?colorM3SurfaceVariant"/>
+
+	<FrameLayout
+		android:id="@+id/drafts_page_container"
+		android:layout_width="match_parent"
+		android:layout_height="0dp"
+		android:layout_weight="1"/>
+
+</me.grishka.appkit.views.FragmentRootLinearLayout>

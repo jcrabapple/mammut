@@ -19,6 +19,7 @@ import android.widget.TextView;
 
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.statuses.CreateStatus;
+import org.joinmastodon.android.drafts.PollDraft;
 import org.joinmastodon.android.fragments.ComposeFragment;
 import org.joinmastodon.android.model.Instance;
 import org.joinmastodon.android.model.Poll;
@@ -275,6 +276,41 @@ public class ComposePollViewController{
 		for(DraftPollOption opt:pollOptions)
 			poll.options.add(opt.edit.getText().toString());
 		return poll;
+	}
+
+	/**
+	 * MAMMUT: Composer 2.0 (§1) — the durable snapshot of the poll for a draft.
+	 * Null when the poll UI was never opened or was toggled off.
+	 */
+	public PollDraft getDraftPoll(){
+		if(pollOptions.isEmpty())
+			return null;
+		PollDraft d=new PollDraft();
+		d.expiresIn=pollDuration;
+		d.multiple=pollIsMultipleChoice;
+		for(DraftPollOption opt:pollOptions)
+			d.options.add(opt.edit.getText().toString());
+		return d;
+	}
+
+	/**
+	 * MAMMUT: Composer 2.0 (§3) — restores a poll saved in a draft. No default
+	 * poll state leaks in: options, duration and style all come from the draft.
+	 */
+	public void restorePoll(PollDraft d){
+		if(d==null || d.options.isEmpty())
+			return;
+		pollWrap.setVisibility(View.VISIBLE);
+		for(String text:d.options){
+			DraftPollOption opt=createDraftPollOption(false);
+			opt.edit.setText(text);
+		}
+		updatePollOptionHints();
+		pollDuration=d.expiresIn;
+		pollIsMultipleChoice=d.multiple;
+		pollDurationValue.setText(UiUtils.formatDuration(fragment.getContext(), pollDuration));
+		pollStyleValue.setText(pollIsMultipleChoice ? R.string.compose_poll_multiple_choice : R.string.compose_poll_single_choice);
+		pollChanged=true;
 	}
 
 	private static class DraftPollOption{

@@ -166,6 +166,9 @@ public class NavMenuView extends FrameLayout{
 		composeRow=createRow(inflater, null);
 		menuPanel.addView(composeRow);
 
+		// MAMMUT: Composer 2.0 (§3) — Drafts sits directly under Compose
+		menuPanel.addView(createDraftsRow(inflater));
+
 		// MAMMUT: Settings moved out of the overflow menu and into the navigation menu
 		menuPanel.addView(createDivider(context));
 		menuPanel.addView(createSettingsRow(inflater));
@@ -219,6 +222,24 @@ public class NavMenuView extends FrameLayout{
 		if(accountID==null || !(getContext() instanceof android.app.Activity activity))
 			return;
 		NavToolbarUtils.openSelfProfile(activity, accountID);
+	}
+
+	private View createDraftsRow(LayoutInflater inflater){
+		View row=inflater.inflate(R.layout.nav_menu_row, menuPanel, false);
+		ImageView icon=row.findViewById(R.id.icon);
+		TextView label=row.findViewById(R.id.label);
+		icon.setImageResource(R.drawable.ic_fluent_calendar_note_24_regular);
+		label.setText(R.string.drafts);
+		row.setContentDescription(getContext().getString(R.string.drafts));
+		row.setOnClickListener(v->{
+			closeMenu();
+			if(accountID==null || !(getContext() instanceof android.app.Activity activity))
+				return;
+			Bundle args=new Bundle();
+			args.putString("account", accountID);
+			Nav.go(activity, org.joinmastodon.android.fragments.drafts.DraftsListFragment.class, args);
+		});
+		return row;
 	}
 
 	private View createSettingsRow(LayoutInflater inflater){
