@@ -1,0 +1,1 @@
+Share a post as an image: any post's menu can now render it as a 1080 px card with its text, media, quoted post and poll results, send it to the share sheet, or save it to Pictures/Mammut. Sensitive media stays blurred in the file. Also fixed: an accessibility crash on the post action row.
