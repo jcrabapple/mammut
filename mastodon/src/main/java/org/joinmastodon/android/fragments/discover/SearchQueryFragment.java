@@ -32,6 +32,7 @@ import android.widget.Toolbar;
 import org.joinmastodon.android.MainActivity;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.search.GetSearchResults;
+import org.joinmastodon.android.api.session.AccountSession;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.fragments.MastodonRecyclerFragment;
 import org.joinmastodon.android.model.Relationship;
@@ -86,6 +87,7 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 	private GenericListItemsAdapter<Void> topOptionsAdapter;
 
 	private String accountID;
+	private String selfAcct;
 	private SearchViewHelper searchViewHelper;
 	private String currentQuery;
 	private LayerDrawable navigationIcon;
@@ -101,6 +103,8 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 		accountID=getArguments().getString("account");
 		setRefreshEnabled(false);
 		setEmptyText("");
+		AccountSession session=AccountSessionManager.get(accountID);
+		selfAcct=session.self.username+"@"+session.domain;
 
 		openUrlItem=new ListItem<>(R.string.search_open_url, 0, R.drawable.ic_link_24px, this::onOpenURLClick);
 		goToHashtagItem=new ListItem<>("", null, R.drawable.ic_tag_24px, this::onGoToHashtagClick);
@@ -132,7 +136,7 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 				}).collect(Collectors.toList()), false);
 				recentsHeader.setVisible(!data.isEmpty());
 			});
-		}else if(SearchQuerySupport.isValidStandaloneQuery(currentQuery)){
+		}else if(SearchQuerySupport.isValidStandaloneQuery(currentQuery, selfAcct)){
 			currentRequest=new GetSearchResults(currentQuery, null, false, null, 0, 0)
 					.limit(2)
 					.setCallback(new SimpleCallback<>(this){
@@ -256,7 +260,7 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 		for(int i=0;i<chipViews.length;i++){
 			chipViews[i].setSelected(SearchQuerySupport.containsToken(q, SearchQuerySupport.CHIPS[i].token));
 		}
-		chipHint.setVisibility(!q.isEmpty() && !SearchQuerySupport.isValidStandaloneQuery(q) ? View.VISIBLE : View.GONE);
+		chipHint.setVisibility(!q.trim().isEmpty() && !SearchQuerySupport.isValidStandaloneQuery(q, selfAcct) ? View.VISIBLE : View.GONE);
 	}
 
 	private void updateTopOptions(String q){
@@ -331,6 +335,15 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 	public void onSaveInstanceState(Bundle outState){
 		super.onSaveInstanceState(outState);
 		outState.putString("query", currentQuery);
+	}
+
+	@Override
+	public void onDestroyView(){
+		// A debounced query callback posted on the search field must not fire after
+		// teardown and touch dead views (e.g. a chip tap scheduled one, then finished).
+		if(searchViewHelper!=null)
+			searchViewHelper.cancelPendingDebounce();
+		super.onDestroyView();
 	}
 
 	@RequiresApi(api = Build.VERSION_CODES.S)
@@ -530,7 +543,14 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 		String newQuery=SearchQuerySupport.containsToken(q, token) ? SearchQuerySupport.removeToken(q, token) : SearchQuerySupport.addToken(q, token);
 		searchViewHelper.setQuery(newQuery);
 		currentQuery=newQuery;
-		if(SearchQuerySupport.isValidStandaloneQuery(newQuery)){
+		// getQuery() may have flushed a pending debounce, which fires onQueryChanged and
+		// starts a suggestions request; cancel it so nothing is delivered to the fragment
+		// this tap is about to finish.
+		if(currentRequest!=null){
+			currentRequest.cancel();
+			currentRequest=null;
+		}
+		if(SearchQuerySupport.isValidStandaloneQuery(newQuery, selfAcct)){
 			// Same path as typing the query and pressing enter: the result is delivered to
 			// DiscoverFragment, which runs the search. GetSearchResults is never called here.
 			onSearchViewEnter();

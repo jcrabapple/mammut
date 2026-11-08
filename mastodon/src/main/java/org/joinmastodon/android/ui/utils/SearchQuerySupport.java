@@ -4,15 +4,20 @@ import android.content.Context;
 
 import org.joinmastodon.android.R;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
 /**
  * Helpers for the search operator chips (G11). Everything is derived from the query text;
- * nothing is stored. The validity rule mirrors Mastodon's own SearchQueryTransformer:
- * a query made only of operators is rejected ("At least one keyword or phrase is required")
- * unless it scopes to the library (in:library) or to the user's own posts (from:me).
+ * nothing is stored. The query is tokenized once into terms that know whether they are
+ * quoted and whether they carry a - or + prefix; chip state, validity and token removal
+ * all read that one term list, so a token inside a quoted phrase is phrase text and is
+ * never treated as an operator (§5, §8). The validity rule mirrors Mastodon's own
+ * SearchQueryTransformer: a query made only of operators is rejected ("At least one
+ * keyword or phrase is required") unless it scopes to the library (in:library) or to
+ * the user's own posts (from:me / from:<self>).
  */
 public class SearchQuerySupport{
 	// app/lib/search_query_transformer.rb — SUPPORTED_PREFIXES
@@ -40,17 +45,85 @@ public class SearchQuerySupport{
 	};
 
 	/**
-	 * Matches an exact prefix:value token at a word boundary. A leading - or + makes it a
-	 * different filter (exclusion / forced inclusion), and quotes make it phrase text, so
-	 * neither lights the positive chip: -has:media, +has:media and "has:media" do not match.
-	 * A trailing word character or colon excludes has:mediax and has:media:foo.
+	 * One term of the query: a whitespace-delimited word, or the content of a quoted
+	 * region, with any - / + prefix recorded separately. Mirrors what the server's
+	 * SearchQueryParser produces: term characters are anything but whitespace, quote
+	 * and colon, a phrase is quote-delimited, and a lone unterminated quote parses as
+	 * junk while the remaining text still searches.
 	 */
-	private static String tokenRegex(String token){
-		return "(?<![-\\w+:\"])\\Q"+token+"\\E(?![\\w:\"])";
+	public static final class Term{
+		public final String text; // without the - / + prefix and without surrounding quotes
+		public final boolean quoted;
+		public final boolean negated; // - prefix
+		public final boolean forced; // + prefix
+		public final int start, end; // character span, including the prefix and quotes
+
+		private Term(String text, boolean quoted, boolean negated, boolean forced, int start, int end){
+			this.text=text;
+			this.quoted=quoted;
+			this.negated=negated;
+			this.forced=forced;
+			this.start=start;
+			this.end=end;
+		}
 	}
 
+	public static List<Term> tokenize(String query){
+		ArrayList<Term> terms=new ArrayList<>();
+		if(query==null)
+			return terms;
+		int i=0, n=query.length();
+		while(i<n){
+			while(i<n && Character.isWhitespace(query.charAt(i)))
+				i++;
+			if(i>=n)
+				break;
+			int start=i;
+			char op=0;
+			if(query.charAt(i)=='+' || query.charAt(i)=='-'){
+				op=query.charAt(i);
+				i++;
+			}
+			String text;
+			boolean quoted=false;
+			if(i<n && query.charAt(i)=='"'){
+				quoted=true;
+				i++;
+				int j=query.indexOf('"', i);
+				if(j<0){
+					// Unterminated quote: the server drops the lone quote as junk and
+					// searches the remaining text, so the remainder is term text.
+					text=query.substring(i);
+					i=n;
+				}else{
+					text=query.substring(i, j);
+					i=j+1;
+				}
+			}else{
+				int j=i;
+				while(j<n && !Character.isWhitespace(query.charAt(j)))
+					j++;
+				text=query.substring(i, j);
+				i=j;
+			}
+			terms.add(new Term(text, quoted, op=='-', op=='+', start, i));
+		}
+		return terms;
+	}
+
+	/**
+	 * Whether the query contains the token as a standalone, positive operator: an exact
+	 * term match that is not quoted (phrase text) and carries no - or + prefix. Quoted
+	 * "has:media", -has:media and +has:media are different things on the server and do
+	 * not light the chip, and neither do terms the server reads as plain words, like
+	 * has:media. or (has:media).
+	 */
 	public static boolean containsToken(String query, String token){
-		return query!=null && query.matches("(?s).*"+tokenRegex(token)+".*");
+		for(Term t : tokenize(query)){
+			if(!t.quoted && !t.negated && !t.forced && t.text.equals(token))
+				return true;
+		}
+		return false;
 	}
 
 	/**
@@ -66,94 +139,101 @@ public class SearchQuerySupport{
 	}
 
 	/**
-	 * Removes the last occurrence of the exact token and collapses the space the removal
-	 * leaves behind. Nothing else in the query is touched: order, quoting and the user's
-	 * own +/- prefixes survive.
+	 * Removes the token (every standalone, positive, unquoted occurrence) and collapses
+	 * the separator the removal leaves behind. Nothing else in the query is touched:
+	 * order, quoting and the user's own - / + prefixes survive, and a token that only
+	 * appears inside a quoted phrase removes nothing at all.
 	 */
 	public static String removeToken(String query, String token){
-		java.util.regex.Matcher m=java.util.regex.Pattern.compile(tokenRegex(token)).matcher(query);
-		int start=-1, end=-1;
-		while(m.find()){
-			start=m.start();
-			end=m.end();
+		if(query==null)
+			return null;
+		List<Term> terms=tokenize(query);
+		StringBuilder sb=new StringBuilder(query.length());
+		int copyFrom=0;
+		boolean found=false;
+		for(Term t : terms){
+			if(t.quoted || t.negated || t.forced || !t.text.equals(token))
+				continue;
+			found=true;
+			int spanStart=t.start, spanEnd=t.end;
+			boolean keptBefore=sb.length()>0 || query.substring(copyFrom, spanStart).trim().length()>0;
+			if(keptBefore && Character.isWhitespace(query.charAt(spanStart-1))){
+				spanStart--; // eat the separator before, keeping everything after intact
+			}else if(!keptBefore){
+				// Nothing before the token but whitespace: drop it all, then the separator after
+				spanStart=copyFrom;
+				while(spanEnd<query.length() && Character.isWhitespace(query.charAt(spanEnd)))
+					spanEnd++;
+			}
+			sb.append(query, copyFrom, spanStart);
+			copyFrom=spanEnd;
 		}
-		if(start<0)
+		if(!found)
 			return query;
-		String before=query.substring(0, start), after=query.substring(end);
-		if(before.isEmpty()){
-			int i=0;
-			while(i<after.length() && after.charAt(i)==' ')
-				i++;
-			return after.substring(i);
-		}
-		if(after.isEmpty()){
-			int i=before.length();
-			while(i>0 && before.charAt(i-1)==' ')
-				i--;
-			return before.substring(0, i);
-		}
-		if(before.charAt(before.length()-1)==' ' && after.charAt(0)==' ')
-			before=before.substring(0, before.length()-1);
-		return before+after;
+		sb.append(query, copyFrom, query.length());
+		return sb.toString();
 	}
 
 	/**
-	 * Whether the server would accept this query as-is. Mirrors SearchQueryTransformer:
-	 * in:library, a positive from:me, or at least one non-negated keyword/phrase term.
+	 * Whether the server would accept this query as-is. Mirrors SearchQueryTransformer's
+	 * validate_clauses!: in:library (a flag clause, valid with or without a sign), a
+	 * positive from:me / from:<self>, or at least one non-negated keyword/phrase term.
+	 * A quoted region is a PhraseClause and therefore a keyword — its content is never
+	 * run through the prefix/colon classification.
 	 */
 	public static boolean isValidStandaloneQuery(String query){
+		return isValidStandaloneQuery(query, null);
+	}
+
+	/**
+	 * @param selfAcct the signed-in account's acct (username@domain), accepted as the
+	 *                 second form of the from: self exception, with or without a
+	 *                 leading @; null disables the check
+	 */
+	public static boolean isValidStandaloneQuery(String query, String selfAcct){
 		if(query==null)
 			return false;
 		boolean inLibrary=false, selfFrom=false, hasKeyword=false;
-		int i=0, n=query.length();
-		while(i<n){
-			while(i<n && Character.isWhitespace(query.charAt(i)))
-				i++;
-			if(i>=n)
-				break;
-			char op=0;
-			if(query.charAt(i)=='+' || query.charAt(i)=='-'){
-				op=query.charAt(i);
-				i++;
-			}
-			String term;
-			if(i<n && query.charAt(i)=='"'){
-				int j=query.indexOf('"', i+1);
-				if(j<0)
-					break; // unbalanced quote: the server fails to parse; whatever we have so far stands
-				term=query.substring(i+1, j);
-				i=j+1;
-			}else{
-				int j=i;
-				while(j<n && !Character.isWhitespace(query.charAt(j)))
-					j++;
-				term=query.substring(i, j);
-				i=j;
-			}
-			if(term.isEmpty())
+		for(Term t : tokenize(query)){
+			if(t.text.isEmpty())
 				continue;
-			int colon=term.indexOf(':');
+			if(t.quoted){
+				if(!t.negated)
+					hasKeyword=true;
+				continue;
+			}
+			int colon=t.text.indexOf(':');
 			if(colon>0){
-				String prefix=term.substring(0, colon).toLowerCase(Locale.US);
-				String value=term.substring(colon+1);
+				String prefix=t.text.substring(0, colon).toLowerCase(Locale.US);
+				String value=t.text.substring(colon+1);
 				if(SUPPORTED_PREFIXES.contains(prefix)){
 					if(value.isEmpty()){
 						// "has:" alone parses as the plain term "has" on the server
-						if(op!='-')
+						if(!t.negated)
 							hasKeyword=true;
 					}else if(prefix.equals("in") && value.equals("library")){
-						inLibrary=true;
-					}else if(prefix.equals("from") && value.equals("me") && op!='-'){
+						inLibrary=true; // in: is a flag clause on the server: sign-agnostic
+					}else if(prefix.equals("from") && !t.negated && isSelfFrom(value, selfAcct)){
 						selfFrom=true;
 					}
 					continue;
 				}
 			}
-			// Plain word, hashtag, unknown prefix or phrase: a term. Only a positive one counts.
-			if(op!='-')
+			// Plain word, hashtag or unknown prefix: a term. Only a positive one counts.
+			if(!t.negated)
 				hasKeyword=true;
 		}
 		return inLibrary || selfFrom || hasKeyword;
+	}
+
+	private static boolean isSelfFrom(String value, String selfAcct){
+		if(value.equals("me"))
+			return true;
+		if(selfAcct==null)
+			return false;
+		String v=value.startsWith("@") ? value.substring(1) : value;
+		// The server resolves accounts case-insensitively; the literal "me" above stays exact.
+		return v.equalsIgnoreCase(selfAcct);
 	}
 
 	/**
