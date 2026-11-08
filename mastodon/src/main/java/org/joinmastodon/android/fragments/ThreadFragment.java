@@ -23,6 +23,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toolbar;
 import android.widget.Toast;
 
 import org.joinmastodon.android.BuildConfig;
@@ -436,6 +437,7 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			ViewImageLoader.loadWithoutAnimation(replyButtonAva, getResources().getDrawable(R.drawable.image_placeholder, getActivity().getTheme()), new UrlImageLoaderRequest(self.avatar, V.dp(24), V.dp(24)));
 		}
 		UiUtils.loadCustomEmojiInTextView(toolbarTitleView);
+		setUpToolbarMenu();
 		showContent();
 		if(!loaded)
 			footerProgress.setVisibility(View.VISIBLE);
@@ -505,20 +507,28 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		super.onApplyWindowInsets(UiUtils.applyBottomInsetToFixedView(replyContainer, insets));
 	}
 
-	@Override
-	public void onCreateOptionsMenu(Menu menu, MenuInflater inflater){
-		if(BuildConfig.DEBUG){
-			menu.add("Simulate new replies");
-		}
-		// Reading Room §5.6: Unroll ↔ "All N posts" lives in the app bar. Hidden until
-		// the fetched context proves a chain exists (§3.4: no chain, no action).
-		unrollMenuItem=menu.add(R.string.thread_unroll_action);
-		unrollMenuItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
-		unrollMenuItem.setVisible(false);
+	/**
+	 * Reading Room §5.6 — Unroll ↔ "All N posts" lives in the app bar. Appkit renders no
+	 * fragment options menu, so the action goes into the toolbar's own menu and its state
+	 * is set directly rather than through onPrepareOptionsMenu, which never ran.
+	 */
+	private void setUpToolbarMenu(){
+		Toolbar tb=getToolbar();
+		if(tb==null)
+			return;
+		tb.inflateMenu(R.menu.thread_toolbar);
+		unrollMenuItem=tb.getMenu().findItem(R.id.unroll);
+		tb.setOnMenuItemClickListener(item->{
+			if(item.getItemId()==R.id.unroll){
+				setUnrollMode(!unrollMode);
+				return true;
+			}
+			return false;
+		});
+		updateUnrollMenuItem();
 	}
 
-	@Override
-	public void onPrepareOptionsMenu(Menu menu){
+	private void updateUnrollMenuItem(){
 		if(unrollMenuItem==null)
 			return;
 		if(unrollMode){
@@ -533,11 +543,7 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item){
-		if(item==unrollMenuItem){
-			setUnrollMode(!unrollMode);
-			return true;
-		}
-		if(BuildConfig.DEBUG){
+		if(BuildConfig.DEBUG && "Simulate new replies".contentEquals(item.getTitle())){
 			ArrayList<Status> toRemove=new ArrayList<>();
 			Random r=ThreadLocalRandom.current();
 			for(Status s:data){
@@ -563,8 +569,7 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		updateSubtitle();
 		if(wasUnroll || unrollMode)
 			rebuildList();
-		if(getActivity()!=null)
-			getActivity().invalidateOptionsMenu();
+		updateUnrollMenuItem();
 	}
 
 	private void updateSubtitle(){
@@ -600,8 +605,7 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		updateUnrollBackCallback();
 		rebuildList();
 		updateSubtitle();
-		if(getActivity()!=null)
-			getActivity().invalidateOptionsMenu();
+		updateUnrollMenuItem();
 		// §5.9: entering starts at the first chain post; exiting restores the position
 		list.post(()->{
 			if(list==null)

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: Reading Room (§5.6) — the conversation's app bar actions. This app's
+     toolbars are plain Toolbars with their own menus; fragment options menus are
+     never rendered, so the Unroll action has to live here. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+	<item
+		android:id="@+id/unroll"
+		android:title="@string/thread_unroll_action"
+		android:showAsAction="always"/>
+</menu>
