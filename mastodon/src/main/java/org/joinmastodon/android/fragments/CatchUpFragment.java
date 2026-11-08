@@ -311,6 +311,9 @@ public class CatchUpFragment extends StatusListFragment{
 			for(CatchUpGrouping.AuthorGroup g:grouping.authors){
 				displayItems.add(new CatchUpHeaderStatusDisplayItem("catchup_author_"+g.account.id, this, getActivity(), authorHeaderTitle(g), false, false, null, g.account));
 				for(Status s:g.posts){
+					// A relative time is the wrong instrument in a bounded reading view: the
+					// reader is inside a fixed 24 hours and needs the actual moment.
+					displayItems.add(new org.joinmastodon.android.ui.displayitems.CatchUpTimestampStatusDisplayItem("catchup_ts_"+s.id, this, getActivity(), s.createdAt));
 					List<StatusDisplayItem> postItems=buildDisplayItems(s, StatusDisplayItem.FLAG_NO_HEADER);
 					populateNestedQuotes(postItems);
 					// MAMMUT: with no header row, a media-only post starts flush against the
@@ -494,6 +497,7 @@ public class CatchUpFragment extends StatusListFragment{
 		Bundle args=new Bundle();
 		args.putString("account", accountID);
 		args.putInt(EXTRA_TIMELINE_DEF_INDEX, getArguments().getInt(EXTRA_TIMELINE_DEF_INDEX, -1));
+		args.putInt(org.joinmastodon.android.fragments.settings.TimelineViewSettingsFragment.EXTRA_LABEL_RES, R.string.catch_up);
 		Nav.go(getActivity(), org.joinmastodon.android.fragments.settings.TimelineViewSettingsFragment.class, args);
 	}
 

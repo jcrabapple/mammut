@@ -22,6 +22,9 @@ import java.util.List;
  * of each account keeps its own boosts/replies/media-only state across restarts.
  */
 public class TimelineViewSettingsFragment extends BaseSettingsFragment<Void> implements HasAccountID{
+	/** Optional string resource naming the view that opened this screen (Catch up). */
+	public static final String EXTRA_LABEL_RES="labelRes";
+
 	private TimelineDefinition definition;
 	private CheckableListItem<Void> showBoostsItem, showRepliesItem, mediaOnlyItem;
 
@@ -35,7 +38,11 @@ public class TimelineViewSettingsFragment extends BaseSettingsFragment<Void> imp
 			definition=lp.timelines.get(index);
 		ArrayList<ListItem<Void>> items=new ArrayList<>();
 		if(definition!=null){
-			items.add(new ListItem<>(definition.getTitle(getActivity()), getString(R.string.timeline_view_explanation), 0, null, null, 0, true));
+			// The rules belong to the tab, but the screen was opened from a specific view:
+			// when Catch up opens this, the row must name Catch up, not the tab behind it.
+			int labelRes=getArguments().getInt(EXTRA_LABEL_RES, 0);
+			String label=labelRes!=0 ? getString(labelRes) : definition.getTitle(getActivity()).toString();
+			items.add(new ListItem<>(label, getString(R.string.timeline_view_explanation), 0, null, null, 0, true));
 			items.add(showBoostsItem=new CheckableListItem<>(R.string.timeline_view_show_boosts, R.string.timeline_view_show_boosts_explanation, CheckableListItem.Style.SWITCH, definition.isShowBoosts(), R.drawable.ic_fluent_arrow_repeat_all_24_regular, i->onShowBoostsClick()));
 			items.add(showRepliesItem=new CheckableListItem<>(R.string.timeline_view_show_replies, R.string.timeline_view_show_replies_explanation, CheckableListItem.Style.SWITCH, definition.isShowReplies(), R.drawable.ic_fluent_arrow_reply_24_regular, i->onShowRepliesClick()));
 			items.add(mediaOnlyItem=new CheckableListItem<>(R.string.timeline_view_media_only, R.string.timeline_view_media_only_explanation, CheckableListItem.Style.SWITCH, definition.isMediaOnly(), R.drawable.ic_fluent_image_24_regular, i->onMediaOnlyClick()));

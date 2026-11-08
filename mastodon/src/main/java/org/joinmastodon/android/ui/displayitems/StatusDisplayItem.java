@@ -124,6 +124,7 @@ public abstract class StatusDisplayItem{
 			case CATCH_UP_HEADER -> new CatchUpHeaderStatusDisplayItem.Holder(activity, parent);
 			case CATCH_UP_FOOTER -> new CatchUpFooterStatusDisplayItem.Holder(activity, parent);
 			case CATCH_UP_PROGRESS -> new CatchUpProgressStatusDisplayItem.Holder(activity, parent);
+			case CATCH_UP_TIMESTAMP -> new CatchUpTimestampStatusDisplayItem.Holder(activity, parent);
 			};
 	}
 
@@ -334,7 +335,8 @@ public abstract class StatusDisplayItem{
 		// MAMMUT: Catch up bounded reading view (docs/CATCH-UP-SPEC.md)
 		CATCH_UP_HEADER,
 		CATCH_UP_FOOTER,
-		CATCH_UP_PROGRESS
+		CATCH_UP_PROGRESS,
+		CATCH_UP_TIMESTAMP
 	}
 
 	public static abstract class Holder<T> extends BindableViewHolder<T> implements UsableRecyclerView.DisableableClickable{
