@@ -39,6 +39,25 @@ public class TimelineViewSettingsFragment extends BaseSettingsFragment<Void> imp
 			items.add(showBoostsItem=new CheckableListItem<>(R.string.timeline_view_show_boosts, R.string.timeline_view_show_boosts_explanation, CheckableListItem.Style.SWITCH, definition.isShowBoosts(), R.drawable.ic_fluent_arrow_repeat_all_24_regular, i->onShowBoostsClick()));
 			items.add(showRepliesItem=new CheckableListItem<>(R.string.timeline_view_show_replies, R.string.timeline_view_show_replies_explanation, CheckableListItem.Style.SWITCH, definition.isShowReplies(), R.drawable.ic_fluent_arrow_reply_24_regular, i->onShowRepliesClick()));
 			items.add(mediaOnlyItem=new CheckableListItem<>(R.string.timeline_view_media_only, R.string.timeline_view_media_only_explanation, CheckableListItem.Style.SWITCH, definition.isMediaOnly(), R.drawable.ic_fluent_image_24_regular, i->onMediaOnlyClick()));
+			// MAMMUT: the switch itself must persist too. SwitchListItemViewHolder only writes
+			// item.checked when there is no checkedChangeListener, so tapping the toggle flipped
+			// the control without reaching the save path — the row body saved, the switch did
+			// not, and the setting appeared to revert after leaving the screen.
+			showBoostsItem.checkedChangeListener=checked->{
+				showBoostsItem.checked=checked; // the widget does not write the model back when a listener is set
+				definition.setShowBoosts(checked);
+				saveAndApply();
+			};
+			showRepliesItem.checkedChangeListener=checked->{
+				showRepliesItem.checked=checked; // the widget does not write the model back when a listener is set
+				definition.setShowReplies(checked);
+				saveAndApply();
+			};
+			mediaOnlyItem.checkedChangeListener=checked->{
+				mediaOnlyItem.checked=checked; // the widget does not write the model back when a listener is set
+				definition.setMediaOnly(checked);
+				saveAndApply();
+			};
 		}
 		onDataLoaded(items);
 	}
