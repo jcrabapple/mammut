@@ -152,4 +152,79 @@ public class PollBlockTest{
 	}
 
 	//endregion
+
+	//region Bar drawing model (review M1)
+
+	@Test
+	public void zeroPercentOptionHasZeroFillWidth(){
+		// The M1 regression: a 0% option must not read as a full bar.
+		PollBlock.Bar[] bars=PollBlock.bars(new int[]{0, 50, 50}, new boolean[]{false, true, true}, 968);
+		assertEquals(0, bars[0].fillWidth);
+		assertTrue(bars[0].track);
+		assertFalse(bars[0].leader);
+	}
+
+	@Test
+	public void nonLeaderIsStrictlyNarrowerThanFullWidth(){
+		// 60/20/20 split: the non-leaders are 194 px of 968, never the full track.
+		int[] votes={6, 2, 2};
+		int total=PollBlock.totalVotes(0, 10);
+		int[] pcts=PollBlock.percentages(votes, total);
+		boolean[] leaders={PollBlock.isLeader(0, votes), PollBlock.isLeader(1, votes), PollBlock.isLeader(2, votes)};
+		PollBlock.Bar[] bars=PollBlock.bars(pcts, leaders, 968);
+		// 60% of 968 = 580.8 → 581: the leader bar scales to its percentage.
+		assertEquals(581, bars[0].fillWidth);
+		assertEquals(PollBlock.barWidth(60, 968), bars[0].fillWidth);
+		assertTrue(bars[1].fillWidth<968);
+		assertTrue(bars[2].fillWidth<968);
+		assertEquals(194, bars[1].fillWidth);
+		assertEquals(194, bars[2].fillWidth);
+	}
+
+	@Test
+	public void leaderWidthEqualsItsRoundedPercentage(){
+		int[] votes={2, 1};
+		int total=PollBlock.totalVotes(0, 3);
+		int[] pcts=PollBlock.percentages(votes, total);
+		boolean[] leaders={PollBlock.isLeader(0, votes), PollBlock.isLeader(1, votes)};
+		PollBlock.Bar[] bars=PollBlock.bars(pcts, leaders, 968);
+		// 67% of 968 = 648.56 → 649; same value the label prints.
+		assertEquals(67, bars[0].percentage);
+		assertEquals(649, bars[0].fillWidth);
+		assertEquals(Math.round(968*67/100f), bars[0].fillWidth);
+	}
+
+	@Test
+	public void noEntryDescribesAFullWidthNonLeaderFill(){
+		int[] votes={5, 5, 1, 0};
+		int total=PollBlock.totalVotes(0, 11);
+		int[] pcts=PollBlock.percentages(votes, total);
+		boolean[] leaders={PollBlock.isLeader(0, votes), PollBlock.isLeader(1, votes), PollBlock.isLeader(2, votes), PollBlock.isLeader(3, votes)};
+		PollBlock.Bar[] bars=PollBlock.bars(pcts, leaders, 968);
+		for(PollBlock.Bar bar:bars){
+			assertTrue(bar.track);
+			if(!bar.leader)
+				assertTrue("non-leader fill "+bar.fillWidth+" must be < track 968", bar.fillWidth<968);
+		}
+	}
+
+	@Test
+	public void pathologicalNonLeaderIsClampedBelowFullWidth(){
+		// Unreachable with real votes (a non-leader is below the maximum and so
+		// cannot round to 100% while a leader exists), but the model must keep
+		// the invariant total regardless of the inputs.
+		PollBlock.Bar[] bars=PollBlock.bars(new int[]{100, 100}, new boolean[]{true, false}, 968);
+		assertEquals(968, bars[0].fillWidth);
+		assertEquals(967, bars[1].fillWidth);
+		assertFalse(bars[1].leader);
+	}
+
+	@Test
+	public void everyOptionDrawsAnEmptyTrack(){
+		PollBlock.Bar[] bars=PollBlock.bars(new int[]{45, 45, 9, 0}, new boolean[]{true, true, false, false}, 968);
+		for(PollBlock.Bar bar:bars)
+			assertTrue(bar.track);
+	}
+
+	//endregion
 }

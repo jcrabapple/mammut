@@ -52,6 +52,50 @@ public class PollBlock{
 		return Math.round(trackWidth*Math.min(100, percentage)/100f);
 	}
 
+	/**
+	 * The drawing model for one option's bar: the rounded percentage, the fill
+	 * width it maps to, whether the option is a leader, and whether a full-width
+	 * empty track is drawn behind the fill. The renderer turns these into
+	 * colours; keeping the geometry here makes the M1 invariant — a non-leader
+	 * fill is never described as full-width — unit-testable.
+	 */
+	public static final class Bar{
+		public final int percentage;
+		public final int fillWidth;
+		public final boolean leader;
+		/** A full-width rounded track is drawn behind every option's fill. */
+		public final boolean track;
+
+		private Bar(int percentage, int fillWidth, boolean leader, boolean track){
+			this.percentage=percentage;
+			this.fillWidth=fillWidth;
+			this.leader=leader;
+			this.track=track;
+		}
+	}
+
+	/**
+	 * Per-option bar model for the poll block. The fill width is always driven
+	 * by the same rounded percentage the label prints, so a 0% option draws no
+	 * fill at all. A non-leader is additionally clamped to never reach the full
+	 * track width: with real vote counts that is unreachable (a non-leader is
+	 * strictly below the maximum, so it can never round to 100% while the
+	 * leader exists), but the clamp keeps the "no full-width non-leader fill"
+	 * rule total regardless of the inputs.
+	 */
+	public static Bar[] bars(int[] percentages, boolean[] leaders, int trackWidth){
+		Bar[] bars=new Bar[percentages.length];
+		for(int i=0;i<percentages.length;i++){
+			int pct=Math.max(0, Math.min(100, percentages[i]));
+			int width=barWidth(pct, trackWidth);
+			boolean leader=leaders!=null && i<leaders.length && leaders[i];
+			if(!leader && trackWidth>0 && width>=trackWidth)
+				width=trackWidth-1;
+			bars[i]=new Bar(pct, width, leader, true);
+		}
+		return bars;
+	}
+
 	/** Base of the percentage, per the timeline: voters when known, else votes. */
 	public static int totalVotes(int votersCount, int votesCount){
 		return votersCount>0 ? votersCount : votesCount;

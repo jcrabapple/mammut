@@ -56,7 +56,7 @@ import me.grishka.appkit.imageloader.requests.UrlImageLoaderRequest;
  * the UI thread. Geometry per the post-as-image spec §4–§6 (slice A) and §11
  * (slice B: quote block, poll block); the pure decisions live in
  * {@link MediaGridSolver}, {@link TruncationChooser}, {@link SensitiveMedia},
- * {@link QuoteBlock} and {@link PollBlock}.
+ * {@link QuoteBlock}, {@link PollBlock} and {@link CardFlow}.
  *
  * The whole hierarchy is created, measured and drawn on the render thread only,
  * using the application context, so no Activity is held past fragment death.
@@ -83,10 +83,8 @@ public class ShareImageRenderer{
 	private static final int NAME_SIZE=40;
 	private static final int HANDLE_SIZE=30;
 	private static final int TIMESTAMP_SIZE=26;
-	private static final int HEADER_BODY_GAP=56;
 	private static final int BODY_SIZE=38;
 	private static final float BODY_LINE_SPACING=1.35f;
-	private static final int BODY_MEDIA_GAP=40;
 	private static final int MEDIA_RADIUS=24;
 	private static final int CW_SIZE=32;
 	private static final int ELLIPSIS_SIZE=38;
@@ -95,8 +93,8 @@ public class ShareImageRenderer{
 	private static final int FOOTER_SIZE=24;
 	private static final int LABEL_SIZE=32;
 
-	// §11 geometry (slice B): gaps between content blocks, poll and quote registers
-	private static final int BLOCK_GAP=40;
+	// §11 geometry (slice B): gaps between content blocks come from CardFlow;
+	// poll and quote registers live here
 	private static final int POLL_QUESTION_SIZE=34;
 	private static final int POLL_OPTION_SIZE=32;
 	private static final int POLL_FOOTER_SIZE=26;
@@ -108,6 +106,8 @@ public class ShareImageRenderer{
 
 	private static final int TILE_BLUR_RADIUS=32;
 	private static final int BADGE_INSET=16;
+	/** Empty poll-bar track: {@code outlineVariant} at ~18% alpha, per the M1 review fix. */
+	private static final int TRACK_ALPHA=0x2E;
 	private static final long IMAGE_LOAD_TIMEOUT_MS=15_000;
 	private static final long CACHE_MAX_AGE_MS=60*60*1000L;
 
@@ -447,36 +447,38 @@ public class ShareImageRenderer{
 		bodyPresent=bodyText.length()>0;
 		cwPresent=!TextUtils.isEmpty(status.spoilerText);
 		mediaPresent=!attachments.isEmpty();
-
-		TextView body=null;
-		if(bodyPresent || cwPresent)
-			card.addView(vspace(HEADER_BODY_GAP));
-		if(cwPresent){
-			TextView cw=newTextView(CW_SIZE, palette.onSurface, Typeface.create("sans-serif-medium", Typeface.NORMAL));
-			cw.setText("CW: "+status.spoilerText);
-			card.addView(cw, new LinearLayout.LayoutParams(CONTENT_WIDTH, ViewGroup.LayoutParams.WRAP_CONTENT));
-		}
 		quotePresent=quoted!=null;
 		pollPresent=status.poll!=null && status.poll.options!=null && !status.poll.options.isEmpty();
-		if(bodyPresent && !pollPresent){
-			body=newBodyTextView();
-			body.setText(bodyText);
-			card.addView(body, new LinearLayout.LayoutParams(CONTENT_WIDTH, ViewGroup.LayoutParams.WRAP_CONTENT));
-		}
-		// §11 ordering: quote block above poll block, both above media.
-		if(quotePresent){
-			card.addView(vspace(blockGapAbove(bodyPresent || cwPresent)));
-			buildQuoteBlock();
-		}
-		if(pollPresent){
-			card.addView(vspace(blockGapAbove(bodyPresent || cwPresent || quotePresent)));
-			pollSpace=vspace(measurePollBlock(status.poll, bodyPresent ? bodyText : null));
-			card.addView(pollSpace);
-		}
-		if(mediaPresent){
-			card.addView(vspace(BODY_MEDIA_GAP));
-			mediaSpace=vspace(mediaHeight(attachments));
-			card.addView(mediaSpace);
+
+		// §11 ordering and gaps come from CardFlow: every gap belongs to the
+		// block that follows it (header → first block, block → block), derived
+		// from the blocks actually inserted — never from bodyPresent, which is
+		// also true when the poll consumes the text as its question.
+		TextView body=null;
+		List<CardFlow.Entry> flow=CardFlow.build(new CardFlow.Input(cwPresent, bodyPresent, quotePresent, pollPresent, mediaPresent));
+		for(CardFlow.Entry entry:flow){
+			card.addView(vspace(entry.gapAbove));
+			switch(entry.kind){
+				case CW -> {
+					TextView cw=newTextView(CW_SIZE, palette.onSurface, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+					cw.setText("CW: "+status.spoilerText);
+					card.addView(cw, new LinearLayout.LayoutParams(CONTENT_WIDTH, ViewGroup.LayoutParams.WRAP_CONTENT));
+				}
+				case BODY -> {
+					body=newBodyTextView();
+					body.setText(bodyText);
+					card.addView(body, new LinearLayout.LayoutParams(CONTENT_WIDTH, ViewGroup.LayoutParams.WRAP_CONTENT));
+				}
+				case QUOTE -> buildQuoteBlock();
+				case POLL -> {
+					pollSpace=vspace(measurePollBlock(status.poll, entry.pollQuestion ? bodyText : null));
+					card.addView(pollSpace);
+				}
+				case MEDIA -> {
+					mediaSpace=vspace(mediaHeight(attachments));
+					card.addView(mediaSpace);
+				}
+			}
 		}
 		card.addView(vspace(FOOTER_RULE_GAP));
 		View rule=new View(appContext);
@@ -501,11 +503,6 @@ public class ShareImageRenderer{
 			// Same parent-relative coordinate as mediaSpace above.
 			pollTopInCard=pollSpace.getTop();
 		return card.getMeasuredHeight();
-	}
-
-	/** Gap above a content block: the standard 56 px header gap when nothing is above it yet. */
-	private static int blockGapAbove(boolean anythingAbove){
-		return anythingAbove ? BLOCK_GAP : HEADER_BODY_GAP;
 	}
 
 	/**
@@ -938,8 +935,12 @@ public class ShareImageRenderer{
 	/**
 	 * §11: draw the poll block into its Space. Bars go down first so they sit
 	 * behind the option labels; the percentage text is drawn from the same
-	 * rounded value that sizes the bar, per the spec. The leader bar is
-	 * colorM3Primary at 35% alpha; every other bar is colorM3SurfaceVariant.
+	 * rounded value that sizes the bar, per the spec. The bar geometry comes
+	 * from {@link PollBlock#bars(int[], boolean[], int)}: the empty track is a
+	 * full-width rounded rect in {@code outlineVariant} at low alpha — never
+	 * {@code surfaceVariant}, which is the non-leader fill colour, so a
+	 * non-leader bar can never read as 100% (review M1). The leader fill is
+	 * colorM3Primary at 35% alpha; every other fill is colorM3SurfaceVariant.
 	 */
 	private void drawPoll(Canvas canvas){
 		canvas.save();
@@ -953,8 +954,9 @@ public class ShareImageRenderer{
 			y+=pollQuestion.getHeight()+POLL_QUESTION_GAP;
 		}
 
+		PollBlock.Bar[] bars=PollBlock.bars(pollPcts, pollLeaders, CONTENT_WIDTH);
 		Paint trackPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
-		trackPaint.setColor(palette.surfaceVariant);
+		trackPaint.setColor((palette.outlineVariant&0xFFFFFF)|(TRACK_ALPHA<<24));
 		Paint fillPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
 		Paint pctPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
 		pctPaint.setTextSize(POLL_OPTION_SIZE);
@@ -964,11 +966,13 @@ public class ShareImageRenderer{
 		for(int i=0;i<pollOptionLabels.length;i++){
 			int rowHeight=Math.max(pollOptionHeights[i], PollBlock.BAR_HEIGHT);
 			int barTop=y+(rowHeight-PollBlock.BAR_HEIGHT)/2;
+			// The track is always the empty-bar colour at low alpha, so any
+			// fill drawn over it — including a 0% option's absence of fill —
+			// stays visible against it.
 			canvas.drawRoundRect(new RectF(0, barTop, CONTENT_WIDTH, barTop+PollBlock.BAR_HEIGHT), barRadius, barRadius, trackPaint);
-			int width=PollBlock.barWidth(pollPcts[i], CONTENT_WIDTH);
-			if(width>0){
-				fillPaint.setColor(pollLeaders[i] ? (palette.primary&0xFFFFFF)|0x59000000 : palette.surfaceVariant);
-				canvas.drawRoundRect(new RectF(0, barTop, width, barTop+PollBlock.BAR_HEIGHT), barRadius, barRadius, fillPaint);
+			if(bars[i].fillWidth>0){
+				fillPaint.setColor(bars[i].leader ? (palette.primary&0xFFFFFF)|0x59000000 : palette.surfaceVariant);
+				canvas.drawRoundRect(new RectF(0, barTop, bars[i].fillWidth, barTop+PollBlock.BAR_HEIGHT), barRadius, barRadius, fillPaint);
 			}
 			// Same rounded percentage as the bar, right-aligned in its column.
 			canvas.drawText(pollPcts[i]+"%", CONTENT_WIDTH, y+pollOptionLabels[i].getBaseline(), pctPaint);

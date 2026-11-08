@@ -1378,7 +1378,9 @@ public class UiUtils{
 	 * with {@code IS_PENDING} and shows the success snackbar once a real gallery
 	 * entry exists; API 23–28 writes into the app's external files dir under
 	 * {@code Pictures/} (no runtime permission exists or is requested) and toasts
-	 * the resulting path instead.
+	 * the resulting path instead. The saver runs on the render executor's
+	 * background thread inside {@code onSuccess}; only the snackbar/toast hops
+	 * to the UI thread (review M3).
 	 */
 	public static void saveImage(Activity activity, String accountID, Status status){
 		final ShareImageInputs inputs=buildShareImageInputs(activity, accountID, status);
@@ -1387,27 +1389,39 @@ public class UiUtils{
 		ShareImageRenderer.enqueue(appContext, inputs.target, inputs.text, inputs.quoteText, inputs.palette, new ShareImageRenderer.Callback(){
 			@Override
 			public void onSuccess(File file){
-				activity.runOnUiThread(()->{
-					if(!isActivityAlive(activity))
-						return;
-					if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q){
-						try{
-							ShareImageSaver.saveToMediaStore(appContext, file);
+				if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q){
+					try{
+						ShareImageSaver.saveToMediaStore(appContext, file);
+						activity.runOnUiThread(()->{
+							if(!isActivityAlive(activity))
+								return;
 							new Snackbar.Builder(activity).setText(R.string.saved_to_gallery).show();
-						}catch(Exception x){
-							Log.e(TAG, "saveImage: MediaStore insert failed", x);
+						});
+					}catch(Exception x){
+						Log.e(TAG, "saveImage: MediaStore insert failed", x);
+						activity.runOnUiThread(()->{
+							if(!isActivityAlive(activity))
+								return;
 							new Snackbar.Builder(activity).setText(R.string.save_image_failed).show();
-						}
-					}else{
-						try{
-							File dest=ShareImageSaver.saveToAppPictures(appContext, file);
-							Toast.makeText(activity, dest.getAbsolutePath(), Toast.LENGTH_LONG).show();
-						}catch(Exception x){
-							Log.e(TAG, "saveImage: app Pictures write failed", x);
-							new Snackbar.Builder(activity).setText(R.string.save_image_failed).show();
-						}
+						});
 					}
-				});
+				}else{
+					try{
+						File dest=ShareImageSaver.saveToAppPictures(appContext, file);
+						activity.runOnUiThread(()->{
+							if(!isActivityAlive(activity))
+								return;
+							Toast.makeText(activity, dest.getAbsolutePath(), Toast.LENGTH_LONG).show();
+						});
+					}catch(Exception x){
+						Log.e(TAG, "saveImage: app Pictures write failed", x);
+						activity.runOnUiThread(()->{
+							if(!isActivityAlive(activity))
+								return;
+							new Snackbar.Builder(activity).setText(R.string.save_image_failed).show();
+						});
+					}
+				}
 			}
 
 			@Override
