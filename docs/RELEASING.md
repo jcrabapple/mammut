@@ -36,7 +36,7 @@ Keep a copy of the keystore and its password outside CI.
 ## In-app updates
 
 `mastodon/src/github/.../GithubSelfUpdaterImpl.java` reads
-`https://api.github.com/repos/jcrabapple/moshidon/releases` and installs the first APK asset it finds.
+`https://api.github.com/repos/jcrabapple/mammut/releases` and installs the first APK asset it finds.
 The release workflow uploads exactly one APK, named `mammut-<version>.apk`, so the updater picks it up
 without configuration.
 

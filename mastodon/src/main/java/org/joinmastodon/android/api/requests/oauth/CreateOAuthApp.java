@@ -14,6 +14,6 @@ public class CreateOAuthApp extends MastodonAPIRequest<Application>{
 		public String clientName="Mammut";
 		public String redirectUris=AccountSessionManager.REDIRECT_URI;
 		public String scopes=AccountSessionManager.SCOPE;
-		public String website="https://github.com/jcrabapple/moshidon";
+		public String website="https://github.com/jcrabapple/mammut";
 	}
 }

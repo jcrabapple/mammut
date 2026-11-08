@@ -71,7 +71,7 @@ editing, translation, pronouns, emoji reactions, and the rest.
 
 ## Install
 
-Download the APK from [Releases](https://github.com/jcrabapple/moshidon/releases). Builds are signed
+Download the APK from [Releases](https://github.com/jcrabapple/mammut/releases). Builds are signed
 with a consistent key, so newer versions install over older ones, and the app offers updates from
 GitHub.
 
@@ -81,7 +81,7 @@ be installed side by side.
 ## Build from source
 
 ```sh
-git clone https://github.com/jcrabapple/moshidon.git
+git clone https://github.com/jcrabapple/mammut.git
 cd moshidon
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 ./gradlew :mastodon:assembleGithubRelease
