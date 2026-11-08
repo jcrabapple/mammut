@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
 	<cache-path name="image_cache" path="images/"/>
+	<!-- MAMMUT: Composer 2.0 — draft media is served as content:// for re-upload -->
+	<files-path name="drafts" path="drafts/"/>
 </paths>

@@ -40,6 +40,7 @@ import androidx.annotation.Nullable;
 
 import org.joinmastodon.android.MastodonApp;
 import org.joinmastodon.android.R;
+import org.joinmastodon.android.TweakedFileProvider;
 import org.joinmastodon.android.api.MastodonAPIController;
 import org.joinmastodon.android.api.ProgressListener;
 import org.joinmastodon.android.api.requests.statuses.CreateStatus;
@@ -48,6 +49,8 @@ import org.joinmastodon.android.api.requests.statuses.UpdateAttachment;
 import org.joinmastodon.android.api.requests.statuses.UploadAttachment;
 import org.joinmastodon.android.fragments.ComposeFragment;
 import org.joinmastodon.android.fragments.ComposeImageDescriptionFragment;
+import org.joinmastodon.android.drafts.DraftAttachment;
+import org.joinmastodon.android.drafts.DraftStore;
 import org.joinmastodon.android.model.Attachment;
 import org.joinmastodon.android.model.Instance;
 import org.joinmastodon.android.ui.OutlineProviders;
@@ -59,6 +62,8 @@ import org.joinmastodon.android.utils.TransferSpeedTracker;
 import org.parceler.Parcel;
 import org.parceler.Parcels;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -836,6 +841,83 @@ public class ComposeMediaViewController{
 		return MAX_ATTACHMENTS;
 	}
 
+	// MAMMUT: Composer 2.0 (§2/§3) — draft snapshot and restore. Restored media
+	// re-enters through addRestoredAttachment below, which never invokes the
+	// Caption Track metadata prefill (prefill is only called from
+	// addMediaAttachment), so a restored description is never overwritten by
+	// a metadata suggestion.
+
+	/**
+	 * Builds the durable attachment list for a draft save. Attachments already
+	 * copied into this draft directory on a previous save are reused; fresh
+	 * picker attachments are copied in via the shared store (§2: media is
+	 * copied in, never referenced). Must run on a background thread.
+	 */
+	public List<DraftAttachment> buildDraftAttachments(DraftStore store, String draftId){
+		List<DraftAttachment> result=new ArrayList<>();
+		// Iterate a copy: the UI thread may add or remove attachments while a
+		// big media copy from a previous save is still running.
+		for(DraftMediaAttachment att:new ArrayList<>(attachments)){
+			if(att.mimeType==null)
+				continue;
+			DraftAttachment da=new DraftAttachment();
+			da.mimeType=att.mimeType;
+			da.description=att.description;
+			String existing=att.draftFilePath;
+			if(existing!=null && new File(existing).exists()){
+				da.filePath=existing;
+			}else if(att.uri!=null){
+				try{
+					da.filePath=store.importMedia(draftId, att.uri, att.mimeType);
+					att.draftFilePath=da.filePath;
+				}catch(IOException x){
+					Log.w(TAG, "buildDraftAttachments: failed to copy "+att.uri, x);
+					continue;
+				}
+			}else{
+				continue;
+			}
+			result.add(da);
+		}
+		return result;
+	}
+
+	/**
+	 * Re-adds an attachment from a resumed draft, queued for upload. The stored
+	 * description is the author's text, not a suggestion — this method never
+	 * runs the Caption Track metadata prefill. The file is served through the
+	 * app FileProvider as a content:// URI because the upload pipeline
+	 * (ContentUriRequestBody) queries OpenableColumns.SIZE, which only
+	 * content:// URIs answer; the prefill guard (content-scheme check in
+	 * prefillDescriptionFromMetadata) is not a risk since prefill is only
+	 * invoked from addMediaAttachment, never from here.
+	 */
+	public void addRestoredAttachment(DraftAttachment da){
+		if(da.filePath==null)
+			return;
+		File f=new File(da.filePath);
+		if(!f.exists())
+			return;
+		Uri uri=TweakedFileProvider.getUriForFile(fragment.getActivity(),
+				fragment.getActivity().getPackageName()+".fileprovider", f);
+		DraftMediaAttachment draft=new DraftMediaAttachment();
+		draft.uri=uri;
+		draft.draftFilePath=da.filePath;
+		draft.mimeType=da.mimeType;
+		draft.description=da.description;
+		draft.fileSize=(int)Math.min(f.length(), Integer.MAX_VALUE);
+		draft.state=AttachmentUploadState.QUEUED;
+		attachmentsView.addView(createMediaAttachmentView(draft), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT));
+		attachments.add(draft);
+		attachmentsScroller.setVisibility(View.VISIBLE);
+		updateMediaAttachmentsLayout();
+		rebuildDescriptionEditors();
+		if(!areThereAnyUploadingAttachments())
+			uploadNextQueuedAttachment();
+		fragment.updatePublishButtonState();
+		fragment.updateMediaPollStates();
+	}
+
 	public int getNonDoneAttachmentCount(){
 		int nonDoneAttachmentCount=0;
 		for(DraftMediaAttachment att:attachments){
@@ -894,6 +976,8 @@ public class ComposeMediaViewController{
 		public AttachmentUploadState state=AttachmentUploadState.QUEUED;
 		public int fileSize;
 		public boolean descriptionSaved=true;
+		/** MAMMUT: Composer 2.0 — path of this file's private copy in the draft directory, once saved */
+		public transient String draftFilePath;
 
 		public transient View view;
 		public transient ProgressBar progressBar;

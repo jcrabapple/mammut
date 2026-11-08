@@ -1078,4 +1078,27 @@
 	<string name="quote_followers_only_cancel">Back to editing</string>
 	<string name="quote_followers_only_dont_show_again">Don\'t show this message again</string>
 	<string name="more_replies_found">More replies found</string>
+
+	<!-- MAMMUT: Composer 2.0 (§3) — drafts screen and composer draft actions -->
+	<string name="drafts">Drafts</string>
+	<string name="scheduled">Scheduled</string>
+	<string name="save_draft">Save draft</string>
+	<string name="delete_draft">Delete draft?</string>
+	<string name="delete_draft_message">The saved media for this draft will be removed.</string>
+	<string name="draft_empty">No drafts. Anything you start writing is saved here.</string>
+	<string name="draft_scheduled_empty">Nothing scheduled yet.</string>
+	<string name="draft_media_only">Media only</string>
+	<string name="draft_edited_ago">edited %1$s</string>
+	<plurals name="draft_x_posts">
+		<item quantity="one">%d post</item>
+		<item quantity="other">%d posts</item>
+	</plurals>
+	<plurals name="draft_x_images">
+		<item quantity="one">%d image</item>
+		<item quantity="other">%d images</item>
+	</plurals>
+	<plurals name="draft_x_media">
+		<item quantity="one">%d media item</item>
+		<item quantity="other">%d media items</item>
+	</plurals>
 </resources>
