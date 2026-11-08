@@ -189,7 +189,10 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 				.setGroup(accountID);
 		// MAMMUT: port from upstream master — per-type small icons unless the user wants one uniform icon
 		if(!GlobalUserPreferences.uniformNotificationIcon){
-			builder.setSmallIcon(switch(pn.notificationType){
+			// A switch on the enum throws when the server sends a type this build does not
+			// map (moderation, admin sign-ups, a UnifiedPush payload without a type), and the
+			// ordinal() NPE takes the whole process down for the sake of a notification icon.
+			builder.setSmallIcon(pn.notificationType==null ? R.drawable.ic_ntf_logo : switch(pn.notificationType){
 				case FAVORITE -> GlobalUserPreferences.likeIcon ? R.drawable.ic_fluent_heart_24_filled : R.drawable.ic_fluent_star_24_filled;
 				case REBLOG -> R.drawable.ic_fluent_arrow_repeat_all_24_filled;
 				case FOLLOW -> R.drawable.ic_fluent_person_add_24_filled;

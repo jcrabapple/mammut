@@ -1,0 +1,1 @@
+Fixed: a push notification of a type this build does not know no longer crashes the app.
