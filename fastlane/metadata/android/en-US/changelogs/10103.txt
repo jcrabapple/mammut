@@ -1,0 +1,1 @@
+"Share as image" now decodes avatars, photos and custom emoji as software bitmaps, so they actually appear on the card instead of silently dropping out.

@@ -27,6 +27,8 @@ import android.widget.TextView;
 
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.model.Attachment;
+import org.joinmastodon.android.model.Emoji;
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.model.Poll;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.ui.text.CustomEmojiSpan;
@@ -51,6 +53,7 @@ import me.grishka.appkit.imageloader.ImageCache;
 import me.grishka.appkit.imageloader.ImageLoaderCallback;
 import me.grishka.appkit.imageloader.requests.ImageLoaderRequest;
 import me.grishka.appkit.imageloader.requests.UrlImageLoaderRequest;
+import me.grishka.appkit.utils.V;
 
 /**
  * Renders one status into a 1080 px wide PNG card in {@code cacheDir/share/}, off
@@ -302,6 +305,17 @@ public class ShareImageRenderer{
 	 * Every custom-emoji drawable must be resolved before draw; a pending span would
 	 * render as a blank box.
 	 */
+	/**
+	 * Every image this class decodes must be a software bitmap: the card is drawn on an
+	 * off-screen {@link Canvas}, and appkit's {@code UrlImageLoaderRequest(url, w, h)}
+	 * leaves the config null, which lets the decoder hand back {@link Bitmap.Config#HARDWARE}
+	 * on API 26+. Asking for ARGB_8888 is the fix at the source; the toSoftware() conversion
+	 * in the draw path stays as a backstop for anything already cached.
+	 */
+	private static ImageLoaderRequest softwareRequest(String url, int width, int height){
+		return new UrlImageLoaderRequest(Bitmap.Config.ARGB_8888, width, height, List.of(), Uri.parse(url));
+	}
+
 	private void loadEmojiDrawables() throws Exception{
 		loadEmojiDrawables(parsedText);
 	}
@@ -330,7 +344,9 @@ public class ShareImageRenderer{
 				ArrayList<CustomEmojiSpan> group=new ArrayList<>();
 				group.add(span);
 				groups.add(group);
-				requests.add(span.createImageLoaderRequest());
+				Emoji emoji=group.get(0).emoji;
+				// Same URL choice the span itself makes, but decoded as software.
+				requests.add(softwareRequest(GlobalUserPreferences.playGifs ? emoji.url : emoji.staticUrl, V.dp(20), V.dp(20)));
 			}
 		}
 		for(int i=0;i<requests.size();i++){
@@ -349,7 +365,7 @@ public class ShareImageRenderer{
 		if(TextUtils.isEmpty(url))
 			return null;
 		try{
-			return load(new UrlImageLoaderRequest(url, AVATAR_SIZE, AVATAR_SIZE));
+			return load(softwareRequest(url, AVATAR_SIZE, AVATAR_SIZE));
 		}catch(Exception x){
 			// A missing avatar is decoration, not content: the card still has the
 			// display name, the handle and the post itself. Failing the whole share
@@ -388,7 +404,7 @@ public class ShareImageRenderer{
 			if(att.type!=Attachment.Type.IMAGE || TextUtils.isEmpty(att.previewUrl))
 				continue; // placeholder tile per §5
 			try{
-				drawables[i]=load(new UrlImageLoaderRequest(att.previewUrl, MediaGridSolver.TILE*2, MediaGridSolver.TILE*2));
+				drawables[i]=load(softwareRequest(att.previewUrl, MediaGridSolver.TILE*2, MediaGridSolver.TILE*2));
 			}catch(Exception x){
 				Log.w(TAG, "Failed to load media "+att.previewUrl, x);
 			}
@@ -413,7 +429,7 @@ public class ShareImageRenderer{
 		if(att.type!=Attachment.Type.IMAGE || TextUtils.isEmpty(att.previewUrl))
 			return; // placeholder tile at draw time
 		try{
-			quoteTileDrawable=load(new UrlImageLoaderRequest(att.previewUrl, QuoteBlock.MEDIA_TILE*2, QuoteBlock.MEDIA_TILE*2));
+			quoteTileDrawable=load(softwareRequest(att.previewUrl, QuoteBlock.MEDIA_TILE*2, QuoteBlock.MEDIA_TILE*2));
 		}catch(Exception x){
 			Log.w(TAG, "Failed to load quoted media "+att.previewUrl, x);
 		}
