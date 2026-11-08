@@ -637,6 +637,21 @@
 		<item quantity="one">The other %d post is a side reply, not part of this story.</item>
 		<item quantity="other">The other %d posts are side replies, not part of this story.</item>
 	</plurals>
+	<!-- MAMMUT: Address line (docs/ADDRESS-LINE-SPEC.md §1, §3, §5) — the thread grammar in Conversation. -->
+	<string name="address_line_replying_to">Replying to %s</string>
+	<string name="address_line_replying_to_parent_not_shown">Replying to %s · parent post not shown</string>
+	<string name="address_line_replying_to_unresolved">Replying to a post that isn\'t shown</string>
+	<string name="address_line_thread_numbered">Thread %1$d/%2$d</string>
+	<string name="address_line_thread_bare">Thread</string>
+	<string name="address_line_a11y_replying_to">Replying to %s</string>
+	<string name="address_line_a11y_replying_to_parent_not_shown">Replying to %s, parent post not shown</string>
+	<string name="address_line_a11y_replying_to_unresolved">Replying to a post that isn\'t shown</string>
+	<string name="address_line_a11y_thread_numbered">Self-reply, thread %1$d of %2$d</string>
+	<string name="address_line_a11y_thread_bare">Self-reply, part of a thread</string>
+	<plurals name="thread_end_line">
+		<item quantity="one">End of the %d posts Mammut fetched</item>
+		<item quantity="other">End of the %d posts Mammut fetched</item>
+	</plurals>
 	<string name="catch_up_error_unchanged">Your place in this timeline is unchanged.</string>
 	<string name="try_again">Try again</string>
 	<string name="settings_delete_filter">Delete filter</string>

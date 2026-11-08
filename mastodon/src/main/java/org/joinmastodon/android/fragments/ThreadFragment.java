@@ -4,7 +4,6 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
 import android.app.assist.AssistContent;
-import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
@@ -41,9 +40,11 @@ import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.NavDestination;
 import org.joinmastodon.android.ui.NavMenuController;
 import org.joinmastodon.android.ui.Snackbar;
+import org.joinmastodon.android.ui.ThreadAddressRule;
 import org.joinmastodon.android.ui.displayitems.ExtendedFooterStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.FooterStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.HeaderStatusDisplayItem;
+import org.joinmastodon.android.ui.displayitems.ReblogOrReplyLineCustomStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.SpoilerStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.StatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.TextStatusDisplayItem;
@@ -82,7 +83,7 @@ import me.grishka.appkit.utils.V;
 public class ThreadFragment extends StatusListFragment implements AssistContentProviderFragment, NavMenuController.Host{
 	private Status mainStatus;
 	private NavMenuController navMenuController;
-	private ImageView endMark;
+	private TextView endLine;
 	private FrameLayout replyContainer;
 	private LinearLayout replyButton;
 	private ImageView replyButtonAva;
@@ -174,6 +175,15 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 				return buildUnrolledPostItems(s, chainIndex);
 		}
 		List<StatusDisplayItem> items=StatusDisplayItem.buildItems(this, getActivity(), s, accountID, s, knownAccounts, StatusDisplayItem.FLAG_NO_IN_REPLY_TO);
+		// Address line §2: the six-state grammar row sits above the author header,
+		// reusing the reply-line row type (extended, not a look-alike). Built here,
+		// with the display items — never computed at draw time (§7). Suppressed
+		// inside Unroll: only the conversation path reaches this branch.
+		ReblogOrReplyLineCustomStatusDisplayItem address=buildAddressLine(s);
+		if(address!=null){
+			address.index=0;
+			items.add(0, address);
+		}
 		if(s.id.equals(mainStatus.id)){
 			for(StatusDisplayItem item:items){
 				item.fullWidth=true;
@@ -224,8 +234,130 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		return items;
 	}
 
+// Address line machinery (docs/ADDRESS-LINE-SPEC.md §1-§5)
+
+	/**
+	 * §2: build the six-state grammar row for one status, or null when the status
+	 * is not a reply (§1.6 — no empty row, no placeholder). Reuses the reply-line
+	 * display item; the visible string is clamped by the rule, the accessibility
+	 * string carries the full name (§5).
+	 */
+	private ReblogOrReplyLineCustomStatusDisplayItem buildAddressLine(Status s){
+		Status parentStatus=s.inReplyToId!=null ? knownStatuses.get(s.inReplyToId) : null;
+		ThreadAddressRule.Input in=addressInputFor(s, parentStatus);
+		ThreadAddressRule.Result r=ThreadAddressRule.evaluate(in);
+		if(r.state==ThreadAddressRule.State.NONE)
+			return null;
+		Account parentAccount=resolveParentAccount(s, parentStatus);
+		// §2: the row inset is the layout's own content inset — 16 dp from the
+		// edge in full width, 16 dp inside the item (64 dp from the edge) in the
+		// indented layout. No left outRect anywhere (§7).
+		boolean fw=s.id.equals(mainStatus.id) || GlobalUserPreferences.fullWidthPosts;
+		ReblogOrReplyLineCustomStatusDisplayItem item=new ReblogOrReplyLineCustomStatusDisplayItem(s.id, this, getActivity(),
+				r.visible, parentAccount!=null ? parentAccount.emojis : null, 0, null, null, r.accessibility, null);
+		item.addressLine=true;
+		item.addressVisible=r.visible;
+		item.addressAccessibility=r.accessibility;
+		item.fullWidth=fw;
+		item.leadingInsetPx=V.dp(fw ? 16 : 64);
+		// Quiet register: the Mammut grape-neutral ramp lives in OnSurfaceVariant
+		// (see the palette note in colors_custom.xml), same family as the reply
+		// rail; colour may reinforce the state, never define it (§5). Resolved at
+		// bind time so the row can be built before the activity exists.
+		item.textColorAttr=R.attr.colorM3OnSurfaceVariant;
+		return item;
+	}
+
+	/**
+	 * §4: resolve the rule inputs once, when the display items are built. Parent
+	 * name: inReplyToAccountId → knownAccounts, falling back to the parent status
+	 * in the fetched context. An id is never rendered and a name never invented.
+	 * Chain bounds are filled only when ConversationChain calls the chain
+	 * eligible and the status is a member (§1.4/§1.5).
+	 */
+	private ThreadAddressRule.Input addressInputFor(Status s, Status parentStatus){
+		ThreadAddressRule.Input in=new ThreadAddressRule.Input();
+		in.reply=s.inReplyToAccountId!=null;
+		if(!in.reply)
+			return in;
+		in.sameAuthor=s.account!=null && s.inReplyToAccountId.equals(s.account.id);
+		Account parentAccount=resolveParentAccount(s, parentStatus);
+		if(parentAccount!=null)
+			in.parentName=!TextUtils.isEmpty(parentAccount.displayName) ? parentAccount.displayName : parentAccount.username;
+		in.parentPostPresent=parentStatus!=null;
+		if(in.sameAuthor && chain!=null && chain.eligible){
+			int idx=chain.indexOf(s.id);
+			if(idx>=0){
+				in.chainIndex=idx;
+				in.chainSize=chain.chain.size();
+			}
+		}
+		in.tmplReplyingTo=getString(R.string.address_line_replying_to);
+		in.tmplReplyingToNotShown=getString(R.string.address_line_replying_to_parent_not_shown);
+		in.tmplReplyingToUnresolved=getString(R.string.address_line_replying_to_unresolved);
+		in.tmplThreadNumbered=getString(R.string.address_line_thread_numbered);
+		in.tmplThreadBare=getString(R.string.address_line_thread_bare);
+		in.tmplA11yReplyingTo=getString(R.string.address_line_a11y_replying_to);
+		in.tmplA11yReplyingToNotShown=getString(R.string.address_line_a11y_replying_to_parent_not_shown);
+		in.tmplA11yReplyingToUnresolved=getString(R.string.address_line_a11y_replying_to_unresolved);
+		in.tmplA11yThreadNumbered=getString(R.string.address_line_a11y_thread_numbered);
+		in.tmplA11yThreadBare=getString(R.string.address_line_a11y_thread_bare);
+		return in;
+	}
+
+	private Account resolveParentAccount(Status s, Status parentStatus){
+		Account a=knownAccounts.get(s.inReplyToAccountId);
+		if(a==null && parentStatus!=null)
+			a=parentStatus.account;
+		return a;
+	}
+
+	/**
+	 * §4: the conversation can change under an already-built row — the context
+	 * fetch resolves a parent that was unknown at first paint, or a new reply
+	 * makes the chain eligible. Re-resolve every address row in place and rebind
+	 * the ones whose wording changed; cheap, because it runs on conversation
+	 * changes only, never per frame (§7).
+	 */
+	private void refreshAddressLines(){
+		for(int i=0;i<displayItems.size();i++){
+			StatusDisplayItem item=displayItems.get(i);
+			if(!(item instanceof ReblogOrReplyLineCustomStatusDisplayItem line) || !line.addressLine)
+				continue;
+			Status s=getStatusByID(line.parentID);
+			if(s==null)
+				continue;
+			Status parentStatus=s.inReplyToId!=null ? knownStatuses.get(s.inReplyToId) : null;
+			ThreadAddressRule.Result r=ThreadAddressRule.evaluate(addressInputFor(s, parentStatus));
+			if(r.state==ThreadAddressRule.State.NONE)
+				continue;
+			if(r.visible.equals(line.addressVisible) && Objects.equals(r.accessibility, line.addressAccessibility))
+				continue;
+			Account parentAccount=resolveParentAccount(s, parentStatus);
+			line.updateAddressLine(r.visible, parentAccount!=null ? parentAccount.emojis : null, r.accessibility);
+			adapter.notifyItemChanged(i);
+		}
+	}
+
+	/**
+	 * §3: "End of the {n} posts Mammut fetched" — only once the fetched list is
+	 * final (loaded, no request in flight, not refreshing), only with the fetched
+	 * count, never in Unroll.
+	 */
+	private void updateEndLine(){
+		if(endLine==null)
+			return;
+		boolean show=loaded && !refreshing && currentRequest==null && !unrollMode && !data.isEmpty();
+		if(show){
+			int n=data.size();
+			endLine.setText(getResources().getQuantityString(R.plurals.thread_end_line, n, n));
+		}
+		endLine.setVisibility(show ? View.VISIBLE : View.GONE);
+	}
+
 	@Override
 	protected void doLoadData(int offset, int count){
+		updateEndLine(); // hidden while the fetched list is not final (§3)
 		currentRequest=new GetStatusContext(mainStatus.id)
 				.setCallback(new SimpleCallback<>(this){
 					@Override
@@ -475,19 +607,25 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		MergeRecyclerAdapter a=new MergeRecyclerAdapter();
 		a.addAdapter(super.getAdapter());
 
-		endMark=new ImageView(getActivity());
-		endMark.setScaleType(ImageView.ScaleType.CENTER);
-		endMark.setImageTintList(ColorStateList.valueOf(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OutlineVariant)));
-		endMark.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, V.dp(25)));
-		endMark.setImageResource(R.drawable.thread_end_mark);
-		a.addAdapter(new SingleViewRecyclerAdapter(endMark));
+		// Address line §3: the honest end line replaces the purely decorative end
+		// mark — "End of the {n} posts Mammut fetched", only once the list is
+		// exhausted, never in Unroll (Reading Room has its own footer).
+		endLine=new TextView(getActivity());
+		endLine.setTextAppearance(getActivity(), R.style.m3_body_small);
+		endLine.setTextColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OnSurfaceVariant));
+		endLine.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+		endLine.setPaddingRelative(V.dp(16), V.dp(12), V.dp(16), V.dp(12));
+		endLine.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		endLine.setVisibility(View.GONE);
+		a.addAdapter(new SingleViewRecyclerAdapter(endLine));
+		updateEndLine();
 
 		return a;
 	}
 
 	@Override
 	protected boolean needDividerForExtraItem(View child, View bottomSibling, RecyclerView.ViewHolder holder, RecyclerView.ViewHolder siblingHolder){
-		return bottomSibling==endMark;
+		return bottomSibling==endLine;
 	}
 
 	@Override
@@ -570,6 +708,18 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		if(wasUnroll || unrollMode)
 			rebuildList();
 		updateUnrollMenuItem();
+		// Address line §4: the conversation changed under already-built rows —
+		// re-resolve parents and chain bounds, and re-state the honest end line.
+		refreshAddressLines();
+		updateEndLine();
+	}
+
+	@Override
+	public void refreshDone(){
+		super.refreshDone();
+		// The refresh kept `loaded` true while the end line stayed hidden; the
+		// count is final again once the spinner stops (§3).
+		updateEndLine();
 	}
 
 	private void updateSubtitle(){
@@ -606,6 +756,7 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		rebuildList();
 		updateSubtitle();
 		updateUnrollMenuItem();
+		updateEndLine(); // §3: the end line is suppressed for the whole Unroll session
 		// §5.9: entering starts at the first chain post; exiting restores the position
 		list.post(()->{
 			if(list==null)

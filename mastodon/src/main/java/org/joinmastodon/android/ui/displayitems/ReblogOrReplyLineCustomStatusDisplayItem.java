@@ -48,6 +48,19 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 	public boolean needBottomPadding;
 	ReblogOrReplyLineCustomStatusDisplayItem extra;
 	CharSequence fullText;
+	// MAMMUT: Address line (docs/ADDRESS-LINE-SPEC.md §2, §4, §7) — the six-state
+	// thread grammar renders in this row type rather than a look-alike. The inset
+	// and colour are decided when the display items are built, never at draw time.
+	/** True for the Conversation address row, so ThreadFragment can re-resolve it. */
+	public boolean addressLine;
+	/** The un-spanned visible wording, for change detection on re-resolve. */
+	public String addressVisible;
+	/** The accessibility wording, for change detection on re-resolve. */
+	public String addressAccessibility;
+	/** Left itemView padding in px, -1 keeps the layout's own padding (timeline rows). */
+	public int leadingInsetPx=-1;
+	/** Theme attr for the text colour, resolved at bind time; 0 keeps the layout's ?colorM3OnSurface. */
+	public int textColorAttr;
 
 	public ReblogOrReplyLineCustomStatusDisplayItem(String parentID, Callbacks callbacks, Context context, CharSequence text, List<Emoji> emojis, @DrawableRes int icon) {
 		this(parentID, callbacks, context, text, emojis, icon, null, null, text, null);
@@ -59,27 +72,48 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 
 		public ReblogOrReplyLineCustomStatusDisplayItem(String parentID, Callbacks callbacks, Context context, CharSequence text, List<Emoji> emojis, @DrawableRes int icon, StatusPrivacy visibility, @Nullable View.OnClickListener handleClick, CharSequence fullText, Account account) {
 		super(parentID, callbacks, context);
-		SpannableStringBuilder ssb=new SpannableStringBuilder(text);
-		if(GlobalUserPreferences.customEmojiInNames && emojis != null)
-			HtmlParser.parseCustomEmoji(ssb, emojis);
-		//this is fine, since the display name is surround by '\u2068' and '\u2069'
-		int nameLoc=account!=null ? text.toString().indexOf(account.getDisplayName()) : -1;
-		if(nameLoc!=-1&&ssb.length()>=nameLoc){
-			//add temp chars for span replacement, length should be the same as the amount of spans replacing below
-			ssb.insert(nameLoc, "   ");
-			ssb.setSpan(new SpacerSpan(15, 20), nameLoc+1, nameLoc+2, Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
-			ssb.setSpan(new AvatarSpan(account), nameLoc+1, nameLoc+2, Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
-			ssb.setSpan(new SpacerSpan(15, 20), nameLoc+2, nameLoc+3, Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
-		}
-		this.text=ssb;
-		emojiHelper.setText(ssb);
+		this.text=buildSpanned(text, emojis, account);
+		emojiHelper.setText(this.text);
 		this.fullText=fullText;
 		this.icon=icon;
 //		this.status=status;
 		this.handleClick=handleClick;
-		TypedValue outValue = new TypedValue();
-		context.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true);
+		if(context!=null){ // the thread builds its first items before the activity exists
+			TypedValue outValue = new TypedValue();
+			context.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true);
+		}
 		updateVisibility(visibility);
+	}
+
+	/**
+	 * MAMMUT address line: rebuild the row's text in place when the conversation
+	 * changed under it (parent resolved, chain became eligible). Called with the
+	 * display items, never from a draw or scroll callback (§7).
+	 */
+	public void updateAddressLine(CharSequence text, List<Emoji> emojis, CharSequence fullText){
+		this.text=buildSpanned(text, emojis, null);
+		emojiHelper.setText(this.text);
+		this.fullText=fullText;
+		this.addressVisible=text.toString();
+		this.addressAccessibility=fullText.toString();
+	}
+
+	private static CharSequence buildSpanned(CharSequence text, List<Emoji> emojis, @Nullable Account account){
+		SpannableStringBuilder ssb=new SpannableStringBuilder(text);
+		if(GlobalUserPreferences.customEmojiInNames && emojis != null)
+			HtmlParser.parseCustomEmoji(ssb, emojis);
+		if(account!=null){
+			//this is fine, since the display name is surround by '\u2068' and '\u2069'
+			int nameLoc=text.toString().indexOf(account.getDisplayName());
+			if(nameLoc!=-1&&ssb.length()>=nameLoc){
+				//add temp chars for span replacement, length should be the same as the amount of spans replacing below
+				ssb.insert(nameLoc, "   ");
+				ssb.setSpan(new SpacerSpan(15, 20), nameLoc+1, nameLoc+2, Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+				ssb.setSpan(new AvatarSpan(account), nameLoc+1, nameLoc+2, Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+				ssb.setSpan(new SpacerSpan(15, 20), nameLoc+2, nameLoc+3, Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+			}
+		}
+		return ssb;
 	}
 
 	public void updateVisibility(StatusPrivacy visibility) {
@@ -122,11 +156,14 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 
 		private void bindLine(ReblogOrReplyLineCustomStatusDisplayItem item, TextView text) {
 			text.setText(item.text);
+			Context ctx = itemView.getContext();
+			// Fully deterministic under recycling: address rows carry an attr,
+			// everything else returns to the layout's ?colorM3OnSurface.
+			text.setTextColor(UiUtils.getThemeColor(ctx, item.textColorAttr!=0 ? item.textColorAttr : R.attr.colorM3OnSurface));
 			text.setCompoundDrawablesRelativeWithIntrinsicBounds(item.icon, 0, item.iconEnd, 0);
 			text.setOnClickListener(item.handleClick);
 			text.setEnabled(!item.inset && item.handleClick != null);
 			text.setClickable(!item.inset && item.handleClick != null);
-			Context ctx = itemView.getContext();
 			int visibilityText = item.visibility != null ? switch (item.visibility) {
 				case PUBLIC -> R.string.visibility_public;
 				case UNLISTED -> R.string.sk_visibility_unlisted;
@@ -145,6 +182,12 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 
 		@Override
 		public void onBind(ReblogOrReplyLineCustomStatusDisplayItem item){
+			// MAMMUT address line (§2): the row inset is the layout's own content
+			// inset — 16 dp from the edge in full width, 16 dp inside the item
+			// otherwise — decided at bind time from the precomputed leadingInsetPx,
+			// never by insetting the body or reserving an outRect (§7). Other rows
+			// keep the layout's own 16 dp paddingHorizontal.
+			itemView.setPaddingRelative(item.leadingInsetPx>=0 ? item.leadingInsetPx : V.dp(16), itemView.getPaddingTop(), itemView.getPaddingEnd(), itemView.getPaddingBottom());
 			bindLine(item, text);
 			if (item.extra != null) bindLine(item.extra, extraText);
 			extraText.setVisibility(item.extra == null ? View.GONE : View.VISIBLE);
