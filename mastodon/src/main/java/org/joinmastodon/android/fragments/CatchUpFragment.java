@@ -15,6 +15,7 @@ import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.timelines.GetHomeTimeline;
 import org.joinmastodon.android.api.session.AccountSessionManager;
+import org.joinmastodon.android.api.session.AccountLocalPreferences;
 import org.joinmastodon.android.events.StatusCreatedEvent;
 import org.joinmastodon.android.events.StatusDisplaySettingsChangedEvent;
 import org.joinmastodon.android.model.FilterContext;
@@ -27,6 +28,7 @@ import org.joinmastodon.android.ui.displayitems.CatchUpProgressStatusDisplayItem
 import org.joinmastodon.android.ui.displayitems.StatusDisplayItem;
 import org.joinmastodon.android.ui.text.HtmlParser;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -56,9 +58,20 @@ public class CatchUpFragment extends StatusListFragment{
 	public static final int CATCH_UP_MAX_POSTS=200;
 	private org.joinmastodon.android.ui.views.CatchUpCardDecoration cardDecoration;
 	private static final int PAGE_SIZE=40;
-	private static final int REQUEST_CEILING=5; // 5 x 40 = 200 = CATCH_UP_MAX_POSTS by construction
+	private static final int REQUEST_CEILING=5;
+	private static final java.time.format.DateTimeFormatter SINCE_FORMATTER=
+			java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT); // 5 x 40 = 200 = CATCH_UP_MAX_POSTS by construction
 
 	private enum EndReason{NONE, WINDOW_END, CAP, SERVER_END}
+
+	/** Start of the window this catch-up covers, in epoch millis. */
+	private long windowStart;
+	/** When this catch-up began; stored on completion so the next one starts there. */
+	private long fillStartedAt;
+	/** True when a previous catch-up exists, which changes what the scope line may claim. */
+	private boolean hasPreviousCatchUp;
+	/** How many of the fetched statuses are actually rendered: posts, not boosts or replies. */
+	private int shownCount;
 
 	private long cutoff;
 	private int fillPages;
@@ -106,7 +119,7 @@ public class CatchUpFragment extends StatusListFragment{
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P)
 			scopeLine.setAccessibilityHeading(true); // spec §8: the screen's first heading
 		filterSummary=view.findViewById(R.id.catch_up_filters);
-		filterSummary.setOnClickListener(v->openViewFilters());
+		// Catch up has no view settings of its own: what it shows is the point of it.
 		// The custom empty view carries a supporting line and a secondary action on
 		// top of the appkit empty_text/empty_button pair (spec §7 filtered-to-empty).
 		if(emptyView!=null){
@@ -139,7 +152,16 @@ public class CatchUpFragment extends StatusListFragment{
 		preloadedData.clear();
 		displayItems.clear();
 		adapter.notifyDataSetChanged();
-		cutoff=System.currentTimeMillis()-CATCH_UP_WINDOW_MS;
+		long now=System.currentTimeMillis();
+		long lastAt=AccountSessionManager.get(accountID).getLocalPreferences().catchUpLastAt;
+		// The window starts where the last completed catch-up started. A first run, or a
+		// return after more than a day, falls back to 24 hours: a catch-up is a day's
+		// reading, not an archive dig.
+		long floor=now-CATCH_UP_WINDOW_MS;
+		hasPreviousCatchUp=lastAt>0 && lastAt>floor;
+		windowStart=hasPreviousCatchUp ? lastAt : floor;
+		fillStartedAt=now;
+		cutoff=windowStart;
 		fillPages=0;
 		oldestFetchedID=null;
 		endReason=EndReason.NONE;
@@ -271,6 +293,13 @@ public class CatchUpFragment extends StatusListFragment{
 	}
 
 	private void endFill(){
+		// Only a completed fill advances the marker: abandoning the view mid-fetch must not
+		// skip posts the reader never saw.
+		if(pendingRetry==null && endReason!=EndReason.NONE && fillStartedAt>0){
+			AccountLocalPreferences lp=AccountSessionManager.get(accountID).getLocalPreferences();
+			lp.catchUpLastAt=fillStartedAt;
+			lp.save();
+		}
 		fillRunning=false;
 		dataLoading=false;
 		loaded=true;
@@ -306,6 +335,13 @@ public class CatchUpFragment extends StatusListFragment{
 
 // List construction (spec §4-§6)
 
+	@Override
+	protected boolean shouldShowStatus(Status s){
+		// Catch up reads posts. Boosts and replies are not part of that reading, and the
+		// view offers no control that could ask for them.
+		return s.reblog==null && s.inReplyToId==null;
+	}
+
 	private void buildList(){
 		if(getActivity()==null)
 			return;
@@ -318,6 +354,7 @@ public class CatchUpFragment extends StatusListFragment{
 		// Card groups: one elevated card per author group (and one for the boosts
 		// section). Negative means the row sits outside any card.
 		ArrayList<Integer> cardOf=new ArrayList<>();
+		shownCount=filtered.size();
 		if(!filtered.isEmpty()){
 			CatchUpGrouping.Result grouping=CatchUpGrouping.group(filtered);
 			int groupIndex=0;
@@ -358,32 +395,6 @@ public class CatchUpFragment extends StatusListFragment{
 					for(int i=0; i<postItems.size(); i++)
 						cardOf.add(cardId);
 					displayItems.addAll(postItems);
-				}
-			}
-			if(grouping.boostCount>0){
-				displayItems.add(new CatchUpHeaderStatusDisplayItem("catchup_boosts", this, getActivity(),
-						getResources().getQuantityString(R.plurals.catch_up_boosts_header, grouping.boostCount, grouping.boostCount),
-						true, boostsCollapsed, this::toggleBoosts));
-				cardOf.add(groupIndex);
-				if(!boostsCollapsed){
-					for(CatchUpGrouping.AuthorGroup g:grouping.boosts){
-						for(Status s:g.posts){
-							cardOf.add(groupIndex);
-							// Boosts render as their ordinary timeline row: booster
-							// attribution line plus the original post (spec §5).
-							List<StatusDisplayItem> postItems=buildDisplayItems(s);
-							populateNestedQuotes(postItems);
-							// The exact time is printed above each post, so the relative
-							// "9 min" in these rows would say the same thing twice.
-							for(StatusDisplayItem di2:postItems){
-								if(di2 instanceof org.joinmastodon.android.ui.displayitems.HeaderStatusDisplayItem h)
-									h.hideTimestamp=true;
-							}
-							for(int i=0; i<postItems.size(); i++)
-								cardOf.add(groupIndex);
-							displayItems.addAll(postItems);
-						}
-					}
 				}
 			}
 			addTrailingRow();
@@ -433,31 +444,19 @@ public class CatchUpFragment extends StatusListFragment{
 	}
 
 	private String footerBody(){
-		int n=data.size();
+		// Counts describe what is on screen. Fetched statuses that this view refuses to
+		// show (boosts, replies) must not be counted as if the reader had seen them.
+		int n=shownCount;
 		if(serverEnded)
 			return getResources().getQuantityString(R.plurals.catch_up_footer_body_server_end, n, n);
 		if(endReason==EndReason.CAP && !extended)
-			return getString(R.string.catch_up_footer_body_cap);
+			return getResources().getQuantityString(R.plurals.catch_up_footer_body_cap, n, n);
 		if(extended)
 			return getResources().getQuantityString(R.plurals.catch_up_footer_body_extended, n, n);
-		return getResources().getQuantityString(R.plurals.catch_up_footer_body_window, n, n);
+		return getResources().getQuantityString(hasPreviousCatchUp ? R.plurals.catch_up_footer_body_since : R.plurals.catch_up_footer_body_window, n, n);
 	}
 
-	private void toggleBoosts(){
-		boostsCollapsed=!boostsCollapsed;
-		buildList();
-		View root=getView();
-		if(root!=null){
-			int n=0;
-			for(Status s:data){
-				if(s.reblog!=null && shouldShowStatus(s))
-					n++;
-			}
-			root.announceForAccessibility(boostsCollapsed
-					? getString(R.string.catch_up_state_collapsed)
-					: getResources().getQuantityString(R.plurals.catch_up_boosts_expanded, n, n));
-		}
-	}
+
 
 // Header, empty view and error copy (spec §4, §7)
 
@@ -466,20 +465,16 @@ public class CatchUpFragment extends StatusListFragment{
 			return;
 		if(extended){
 			// The window no longer applies once the user has left it; the scope line
-			// must not keep claiming 24 hours (spec §6's no-overclaim rule).
+			// must not keep claiming a span it is not showing (spec §6's no-overclaim rule).
 			scopeLine.setText(R.string.catch_up_scope_extended);
 		}else if(capTruncated){
-			scopeLine.setText(getString(R.string.catch_up_scope_cap, CATCH_UP_MAX_POSTS));
+			scopeLine.setText(getString(R.string.catch_up_scope_cap, shownCount));
+		}else if(hasPreviousCatchUp){
+			scopeLine.setText(getString(R.string.catch_up_scope_since, SINCE_FORMATTER.format(Instant.ofEpochMilli(windowStart))));
 		}else{
 			scopeLine.setText(R.string.catch_up_scope);
 		}
-		TimelineDefinition def=getTimelineDefinition();
-		boolean showReplies=def==null || def.isShowReplies();
-		boolean showBoosts=def==null || def.isShowBoosts();
-		String line=getString(showReplies ? R.string.catch_up_filter_replies_shown : R.string.catch_up_filter_replies_hidden)
-				+" · "+getString(showBoosts ? R.string.catch_up_filter_boosts_shown : R.string.catch_up_filter_boosts_hidden)
-				+" · "+getString(R.string.catch_up_filter_alt_on);
-		filterSummary.setText(line);
+		filterSummary.setText(R.string.catch_up_summary_posts_only);
 	}
 
 	private void updateEmptyView(int filteredCount){
@@ -490,14 +485,13 @@ public class CatchUpFragment extends StatusListFragment{
 		if(emptySecondaryButton!=null)
 			emptySecondaryButton.setVisibility(filteredEmpty ? View.VISIBLE : View.GONE);
 		if(filteredEmpty){
-			setEmptyText(R.string.catch_up_empty_filtered);
+			setEmptyText(R.string.catch_up_empty_posts_only);
 			if(emptySubtitle!=null)
-				emptySubtitle.setText(getResources().getQuantityString(R.plurals.catch_up_empty_filtered_sub, data.size(), data.size()));
-			setEmptyButtonText(R.string.catch_up_change_filters);
-			setEmptyButtonVisible(true);
-			emptyPrimaryAction=this::openViewFilters;
+				emptySubtitle.setText(getResources().getQuantityString(R.plurals.catch_up_empty_posts_only_sub, data.size(), data.size()));
+			setEmptyButtonVisible(false);
+			emptyPrimaryAction=null;
 		}else if(emptyWindow){
-			setEmptyText(R.string.catch_up_empty_window);
+			setEmptyText(hasPreviousCatchUp ? R.string.catch_up_empty_window_since : R.string.catch_up_empty_window);
 			if(serverEnded){
 				// The server has no posts at all for this account; a Load older
 				// button here would be a no-op, so the state offers nothing it
@@ -541,13 +535,7 @@ public class CatchUpFragment extends StatusListFragment{
 			emptyPrimaryAction.run();
 	}
 
-	private void openViewFilters(){
-		Bundle args=new Bundle();
-		args.putString("account", accountID);
-		args.putInt(EXTRA_TIMELINE_DEF_INDEX, getArguments().getInt(EXTRA_TIMELINE_DEF_INDEX, -1));
-		args.putInt(org.joinmastodon.android.fragments.settings.TimelineViewSettingsFragment.EXTRA_LABEL_RES, R.string.catch_up);
-		Nav.go(getActivity(), org.joinmastodon.android.fragments.settings.TimelineViewSettingsFragment.class, args);
-	}
+
 
 // Framework plumbing
 

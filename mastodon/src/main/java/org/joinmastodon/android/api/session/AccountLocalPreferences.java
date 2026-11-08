@@ -44,6 +44,8 @@ public class AccountLocalPreferences{
 	public ColorPreference color;
 	public ArrayList<Emoji> recentCustomEmoji;
 	public boolean preReplySheet;
+	/** MAMMUT: epoch millis at which the last completed Catch up window began. */
+	public long catchUpLastAt;
 
 	// MOSHIDON: this is also ours
 	private final static Type recentLanguagesType=new TypeToken<ArrayList<String>>() {}.getType();
@@ -75,6 +77,7 @@ public class AccountLocalPreferences{
 		color=prefs.contains("color") ? ColorPreference.valueOf(prefs.getString("color", null)) : null;
 		recentCustomEmoji=fromJson(prefs.getString("recentCustomEmoji", null), recentCustomEmojiType, new ArrayList<>());
 		notificationFilters=fromJson(prefs.getString("notificationFilters", gson.toJson(PushSubscription.Alerts.ofAll())), notificationFiltersType, PushSubscription.Alerts.ofAll());
+		catchUpLastAt=prefs.getLong("catchUpLastAt", 0);
 
 	}
 
@@ -108,6 +111,7 @@ public class AccountLocalPreferences{
 				.putString("color", color!=null ? color.name() : null)
 				.putString("recentCustomEmoji", gson.toJson(recentCustomEmoji))
 				.putString("notificationFilters", gson.toJson(notificationFilters))
+				.putLong("catchUpLastAt", catchUpLastAt)
 
 				.apply();
 	}

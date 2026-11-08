@@ -528,11 +528,19 @@
 		 contract copy: footer variants, state strings and the filter summary are
 		 specified verbatim in the spec and must not drift from it. -->
 	<string name="catch_up">Catch up</string>
-	<string name="catch_up_scope">The last 24 hours</string>
-	<string name="catch_up_scope_cap">The last 24 hours · the most recent %d posts</string>
+	<string name="catch_up_scope">Your first catch-up · the last 24 hours</string>
+	<string name="catch_up_scope_since">Since your last catch-up · %1$s</string>
+	<string name="catch_up_summary_posts_only">Posts only · image descriptions on</string>
+	<string name="catch_up_empty_posts_only">Nothing new to read here.</string>
+	<plurals name="catch_up_empty_posts_only_sub">
+		<item quantity="one">The %d post in this window was a reply or a boost.</item>
+		<item quantity="other">The %d posts in this window were replies or boosts.</item>
+	</plurals>
+	<string name="catch_up_scope_cap">The most recent %d posts in this window</string>
 	<!-- Shown once "Load older posts" has left the window: no time claim is made. -->
 	<string name="catch_up_scope_extended">Your home timeline</string>
-	<string name="catch_up_fetching">Fetching the last 24 hours…</string>
+	<string name="catch_up_fetching">Fetching your posts…</string>
+	<string name="catch_up_empty_window_since">Nothing new since your last catch-up.</string>
 	<string name="catch_up_filter_replies_shown">Replies shown</string>
 	<string name="catch_up_filter_replies_hidden">Replies hidden</string>
 	<string name="catch_up_filter_boosts_shown">boosts shown</string>
@@ -563,7 +571,14 @@
 		<item quantity="one">This view includes the %d post Mammut fetched from the last 24 hours.</item>
 		<item quantity="other">This view includes the %d posts Mammut fetched from the last 24 hours.</item>
 	</plurals>
-	<string name="catch_up_footer_body_cap">Showing the most recent 200 posts from the last 24 hours. Older posts in this window aren’t included.</string>
+	<plurals name="catch_up_footer_body_since">
+		<item quantity="one">This view includes the %d post Mammut fetched since your last catch-up.</item>
+		<item quantity="other">This view includes the %d posts Mammut fetched since your last catch-up.</item>
+	</plurals>
+	<plurals name="catch_up_footer_body_cap">
+		<item quantity="one">This is the most recent %d post Mammut fetched. Older posts in this window aren’t included.</item>
+		<item quantity="other">These are the most recent %d posts Mammut fetched. Older posts in this window aren’t included.</item>
+	</plurals>
 	<plurals name="catch_up_footer_body_extended">
 		<item quantity="one">This view includes %d post Mammut fetched.</item>
 		<item quantity="other">This view includes %d posts Mammut fetched.</item>
