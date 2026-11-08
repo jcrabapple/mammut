@@ -76,7 +76,14 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 			public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info){
 				super.onInitializeAccessibilityNodeInfo(host, info);
 				info.setClassName(Button.class.getName());
-				info.setText(item.context.getString(descriptionForId(host.getId())));
+				// descriptionForId returns 0 for any button this list does not know (the
+				// bookmark button was added later and shares this delegate), and
+				// getString(0) throws Resources.NotFoundException on the main thread —
+				// which meant any accessibility service focusing the action row killed
+				// the app. Unknown buttons simply keep the text their view already has.
+				int stringId=descriptionForId(host.getId());
+				if(stringId!=0)
+					info.setText(item.context.getString(stringId));
 			}
 		};
 
@@ -522,6 +529,8 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 				return R.string.button_favorite;
 			if(id==R.id.share_btn)
 				return R.string.button_share;
+			if(id==R.id.bookmark_btn)
+				return R.string.add_bookmark;
 			return 0;
 		}
 	}
