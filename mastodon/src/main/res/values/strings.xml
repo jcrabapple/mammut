@@ -167,6 +167,13 @@
 	<string name="content_warning">Content warning</string>
 	<string name="save">Save</string>
 	<string name="add_alt_text">Add alt text</string>
+	<!-- MAMMUT: The Caption Track — composer inline description fields and ALT chip -->
+	<string name="alt_chip">ALT</string>
+	<string name="image_x">Image %1$d</string>
+	<string name="image_description_hint">Describe this image</string>
+	<string name="image_description_helper">Describe what matters in this image.</string>
+	<string name="image_description_a11y">Description for image %1$d of %2$d</string>
+	<string name="image_description_counter">%1$d/%2$d</string>
 	<string name="visibility_public">Public</string>
 	<string name="visibility_followers_only">Followers</string>
 	<string name="visibility_private">Private mention</string>

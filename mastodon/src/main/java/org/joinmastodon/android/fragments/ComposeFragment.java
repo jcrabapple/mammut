@@ -1070,6 +1070,8 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		pollBtn.setSelected(pollViewController.isShown());
 		mediaBtn.setEnabled(!pollViewController.isShown() && mediaViewController.canAddMoreAttachments() && quotedStatus==null);
 		pollBtn.setEnabled(mediaViewController.isEmpty() && quotedStatus==null);
+		// MAMMUT: The Caption Track (§4) — the description block hides while a poll is attached
+		mediaViewController.setDescriptionBlockHiddenByPoll(pollViewController.isShown());
 	}
 
 	private void togglePoll(){
@@ -1263,7 +1265,8 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		return new String[]{"image/jpeg", "image/gif", "image/png", "video/mp4"};
 	}
 
-	private String sanitizeMediaDescription(String description){
+	// MAMMUT: The Caption Track — also used by ComposeMediaViewController for metadata prefill
+	public String sanitizeMediaDescription(String description){
 		if(description == null){
 			return null;
 		}
