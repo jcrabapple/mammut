@@ -543,6 +543,10 @@
 		<item quantity="one">%1$s · %2$d post</item>
 		<item quantity="other">%1$s · %2$d posts</item>
 	</plurals>
+	<plurals name="catch_up_card_posts">
+		<item quantity="one">%d post</item>
+		<item quantity="other">%d posts</item>
+	</plurals>
 	<plurals name="catch_up_boosts_header">
 		<item quantity="one">Boosts · %d post</item>
 		<item quantity="other">Boosts · %d posts</item>

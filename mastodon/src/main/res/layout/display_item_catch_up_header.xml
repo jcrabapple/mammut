@@ -1,49 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MAMMUT: Catch up — author group header and the collapsible boosts section
-	 header (spec §5, §8). The count travels inside the heading text. Wraps at any
-	 font scale; the 48dp minimum height keeps the boosts toggle a valid touch
-	 target even when the text is short. -->
+<!-- MAMMUT: Catch up — the head of an author's card: avatar, name and count, centred.
+	 The same layout carries the boosts section header, which has no avatar and adds a
+	 chevron beside its title. Wraps at any font scale; the minimum height keeps the
+	 boosts toggle a valid touch target. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:tools="http://schemas.android.com/tools"
 	android:layout_width="match_parent"
 	android:layout_height="wrap_content"
 	android:minHeight="48dp"
-	android:orientation="horizontal"
-	android:gravity="center_vertical"
-	android:baselineAligned="false"
+	android:orientation="vertical"
+	android:gravity="center_horizontal"
 	android:paddingStart="16dp"
 	android:paddingEnd="16dp"
-	android:paddingTop="10dp"
-	android:paddingBottom="4dp">
+	android:paddingTop="20dp"
+	android:paddingBottom="8dp">
 
 	<ImageView
 		android:id="@+id/avatar"
-		android:layout_width="32dp"
-		android:layout_height="32dp"
-		android:layout_marginEnd="12dp"
+		android:layout_width="64dp"
+		android:layout_height="64dp"
 		android:scaleType="centerCrop"
 		android:importantForAccessibility="no"
 		android:visibility="gone"
 		tools:visibility="visible" />
 
-	<TextView
-		android:id="@+id/title"
-		android:layout_width="0dp"
+	<LinearLayout
+		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
-		android:layout_weight="1"
-		android:gravity="center_vertical|start"
-		android:textAlignment="viewStart"
-		android:textAppearance="@style/m3_title_medium"
-		android:textColor="?colorM3OnSurface"
-		tools:text="Mara · 4 posts" />
+		android:layout_marginTop="10dp"
+		android:orientation="horizontal"
+		android:gravity="center_vertical"
+		android:baselineAligned="false">
 
-	<ImageView
-		android:id="@+id/chevron"
-		android:layout_width="24dp"
-		android:layout_height="24dp"
-		android:layout_marginStart="8dp"
-		android:importantForAccessibility="no"
-		android:src="@drawable/ic_arrow_drop_down_24px"
+		<TextView
+			android:id="@+id/title"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:gravity="center_horizontal"
+			android:textAlignment="center"
+			android:textAppearance="@style/m3_title_medium"
+			android:textColor="?colorM3OnSurface"
+			tools:text="Mara Voss" />
+
+		<ImageView
+			android:id="@+id/chevron"
+			android:layout_width="24dp"
+			android:layout_height="24dp"
+			android:layout_marginStart="4dp"
+			android:importantForAccessibility="no"
+			android:src="@drawable/ic_arrow_drop_down_24px"
+			android:visibility="gone"
+			tools:visibility="visible" />
+	</LinearLayout>
+
+	<TextView
+		android:id="@+id/subtitle"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="2dp"
+		android:gravity="center_horizontal"
+		android:textAlignment="center"
+		android:textSize="13sp"
+		android:textColor="?colorM3OnSurfaceVariant"
 		android:visibility="gone"
+		tools:text="4 posts"
 		tools:visibility="visible" />
 </LinearLayout>

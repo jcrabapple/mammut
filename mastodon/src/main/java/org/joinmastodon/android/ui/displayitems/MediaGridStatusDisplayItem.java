@@ -57,6 +57,8 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 	public int extraTopSpacingPx;
 	/** MAMMUT: show the description regardless of the global toggle. Catch up is a reading mode. */
 	public boolean forceInlineAlt;
+	/** MAMMUT: leading inset override; negative keeps the ordinary header-aware padding. */
+	public int leadingInsetPx=-1;
 	public boolean sensitiveRevealed;
 	public String sensitiveTitle;
 	// MAMMUT: F2 — true when the cover is a Blur filter cover rather than a sensitive-media cover,
@@ -174,7 +176,8 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 		@Override
 		public void onBind(MediaGridStatusDisplayItem item){
 			thereAreFailedImages=false;
-			wrapper.setPaddingRelative(V.dp(item.fullWidth ? 16 : 64), item.extraTopSpacingPx, V.dp(16), V.dp(8));
+			int leading=item.leadingInsetPx>=0 ? item.leadingInsetPx : V.dp(item.fullWidth ? 16 : 64);
+			wrapper.setPaddingRelative(leading, item.extraTopSpacingPx, V.dp(16), V.dp(8));
 
 			layout.setTiledLayout(item.tiledLayout);
 			for(MediaAttachmentViewController c:controllers){

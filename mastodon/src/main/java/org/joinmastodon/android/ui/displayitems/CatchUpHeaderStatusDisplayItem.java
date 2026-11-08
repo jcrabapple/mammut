@@ -28,6 +28,8 @@ public class CatchUpHeaderStatusDisplayItem extends StatusDisplayItem{
 	public final boolean collapsible;
 	public final boolean collapsed;
 	public final Runnable onToggle;
+	/** The count line under the name on a card head. Null for the boosts section header. */
+	@Nullable public final CharSequence subtitle;
 	/** The group's author, so the header can show their avatar. Null for the boosts header. */
 	@Nullable public final Account account;
 
@@ -36,8 +38,13 @@ public class CatchUpHeaderStatusDisplayItem extends StatusDisplayItem{
 	}
 
 	public CatchUpHeaderStatusDisplayItem(String parentID, Callbacks callbacks, Context context, CharSequence title, boolean collapsible, boolean collapsed, Runnable onToggle, @Nullable Account account){
+		this(parentID, callbacks, context, title, null, collapsible, collapsed, onToggle, account);
+	}
+
+	public CatchUpHeaderStatusDisplayItem(String parentID, Callbacks callbacks, Context context, CharSequence title, @Nullable CharSequence subtitle, boolean collapsible, boolean collapsed, Runnable onToggle, @Nullable Account account){
 		super(parentID, callbacks, context);
 		this.account=account;
+		this.subtitle=subtitle;
 		this.title=title;
 		this.collapsible=collapsible;
 		this.collapsed=collapsed;
@@ -53,12 +60,14 @@ public class CatchUpHeaderStatusDisplayItem extends StatusDisplayItem{
 		private final TextView title;
 		private final ImageView chevron;
 		private final ImageView avatar;
+		private final TextView subtitle;
 
 		public Holder(Context context, ViewGroup parent){
 			super(context, R.layout.display_item_catch_up_header, parent);
 			title=findViewById(R.id.title);
 			chevron=findViewById(R.id.chevron);
 			avatar=findViewById(R.id.avatar);
+			subtitle=findViewById(R.id.subtitle);
 			avatar.setOutlineProvider(OutlineProviders.OVAL);
 			avatar.setClipToOutline(true);
 		}
@@ -66,9 +75,15 @@ public class CatchUpHeaderStatusDisplayItem extends StatusDisplayItem{
 		@Override
 		public void onBind(CatchUpHeaderStatusDisplayItem item){
 			title.setText(item.title);
+			if(item.subtitle!=null){
+				subtitle.setVisibility(View.VISIBLE);
+				subtitle.setText(item.subtitle);
+			}else{
+				subtitle.setVisibility(View.GONE);
+			}
 			if(item.account!=null && item.account.avatar!=null){
 				avatar.setVisibility(View.VISIBLE);
-				ViewImageLoader.load(avatar, null, new UrlImageLoaderRequest(item.account.avatar, V.dp(32), V.dp(32)));
+				ViewImageLoader.load(avatar, null, new UrlImageLoaderRequest(item.account.avatar, V.dp(64), V.dp(64)));
 			}else{
 				avatar.setVisibility(View.GONE);
 			}

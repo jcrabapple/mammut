@@ -54,6 +54,7 @@ import me.grishka.appkit.api.ErrorResponse;
 public class CatchUpFragment extends StatusListFragment{
 	public static final long CATCH_UP_WINDOW_MS=24L*60*60*1000; // 24 hours, epoch-elapsed
 	public static final int CATCH_UP_MAX_POSTS=200;
+	private org.joinmastodon.android.ui.views.CatchUpCardDecoration cardDecoration;
 	private static final int PAGE_SIZE=40;
 	private static final int REQUEST_CEILING=5; // 5 x 40 = 200 = CATCH_UP_MAX_POSTS by construction
 
@@ -93,6 +94,14 @@ public class CatchUpFragment extends StatusListFragment{
 	@Override
 	public void onViewCreated(View view, Bundle savedInstanceState){
 		super.onViewCreated(view, savedInstanceState);
+		// Cards replace divider lines here: each group is its own surface, and a divider
+		// drawn at a card boundary would float in the gap between them.
+		for(int i=list.getItemDecorationCount()-1; i>=0; i--){
+			if(list.getItemDecorationAt(i).getClass().getSimpleName().contains("StatusListItemDecoration"))
+				list.removeItemDecorationAt(i);
+		}
+		cardDecoration=new org.joinmastodon.android.ui.views.CatchUpCardDecoration(view.getContext());
+		list.addItemDecoration(cardDecoration);
 		scopeLine=view.findViewById(R.id.catch_up_scope);
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P)
 			scopeLine.setAccessibilityHeading(true); // spec §8: the screen's first heading
@@ -306,13 +315,23 @@ public class CatchUpFragment extends StatusListFragment{
 			if(shouldShowStatus(s))
 				filtered.add(s);
 		}
+		// Card groups: one elevated card per author group (and one for the boosts
+		// section). Negative means the row sits outside any card.
+		ArrayList<Integer> cardOf=new ArrayList<>();
 		if(!filtered.isEmpty()){
 			CatchUpGrouping.Result grouping=CatchUpGrouping.group(filtered);
+			int groupIndex=0;
 			for(CatchUpGrouping.AuthorGroup g:grouping.authors){
-				displayItems.add(new CatchUpHeaderStatusDisplayItem("catchup_author_"+g.account.id, this, getActivity(), authorHeaderTitle(g), false, false, null, g.account));
+				int cardId=groupIndex++;
+				displayItems.add(new CatchUpHeaderStatusDisplayItem("catchup_author_"+g.account.id, this, getActivity(),
+						authorDisplayName(g),
+						getResources().getQuantityString(R.plurals.catch_up_card_posts, g.posts.size(), g.posts.size()),
+						false, false, null, g.account));
+				cardOf.add(cardId);
 				for(Status s:g.posts){
 					// A relative time is the wrong instrument in a bounded reading view: the
 					// reader is inside a fixed 24 hours and needs the actual moment.
+					cardOf.add(cardId);
 					displayItems.add(new org.joinmastodon.android.ui.displayitems.CatchUpTimestampStatusDisplayItem("catchup_ts_"+s.id, this, getActivity(), s.createdAt));
 					List<StatusDisplayItem> postItems=buildDisplayItems(s, StatusDisplayItem.FLAG_NO_HEADER);
 					populateNestedQuotes(postItems);
@@ -324,8 +343,13 @@ public class CatchUpFragment extends StatusListFragment{
 							// Catch up is an explicitly chosen reading mode: descriptions are part of
 							// it, not a global preference the reader has to have found first.
 							mg.forceInlineAlt=true;
+							// The card supplies the outer margin, so media starts level with the
+							// text instead of carrying the ordinary header-row inset.
+							mg.leadingInsetPx=me.grishka.appkit.utils.V.dp(16);
 						}
 					}
+					for(int i=0; i<postItems.size(); i++)
+						cardOf.add(cardId);
 					displayItems.addAll(postItems);
 				}
 			}
@@ -333,13 +357,17 @@ public class CatchUpFragment extends StatusListFragment{
 				displayItems.add(new CatchUpHeaderStatusDisplayItem("catchup_boosts", this, getActivity(),
 						getResources().getQuantityString(R.plurals.catch_up_boosts_header, grouping.boostCount, grouping.boostCount),
 						true, boostsCollapsed, this::toggleBoosts));
+				cardOf.add(groupIndex);
 				if(!boostsCollapsed){
 					for(CatchUpGrouping.AuthorGroup g:grouping.boosts){
 						for(Status s:g.posts){
+							cardOf.add(groupIndex);
 							// Boosts render as their ordinary timeline row: booster
 							// attribution line plus the original post (spec §5).
 							List<StatusDisplayItem> postItems=buildDisplayItems(s);
 							populateNestedQuotes(postItems);
+							for(int i=0; i<postItems.size(); i++)
+								cardOf.add(groupIndex);
 							displayItems.addAll(postItems);
 						}
 					}
@@ -352,6 +380,14 @@ public class CatchUpFragment extends StatusListFragment{
 			if(pendingRetry!=null)
 				addTrailingRow();
 		}
+		// Anything added by the trailing row helpers sits outside every card.
+		while(cardOf.size()<displayItems.size())
+			cardOf.add(-1);
+		int[] groups=new int[cardOf.size()];
+		for(int i=0; i<groups.length; i++)
+			groups[i]=cardOf.get(i);
+		if(cardDecoration!=null)
+			cardDecoration.setGroups(groups);
 		adapter.notifyDataSetChanged();
 		updateEmptyView(filtered.size());
 	}
@@ -370,12 +406,11 @@ public class CatchUpFragment extends StatusListFragment{
 		}
 	}
 
-	private CharSequence authorHeaderTitle(CatchUpGrouping.AuthorGroup g){
+	private CharSequence authorDisplayName(CatchUpGrouping.AuthorGroup g){
 		String name=g.account.displayName;
 		if(TextUtils.isEmpty(name))
 			name=g.account.username;
-		String title=getResources().getQuantityString(R.plurals.catch_up_author_header, g.posts.size(), name, g.posts.size());
-		return g.account.emojis==null ? title : HtmlParser.parseCustomEmoji(title, g.account.emojis);
+		return g.account.emojis==null ? name : HtmlParser.parseCustomEmoji(name, g.account.emojis);
 	}
 
 	private String footerTitle(){
