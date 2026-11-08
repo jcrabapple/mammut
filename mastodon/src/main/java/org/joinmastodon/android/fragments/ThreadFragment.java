@@ -805,6 +805,11 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 				View child=parent.getChildAt(i);
 				if(!(parent.getChildViewHolder(child) instanceof StatusDisplayItem.Holder<?> holder) || holder.getItemID().equals(mainStatus.id))
 					continue;
+				// MAMMUT: the reply line lives in the avatar gutter. A full-width row puts its
+				// text exactly where that gutter is, so the line would run through the words
+				// instead of beside them — draw no line rather than a line through the post.
+				if(holder.isFullWidth())
+					continue;
 				String itemID=holder.getItemID();
 				if(!Objects.equals(currentID, itemID)){
 					currentID=itemID;

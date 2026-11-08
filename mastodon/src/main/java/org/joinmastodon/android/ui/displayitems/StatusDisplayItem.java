@@ -349,6 +349,11 @@ public abstract class StatusDisplayItem{
 	}
 
 	public static abstract class Holder<T> extends BindableViewHolder<T> implements UsableRecyclerView.DisableableClickable{
+		/** MAMMUT: whether this row's layout spans the full width (no avatar gutter). */
+		public boolean isFullWidth(){
+			return item instanceof StatusDisplayItem sdi && sdi.fullWidth;
+		}
+
 		public Holder(View itemView){
 			super(itemView);
 		}

@@ -1,0 +1,1 @@
+With full-width posts on, the conversation reply line no longer runs through the post text; a row that fills the width has no gutter for it.
