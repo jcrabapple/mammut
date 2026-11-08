@@ -55,6 +55,8 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 	public final Status status;
 	/** MAMMUT: extra top padding for callers that render a post without a header row (Catch up). */
 	public int extraTopSpacingPx;
+	/** MAMMUT: show the description regardless of the global toggle. Catch up is a reading mode. */
+	public boolean forceInlineAlt;
 	public boolean sensitiveRevealed;
 	public String sensitiveTitle;
 	// MAMMUT: F2 — true when the cover is a Blur filter cover rather than a sensitive-media cover,
@@ -226,7 +228,7 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 						}
 					}
 				}
-				c.bind(att, item.status, GlobalUserPreferences.showInlineAltText);
+				c.bind(att, item.status, item.forceInlineAlt || GlobalUserPreferences.showInlineAltText);
 				i++;
 			}
 
@@ -325,7 +327,7 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 		// so a recycled row can never keep a caption from a previous post.
 		private void bindCaptionTrack(){
 			captions.removeAllViews();
-			if(GlobalUserPreferences.showInlineAltText && item.sensitiveRevealed){
+			if((item.forceInlineAlt || GlobalUserPreferences.showInlineAltText) && item.sensitiveRevealed){
 				for(Attachment att:item.attachments){
 					if(TextUtils.isEmpty(att.description))
 						continue;

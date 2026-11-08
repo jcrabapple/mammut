@@ -315,8 +315,14 @@ public class CatchUpFragment extends StatusListFragment{
 					populateNestedQuotes(postItems);
 					// MAMMUT: with no header row, a media-only post starts flush against the
 					// divider above it. Give the first block a gap so it reads as a post.
-					if(!postItems.isEmpty() && postItems.get(0) instanceof org.joinmastodon.android.ui.displayitems.MediaGridStatusDisplayItem mg)
-						mg.extraTopSpacingPx=me.grishka.appkit.utils.V.dp(8);
+					for(StatusDisplayItem di:postItems){
+						if(di instanceof org.joinmastodon.android.ui.displayitems.MediaGridStatusDisplayItem mg){
+							if(di==postItems.get(0)) mg.extraTopSpacingPx=me.grishka.appkit.utils.V.dp(8);
+							// Catch up is an explicitly chosen reading mode: descriptions are part of
+							// it, not a global preference the reader has to have found first.
+							mg.forceInlineAlt=true;
+						}
+					}
 					displayItems.addAll(postItems);
 				}
 			}
@@ -421,7 +427,7 @@ public class CatchUpFragment extends StatusListFragment{
 		boolean showBoosts=def==null || def.isShowBoosts();
 		String line=getString(showReplies ? R.string.catch_up_filter_replies_shown : R.string.catch_up_filter_replies_hidden)
 				+" · "+getString(showBoosts ? R.string.catch_up_filter_boosts_shown : R.string.catch_up_filter_boosts_hidden)
-				+" · "+getString(GlobalUserPreferences.showInlineAltText ? R.string.catch_up_filter_alt_on : R.string.catch_up_filter_alt_off);
+				+" · "+getString(R.string.catch_up_filter_alt_on);
 		filterSummary.setText(line);
 	}
 
