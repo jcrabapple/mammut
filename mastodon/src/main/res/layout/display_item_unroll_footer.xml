@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: Reading Room (docs/READING-ROOM-SPEC.md §5.7) — the end-of-story footer.
+	 A short grape-neutral rule, "End of Mara's thread", and — only when side
+	 branches exist — the factual second line naming how many posts sit outside
+	 the story. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:orientation="vertical"
+	android:padding="16dp">
+
+	<View
+		android:layout_width="64dp"
+		android:layout_height="3dp"
+		android:background="?colorM3OutlineVariant" />
+
+	<TextView
+		android:id="@+id/title"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="12dp"
+		android:textAppearance="@style/m3_title_medium"
+		android:textColor="?colorM3OnSurface"
+		tools:text="End of Mara’s thread" />
+
+	<TextView
+		android:id="@+id/body"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="4dp"
+		android:textAppearance="@style/m3_body_medium"
+		android:textColor="?colorM3OnSurfaceVariant"
+		tools:text="The other 10 posts are side replies, not part of this story." />
+</LinearLayout>
