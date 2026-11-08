@@ -125,6 +125,7 @@ import org.joinmastodon.android.model.Notification;
 import org.joinmastodon.android.model.AccountField;
 import org.joinmastodon.android.ui.text.HtmlParser;
 import org.joinmastodon.android.ui.share.ShareImageRenderer;
+import org.joinmastodon.android.ui.share.ShareImageSaver;
 import org.parceler.Parcels;
 
 import java.io.File;
@@ -1302,26 +1303,47 @@ public class UiUtils{
 	}
 
 	/**
-	 * Share a status as a rendered PNG card (post-as-image). Sibling of
-	 * {@link #openSystemShareSheet(Context, Object)} — the link share above is left
-	 * untouched. For a boost, the inner status is rendered.
+	 * Inputs a share-card render needs, built on the UI thread with the themed
+	 * activity context (HtmlParser spans read theme colours; the quoted text is
+	 * parsed with the same contract as the body).
 	 */
-	public static void shareImage(Activity activity, String accountID, Status status){
-		final Status target=status.getContentStatus();
-		final Context appContext=activity.getApplicationContext();
-		// Parse with the themed activity context: HtmlParser spans read theme colours.
-		final SpannableStringBuilder text=TextUtils.isEmpty(target.content)
+	private static class ShareImageInputs{
+		Status target;
+		SpannableStringBuilder text;
+		SpannableStringBuilder quoteText;
+		ShareImageRenderer.Palette palette;
+	}
+
+	private static ShareImageInputs buildShareImageInputs(Activity activity, String accountID, Status status){
+		ShareImageInputs inputs=new ShareImageInputs();
+		inputs.target=status.getContentStatus();
+		inputs.text=TextUtils.isEmpty(inputs.target.content)
 				? null
-				: HtmlParser.parse(target.content, target.emojis, target.mentions, target.tags, accountID, target, activity);
-		final ShareImageRenderer.Palette palette=new ShareImageRenderer.Palette(
+				: HtmlParser.parse(inputs.target.content, inputs.target.emojis, inputs.target.mentions, inputs.target.tags, accountID, inputs.target, activity);
+		Status quoted=ShareImageRenderer.quotedStatus(inputs.target);
+		inputs.quoteText=(quoted!=null && !TextUtils.isEmpty(quoted.content))
+				? HtmlParser.parse(quoted.content, quoted.emojis, quoted.mentions, quoted.tags, accountID, quoted, activity)
+				: null;
+		inputs.palette=new ShareImageRenderer.Palette(
 				getThemeColor(activity, R.attr.colorM3Surface),
 				getThemeColor(activity, R.attr.colorM3OnSurface),
 				getThemeColor(activity, R.attr.colorM3OnSurfaceVariant),
 				getThemeColor(activity, R.attr.colorM3Primary),
 				getThemeColor(activity, R.attr.colorM3OutlineVariant),
 				getThemeColor(activity, R.attr.colorM3SurfaceVariant));
+		return inputs;
+	}
+
+	/**
+	 * Share a status as a rendered PNG card (post-as-image). Sibling of
+	 * {@link #openSystemShareSheet(Context, Object)} — the link share above is left
+	 * untouched. For a boost, the inner status is rendered.
+	 */
+	public static void shareImage(Activity activity, String accountID, Status status){
+		final ShareImageInputs inputs=buildShareImageInputs(activity, accountID, status);
+		final Context appContext=activity.getApplicationContext();
 		new Snackbar.Builder(activity).setText(R.string.preparing_share_image).show();
-		ShareImageRenderer.enqueue(appContext, target, text, palette, new ShareImageRenderer.Callback(){
+		ShareImageRenderer.enqueue(appContext, inputs.target, inputs.text, inputs.quoteText, inputs.palette, new ShareImageRenderer.Callback(){
 			@Override
 			public void onSuccess(File file){
 				activity.runOnUiThread(()->{
@@ -1332,7 +1354,7 @@ public class UiUtils{
 					intent.setType("image/png");
 					intent.putExtra(Intent.EXTRA_STREAM, uri);
 					intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-					intent.putExtra(Intent.EXTRA_TEXT, target.url);
+					intent.putExtra(Intent.EXTRA_TEXT, inputs.target.url);
 					activity.startActivity(Intent.createChooser(intent, activity.getString(R.string.share_toot_title)));
 				});
 			}
@@ -1340,6 +1362,71 @@ public class UiUtils{
 			@Override
 			public void onError(Throwable error){
 				Log.e(TAG, "shareImage: render failed", error);
+				activity.runOnUiThread(()->{
+					if(!isActivityAlive(activity))
+						return;
+					new Snackbar.Builder(activity).setText(R.string.share_image_failed).show();
+				});
+			}
+		});
+	}
+
+	/**
+	 * Save a status as a rendered PNG card (spec §11). Renders through the same
+	 * path as {@link #shareImage(Activity, String, Status)}, then:
+	 * API 29+ inserts into {@code MediaStore.Images} under {@code Pictures/Mammut}
+	 * with {@code IS_PENDING} and shows the success snackbar once a real gallery
+	 * entry exists; API 23–28 writes into the app's external files dir under
+	 * {@code Pictures/} (no runtime permission exists or is requested) and toasts
+	 * the resulting path instead. The saver runs on the render executor's
+	 * background thread inside {@code onSuccess}; only the snackbar/toast hops
+	 * to the UI thread (review M3).
+	 */
+	public static void saveImage(Activity activity, String accountID, Status status){
+		final ShareImageInputs inputs=buildShareImageInputs(activity, accountID, status);
+		final Context appContext=activity.getApplicationContext();
+		new Snackbar.Builder(activity).setText(R.string.preparing_share_image).show();
+		ShareImageRenderer.enqueue(appContext, inputs.target, inputs.text, inputs.quoteText, inputs.palette, new ShareImageRenderer.Callback(){
+			@Override
+			public void onSuccess(File file){
+				if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q){
+					try{
+						ShareImageSaver.saveToMediaStore(appContext, file);
+						activity.runOnUiThread(()->{
+							if(!isActivityAlive(activity))
+								return;
+							new Snackbar.Builder(activity).setText(R.string.saved_to_gallery).show();
+						});
+					}catch(Exception x){
+						Log.e(TAG, "saveImage: MediaStore insert failed", x);
+						activity.runOnUiThread(()->{
+							if(!isActivityAlive(activity))
+								return;
+							new Snackbar.Builder(activity).setText(R.string.save_image_failed).show();
+						});
+					}
+				}else{
+					try{
+						File dest=ShareImageSaver.saveToAppPictures(appContext, file);
+						activity.runOnUiThread(()->{
+							if(!isActivityAlive(activity))
+								return;
+							Toast.makeText(activity, dest.getAbsolutePath(), Toast.LENGTH_LONG).show();
+						});
+					}catch(Exception x){
+						Log.e(TAG, "saveImage: app Pictures write failed", x);
+						activity.runOnUiThread(()->{
+							if(!isActivityAlive(activity))
+								return;
+							new Snackbar.Builder(activity).setText(R.string.save_image_failed).show();
+						});
+					}
+				}
+			}
+
+			@Override
+			public void onError(Throwable error){
+				Log.e(TAG, "saveImage: render failed", error);
 				activity.runOnUiThread(()->{
 					if(!isActivityAlive(activity))
 						return;

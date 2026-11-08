@@ -214,6 +214,8 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 					UiUtils.openSystemShareSheet(activity, item.status);
 				}else if(id==R.id.share_as_image){
 					UiUtils.shareImage(activity, item.accountID, item.status);
+				}else if(id==R.id.save_image){
+					UiUtils.saveImage(activity, item.accountID, item.status);
 				}else if(id==R.id.translate){
 					item.callbacks.togglePostTranslation(item.status, item.parentID);
 				}else if(id==R.id.add_to_list){
@@ -395,9 +397,12 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 			MenuItem muteConversation=menu.findItem(R.id.mute_conversation);
 			MenuItem removeQuote=menu.findItem(R.id.remove_quote);
 			MenuItem shareAsImage=menu.findItem(R.id.share_as_image);
+			MenuItem saveImage=menu.findItem(R.id.save_image);
 			if(item.status!=null){
 				Status contentStatus=item.status.getContentStatus();
-				shareAsImage.setVisible(!TextUtils.isEmpty(contentStatus.content) || !contentStatus.mediaAttachments.isEmpty());
+				boolean canShareAsImage=!TextUtils.isEmpty(contentStatus.content) || !contentStatus.mediaAttachments.isEmpty();
+				shareAsImage.setVisible(canShareAsImage);
+				saveImage.setVisible(canShareAsImage);
 
 				// MOSHIDON
 				bookmark.setVisible(/* true */ false);
@@ -412,6 +417,7 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 				pin.setVisible(false);
 				removeQuote.setVisible(false);
 				shareAsImage.setVisible(false);
+				saveImage.setVisible(false);
 			}
 			if(isOwnPost){
 				mute.setVisible(false);

@@ -23,6 +23,9 @@
 	<string name="share_as_image">Share as image</string>
 	<string name="preparing_share_image">Preparing image…</string>
 	<string name="share_image_failed">Could not create image</string>
+	<string name="save_image">Save image</string>
+	<string name="saved_to_gallery">Saved to Pictures/Mammut</string>
+	<string name="save_image_failed">Could not save image</string>
 	<string name="settings">Settings</string>
 	<string name="publish">Publish</string>
 	<string name="discard_draft">Discard draft?</string>
