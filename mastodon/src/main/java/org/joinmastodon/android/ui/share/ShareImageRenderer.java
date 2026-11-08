@@ -76,7 +76,6 @@ public class ShareImageRenderer{
 
 	// §4 geometry (px on the card canvas; the spec's sp values map 1:1 to px here)
 	private static final int AVATAR_SIZE=96;
-	private static final int AVATAR_RADIUS_DP=10; // OutlineProviders.roundedRect(10), as in the timeline
 	private static final int AVATAR_GAP=24;
 	private static final int NAME_SIZE=40;
 	private static final int HANDLE_SIZE=30;
@@ -94,6 +93,7 @@ public class ShareImageRenderer{
 	private static final int LABEL_SIZE=32;
 
 	private static final int TILE_BLUR_RADIUS=32;
+	private static final int BADGE_INSET=16;
 	private static final long IMAGE_LOAD_TIMEOUT_MS=15_000;
 	private static final long CACHE_MAX_AGE_MS=60*60*1000L;
 
@@ -385,7 +385,11 @@ public class ShareImageRenderer{
 
 		card.layout(0, 0, CARD_WIDTH, card.getMeasuredHeight());
 		if(mediaSpace!=null)
-			mediaTopInCard=SIDE_PADDING+mediaSpace.getTop();
+			// mediaSpace.getTop() is relative to the card's own origin:
+			// LinearLayout positions children starting at its paddingTop,
+			// so SIDE_PADDING is already included. Adding it again here
+			// would double-count and push the grid past the footer rule.
+			mediaTopInCard=mediaSpace.getTop();
 		return card.getMeasuredHeight();
 	}
 
@@ -566,7 +570,10 @@ public class ShareImageRenderer{
 		// avatar the same way the timeline does (OutlineProviders.roundedRect(10))
 		// with an explicit clip.
 		Path clip=new Path();
-		float radius=AVATAR_RADIUS_DP*appContext.getResources().getDisplayMetrics().density;
+		// The canvas is a fixed 1080 px regardless of device density, so the
+		// clip radius must be a literal pixel value too: 10 dp on a 40 dp
+		// timeline avatar is 25% of the size, hence AVATAR_SIZE*10/40 (24 px).
+		float radius=AVATAR_SIZE*10f/40f;
 		clip.addRoundRect(new RectF(SIDE_PADDING, SIDE_PADDING, SIDE_PADDING+AVATAR_SIZE, SIDE_PADDING+AVATAR_SIZE), radius, radius, Path.Direction.CW);
 		canvas.save();
 		canvas.clipPath(clip);
@@ -613,7 +620,14 @@ public class ShareImageRenderer{
 			}
 
 			if(tile.moreBadge){
-				drawCenteredLabel(canvas, tileRect, "+"+(attachments.size()-MediaGridSolver.MAX_TILES), LABEL_SIZE, 0xFFFFFFFF, 0x99000000, labelPaint);
+				// When the tile centre is already taken by the "Sensitive media"
+				// pill or the placeholder label, pin the "+N" badge to the inset
+				// top-right corner so the two never stack.
+				String badge="+"+(attachments.size()-MediaGridSolver.MAX_TILES);
+				if(d==null || blurred)
+					drawCornerLabel(canvas, tileRect, badge, LABEL_SIZE, 0xFFFFFFFF, 0x99000000, labelPaint);
+				else
+					drawCenteredLabel(canvas, tileRect, badge, LABEL_SIZE, 0xFFFFFFFF, 0x99000000, labelPaint);
 			}
 		}
 	}
@@ -630,21 +644,39 @@ public class ShareImageRenderer{
 	}
 
 	private void drawCenteredLabel(Canvas canvas, RectF tileRect, String text, int sizePx, int textColor, int pillColor, Paint paint){
+		drawLabel(canvas, tileRect, text, sizePx, textColor, pillColor, paint, false);
+	}
+
+	private void drawCornerLabel(Canvas canvas, RectF tileRect, String text, int sizePx, int textColor, int pillColor, Paint paint){
+		drawLabel(canvas, tileRect, text, sizePx, textColor, pillColor, paint, true);
+	}
+
+	/**
+	 * Draw a labelled pill on a tile. Centred labels sit on the tile centre;
+	 * corner labels pin the pill's top-right to a 16 px inset from the tile's
+	 * top-right corner (same pill geometry, right-aligned text).
+	 */
+	private void drawLabel(Canvas canvas, RectF tileRect, String text, int sizePx, int textColor, int pillColor, Paint paint, boolean topRight){
 		paint.setTextSize(sizePx);
 		paint.setColor(textColor);
-		paint.setTextAlign(Paint.Align.CENTER);
+		paint.setTextAlign(topRight ? Paint.Align.RIGHT : Paint.Align.CENTER);
 		Paint.FontMetrics fm=paint.getFontMetrics();
 		float textHeight=fm.descent-fm.ascent;
+		float pillPadX=sizePx*0.7f, pillPadY=sizePx*0.35f;
+		float cx=topRight ? tileRect.right-BADGE_INSET : tileRect.centerX();
+		float cy=topRight ? tileRect.top+BADGE_INSET+pillPadY+textHeight/2 : tileRect.centerY();
+		float halfWidth=paint.measureText(text)/2;
+		// With right alignment the text ends at cx, so its block is centred at
+		// cx-halfWidth; the pill hugs the block either way.
+		float blockCenterX=topRight ? cx-halfWidth : cx;
 		if(pillColor!=0){
-			float pillPadX=sizePx*0.7f, pillPadY=sizePx*0.35f;
-			float halfWidth=paint.measureText(text)/2;
-			RectF pill=new RectF(tileRect.centerX()-halfWidth-pillPadX, tileRect.centerY()-textHeight/2-pillPadY,
-					tileRect.centerX()+halfWidth+pillPadX, tileRect.centerY()+textHeight/2+pillPadY);
+			RectF pill=new RectF(blockCenterX-halfWidth-pillPadX, cy-textHeight/2-pillPadY,
+					blockCenterX+halfWidth+pillPadX, cy+textHeight/2+pillPadY);
 			Paint pillPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
 			pillPaint.setColor(pillColor);
 			canvas.drawRoundRect(pill, pill.height()/2, pill.height()/2, pillPaint);
 		}
-		canvas.drawText(text, tileRect.centerX(), tileRect.centerY()-(fm.ascent+fm.descent)/2, paint);
+		canvas.drawText(text, cx, cy-(fm.ascent+fm.descent)/2, paint);
 	}
 
 	private static float firstAspect(List<Attachment> attachments){
