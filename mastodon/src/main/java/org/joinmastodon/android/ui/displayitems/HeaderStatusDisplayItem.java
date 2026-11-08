@@ -212,6 +212,8 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 					AccountSessionManager.getInstance().getAccount(item.accountID).getStatusInteractionController().setBookmarked(item.status, !item.status.bookmarked);
 				}else if(id==R.id.share){
 					UiUtils.openSystemShareSheet(activity, item.status);
+				}else if(id==R.id.share_as_image){
+					UiUtils.shareImage(activity, item.accountID, item.status);
 				}else if(id==R.id.translate){
 					item.callbacks.togglePostTranslation(item.status, item.parentID);
 				}else if(id==R.id.add_to_list){
@@ -392,7 +394,10 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 			MenuItem pin=menu.findItem(R.id.pin);
 			MenuItem muteConversation=menu.findItem(R.id.mute_conversation);
 			MenuItem removeQuote=menu.findItem(R.id.remove_quote);
+			MenuItem shareAsImage=menu.findItem(R.id.share_as_image);
 			if(item.status!=null){
+				Status contentStatus=item.status.getContentStatus();
+				shareAsImage.setVisible(!TextUtils.isEmpty(contentStatus.content) || !contentStatus.mediaAttachments.isEmpty());
 
 				// MOSHIDON
 				bookmark.setVisible(/* true */ false);
@@ -406,6 +411,7 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 				bookmark.setVisible(false);
 				pin.setVisible(false);
 				removeQuote.setVisible(false);
+				shareAsImage.setVisible(false);
 			}
 			if(isOwnPost){
 				mute.setVisible(false);
