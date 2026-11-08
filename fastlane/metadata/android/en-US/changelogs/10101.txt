@@ -1,0 +1,1 @@
+Fixes a failed "Share as image": a card no longer fails because an avatar or a photo could not load, and a failure now says why it happened.

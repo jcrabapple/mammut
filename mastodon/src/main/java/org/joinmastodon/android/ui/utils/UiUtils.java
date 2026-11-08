@@ -1362,10 +1362,13 @@ public class UiUtils{
 			@Override
 			public void onError(Throwable error){
 				Log.e(TAG, "shareImage: render failed", error);
+				// TEMPORARY (1.1.1): the reason is on screen as well as in logcat. A share
+				// that fails silently on a device no cable can reach is undiagnosable.
+				final String detail=error.getClass().getSimpleName()+(error.getMessage()!=null ? ": "+error.getMessage() : "");
 				activity.runOnUiThread(()->{
 					if(!isActivityAlive(activity))
 						return;
-					new Snackbar.Builder(activity).setText(R.string.share_image_failed).show();
+					new Snackbar.Builder(activity).setText(activity.getString(R.string.share_image_failed)+" ("+(detail.length()>140 ? detail.substring(0,140) : detail)+")").show();
 				});
 			}
 		});

@@ -223,11 +223,31 @@ public class ShareImageRenderer{
 	}
 
 	private File render() throws Exception{
+		try{
+			return renderOnce(true);
+		}catch(Exception first){
+			// Degrade before giving up: the card's job is the post's words, and a
+			// broken avatar, emoji or media fetch should cost the picture they
+			// bring, not the whole share. A second pass without remote images
+			// either produces a usable card or surfaces a cause that is not
+			// image-related at all.
+			Log.w(TAG, "Render with images failed, retrying without them", first);
+			try{
+				return renderOnce(false);
+			}catch(Exception second){
+				second.addSuppressed(first);
+				throw second;
+			}
+		}
+	}
+
+	private File renderOnce(boolean withImages) throws Exception{
 		File dir=cleanupAndGetShareDir();
-		loadEmojiDrawables();
-		Drawable avatar=loadAvatar();
+		if(withImages)
+			loadEmojiDrawables();
+		Drawable avatar=withImages ? loadAvatar() : null;
 		List<Attachment> attachments=status.mediaAttachments!=null ? status.mediaAttachments : List.of();
-		MediaPrep media=prepareMedia(attachments);
+		MediaPrep media=withImages ? prepareMedia(attachments) : MediaPrep.none(attachments.size());
 		quoted=quotedStatus(status);
 		if(quoted!=null){
 			if(parsedQuoteText!=null)
@@ -322,15 +342,28 @@ public class ShareImageRenderer{
 		}
 	}
 
-	private Drawable loadAvatar() throws Exception{
+	private Drawable loadAvatar(){
 		Account account=status.account;
 		String url=account.avatarStatic!=null ? account.avatarStatic : account.avatar;
 		if(TextUtils.isEmpty(url))
 			return null;
-		return load(new UrlImageLoaderRequest(url, AVATAR_SIZE, AVATAR_SIZE));
+		try{
+			return load(new UrlImageLoaderRequest(url, AVATAR_SIZE, AVATAR_SIZE));
+		}catch(Exception x){
+			// A missing avatar is decoration, not content: the card still has the
+			// display name, the handle and the post itself. Failing the whole share
+			// over a picture the reader does not need is the wrong trade.
+			Log.w(TAG, "Avatar failed to load, drawing the card without it", x);
+			return null;
+		}
 	}
 
 	private static class MediaPrep{
+		static MediaPrep none(int count){
+			int shown=Math.min(count, MediaGridSolver.MAX_TILES);
+			return new MediaPrep(new Drawable[shown], new boolean[shown]);
+		}
+
 		/** Drawable per tile index; null → draw a placeholder tile. */
 		final Drawable[] drawables;
 		/** Blur decision per tile index. */
