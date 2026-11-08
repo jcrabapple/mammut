@@ -13,6 +13,8 @@ import me.grishka.appkit.imageloader.requests.ImageLoaderRequest;
 import me.grishka.appkit.utils.V;
 
 public class LinkCardStatusDisplayItem extends StatusDisplayItem implements LinkCardHolder.LinkCardProvider{
+	/** MAMMUT: leading inset override for hosts without an avatar column (Catch up cards). */
+	public int leadingInsetPx=-1;
 	private final Status status;
 	private final CardViewModel cardViewModel;
 
@@ -56,7 +58,8 @@ public class LinkCardStatusDisplayItem extends StatusDisplayItem implements Link
 		@Override
 		public void onBind(LinkCardStatusDisplayItem item){
 			super.onBind(item);
-			itemView.setPaddingRelative(V.dp(item.fullWidth ? 16 : 64), item.status.poll==null ? 0 : V.dp(12), itemView.getPaddingEnd(), itemView.getPaddingBottom());
+			int leading=item.leadingInsetPx>=0 ? item.leadingInsetPx : V.dp(item.fullWidth ? 16 : 64);
+			itemView.setPaddingRelative(leading, item.status.poll==null ? 0 : V.dp(12), itemView.getPaddingEnd(), itemView.getPaddingBottom());
 		}
 	}
 }

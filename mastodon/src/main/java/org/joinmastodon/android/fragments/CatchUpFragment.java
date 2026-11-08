@@ -387,6 +387,9 @@ public class CatchUpFragment extends StatusListFragment{
 							// No avatar column exists inside a card, so the 48dp header inset would
 							// leave the text floating in the middle of the card.
 							t.leadingInsetPx=0;
+						}else if(di instanceof org.joinmastodon.android.ui.displayitems.LinkCardStatusDisplayItem l){
+							// Same 64dp avatar-column inset as text: there is no avatar column here.
+							l.leadingInsetPx=me.grishka.appkit.utils.V.dp(16);
 						}else if(di instanceof org.joinmastodon.android.ui.displayitems.FooterStatusDisplayItem f){
 							// The action row keeps its own 8dp, landing it on the same 16dp line as text.
 							f.leadingInsetPx=me.grishka.appkit.utils.V.dp(8);
