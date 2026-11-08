@@ -66,7 +66,10 @@ at all, and a donation matters more than a star on any fork:
 - **FAB navigation**: one floating button holding Home, Local, Federated, Notifications, Explore,
   Profile, Compose, Drafts and Settings, with the destination title in the app bar and a live unread
   chip beside it.
-- **Mammut palette** by default, alongside the palettes Moshidon ships, including Tokyo Night.
+- **Mammut palette** by default and first in the theme list, alongside the palettes Moshidon ships,
+  including Tokyo Night.
+- **Full-width posts**, an optional layout in the display settings where post text, media and actions
+  start at the edge of the timeline instead of lining up after the avatar.
 - Custom post-action icons and a launcher icon of its own.
 
 ### Under the hood
