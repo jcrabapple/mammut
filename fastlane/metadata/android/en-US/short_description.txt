@@ -1,1 +1,1 @@
-Where conversations happen
+A reading-first fediverse client. Catch up, threads, drafts and scheduling.

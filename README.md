@@ -1,115 +1,117 @@
-<img src="mastodon/src/main/ic_launcher-playstore.png" alt="Moshidon Logo" width="200" height="200">
+<img src="img/mammut-icon.png" alt="Mammut" width="160" height="160">
 
-## Moshidon, the material you mastodon client!
+# Mammut
 
-## This is the rewrite branch. Things probably won't as you expect here for a while
+**A fediverse client for people who want to read their timeline and be done with it.**
 
-> A fast, highly customizable, up-to-date fork of [megalodon](https://github.com/sk22/megalodon) adding important features such as a fully federated timeline, unlisted posting, drafts, scheduled posts, bookmarks, and alt text warnings.
+Mammut is a fork of [Moshidon](https://github.com/LucasGGamerM/moshidon), which is itself a fork of
+[the official Mastodon Android app](https://github.com/mastodon/mastodon-android) by Mastodon gGmbH,
+via [megalodon](https://github.com/sk22/megalodon). It keeps what those projects do well and adds a
+reading-first redesign on top.
 
+## Please support Moshidon
 
-## Download Now
+Mammut exists because Lucas Eduardo ([LucasGGamerM](https://github.com/LucasGGamerM)) has spent years
+building and maintaining Moshidon, and because the Mastodon Android team built the client underneath
+it. Most of the code you are running is their work.
 
-<a href="https://play.google.com/store/apps/details?id=org.joinmastodon.android.moshinda"><img width="200" alt="Get it on Google Play" src="img/google-play-badge.png"></a> 
-<a href="https://f-droid.org/en_US/packages/org.joinmastodon.android.moshinda"><img width="200" alt="Get it on F-Droid" src="https://f-droid.org/badge/get-it-on.png"></a> 
-<a href="https://apt.izzysoft.de/fdroid/index/apk/org.joinmastodon.android.moshinda"><img width="200" alt="Get it on IzzyOnDroid" src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroidButtonGreyBorder_nofont.png"></a>
+**If you find Mammut useful, please donate to Moshidon's developer.** He is the reason this app exists
+at all, and a donation matters more than a star on any fork:
 
-[![GitHub Release Download](https://img.shields.io/badge/dynamic/json?color=282C37&label=Download%20APK&query=%24.tag_name&url=https%3A%2F%2Fapi.github.com%2Frepos%2FLucasGGamerM%2Fmoshidon%2Freleases%2Flatest&style=for-the-badge)](https://github.com/LucasGGamerM/moshidon/releases/latest/download/moshidon.apk) [![Translation status](https://translate.codeberg.org/widgets/moshidon/-/svg-badge.svg)](https://translate.codeberg.org/engage/moshidon/) [![GitHub Nightly Download](https://img.shields.io/badge/dynamic/json?color=282C37&label=Download%20Nightly%20APK&query=%24.tag_name&url=https%3A%2F%2Fapi.github.com%2Frepos%2FLucasGGamerM%2Fmoshidon%2Freleases%2Flatest&style=for-the-badge)](https://github.com/LucasGGamerM/moshidon-nightly/releases/latest/download/moshidon-nightly.apk) 
-<!-- [![GitHub Nightly Build Download](https://github.com/LucasGGamerM/moshidon/actions/workflows/nightly-builds.yml/badge.svg)](https://github.com/LucasGGamerM/moshidon/actions/workflows/nightly-builds.yml) -->
+- [GitHub Sponsors](https://github.com/sponsors/LucasGGamerM)
+- [Liberapay](https://liberapay.com/LucasGGamerM/donate)
+- Monero: `4886mdarcyB6Yf8Qc6vDJBK1fz6ibHFLZUmHb4GZZz9yLGNhcG3XC64e5UZ8dVQYTLZb82W6P9WhteowW4STJEec97Gf22j`
 
-## Donate
+## What this fork adds
 
-<a href="https://github.com/sponsors/LucasGGamerM"><img width="100" alt="Github Sponsors" src="https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86"></a> | <a href="https://liberapay.com/LucasGGamerM/donate"><img width="50" alt="Liberapay" src="https://github.com/liberapay/liberapay.com/blob/master/www/assets/liberapay/icon-v2_black-on-yellow.200.png"></a> | Monero Wallet Key: `4886mdarcyB6Yf8Qc6vDJBK1fz6ibHFLZUmHb4GZZz9yLGNhcG3XC64e5UZ8dVQYTLZb82W6P9WhteowW4STJEec97Gf22j`
+### Reading
 
-<!-- ## Key Features
+- **Catch up** is a bounded view of what you have not seen: posts since your last catch-up, capped at
+  24 hours and 200 posts, grouped by author in readable cards, with an honest ending. No infinite
+  scroll, no streaks, no claim that you saw everything.
+- **Reading Room** turns a conversation into something you can read: a factual count of posts and
+  people, side-branch markers, and an **Unroll** mode that lays a self-thread out in order without
+  pretending a conversation is one column.
+- **Inline image descriptions**, off by default, for timelines where alt text matters.
 
-[ screenshot of full timeline in default colour scheme ]
-[ screenshot of full timeline in an alt colour scheme ]
-[ screenshot of profile page ]
-[ screenshot of compose post window ]
--->
-### Flexible Timelines
+### Writing
 
-<!-- [ Home dropdown menu ] -->
+- **Drafts** that survive leaving the app, with their media, descriptions, content warnings and polls
+  copied into app storage, so a draft never opens onto a deleted file.
+- **Threads**: numbered segments, each with its own text, media and content warning, published as a
+  chain. A failure part-way keeps the unpublished tail as a draft and never double-posts the prefix.
+- **Scheduling**, with a date and time picker and a Scheduled tab listing what goes out next.
+- **The Caption Track**: attaching a photo fills its description from the file's own metadata (EXIF,
+  XMP, IPTC) and shows an editable field under each image, so alt text is part of writing instead of a
+  modal chore.
+- **Undo** for a few seconds after posting.
 
-Under the Home menu by default you can see your active account's timeline, your server's local timeline, and your server's federated timeline. You can also pin hashtags, lists, other servers, or make a custom view of just your posts, your bookmarks, or your favourites for quick access. Then sort these timelines to prioritize the ones you visit most often.
+### Finding
 
-### Multiple Accounts & Crossposting
+- **Search operator chips** for `has:media`, `has:link`, `has:poll`, `is:reply`, `is:sensitive`,
+  `from:me` and `in:library`, with a full syntax reference. The chips write ordinary Mastodon syntax,
+  so a chip you tap and a token you type are the same query.
+- **Per-timeline filters**, media blur, hidden domains, and a filter action on any post.
 
-Sign in to multiple accounts in the same app and easily switch between them. Press and hold on the boost or fave button to boost or fave a post to a different account than the one you are currently browsing with.
+### Navigation and look
 
-<!-- [ boost icon pop up select profile ] -->
+- **FAB navigation**: one floating button holding Home, Local, Federated, Notifications, Explore,
+  Profile, Compose, Drafts and Settings, with the destination title in the app bar and a live unread
+  chip beside it.
+- **Mammut palette** by default, alongside the palettes Moshidon ships, including Tokyo Night.
+- Custom post-action icons and a launcher icon of its own.
 
-### Drafts & Scheduled Posts
+### Under the hood
 
-Write posts and save them, or schedule them to post later. Edit and delete your drafts.
+- **UnifiedPush** support (for example through ntfy), so notifications do not depend on Google.
+- GPL-3.0, like upstream, with the complete source for every released build in this repository.
 
-### Alt Text Tag & Reminder
+Everything else Moshidon offers is still here: multiple accounts, crossposting, lists, filters, post
+editing, translation, pronouns, emoji reactions, and the rest.
 
-An unobtrusive ALT tag appears on images with alt text. Clicking on the icon makes the alt text appear. By default, Moshidon will show a warning to add alt text if your post has any attachments lacking alt text. This is for better accessibility, and it can be disabled in settings. You can also hide from your feed all posts that are lacking in alt text.
+## Install
 
-<!-- [ image with alt text icon higlighted ]
-[ alt text expanded ] -->
+Download the APK from [Releases](https://github.com/jcrabapple/moshidon/releases). Builds are signed
+with a consistent key, so newer versions install over older ones, and the app offers updates from
+GitHub.
 
-### Themes & Customization
+Requires Android 6.0 (API 23) or newer. The app id is `app.mammut.android`, so Mammut and Moshidon can
+be installed side by side.
 
-Moshidon is designed according to Material Design principles. Follow your device's light or dark mode settings or change colour palette - your system's default, purple, black & white, "pitch black" (battery saving) and more. Customize your experience by moving or renaming the publish button, show or hide sensitive media by default, reduce motion, collapse long posts, add haptic feedback, or making the fave button a heart &hearts; or a star &starf;.
+## Build from source
 
-### Not Just For Mastodon
-
-Supports features available on other types of fediverse servers such as admin announcements, showing pronouns in user names, post translation, emoji reactions, local-only posting, and markdown or html in posts.
-
-### Fully Federated Feed & Profiles
-
-See all public posts from servers your server federates with and fetch profiles from a user's local server for accurate up to date information.
-
-## And more...
-- quote-posts - links to fediverse posts in other posts will be loaded inline like quote-tweets
-- manage pinned posts and bookmarks
-- manage lists, filters, and most privacy settings
-- display pronouns in timelines, threads, and user listings
-- get only specific types of notifications (no more finished polls!), limit who you get notifications from, or group all notifications into one.
-- automatically add "re:" to beginning of replies with content warnings
-- ask before boosting or deleting posts
-- when replying to a boosted post automatically mention the person who boosted it
-- overlay audio from posts, allowing your existing media to keep playing
-- auto-reveal CWs that are the same as ones you've already opened, or always reveal content warnings and sensitive media
-- hide media previews in timelines (save data)
-- show post interaction counts in timeline
-- allow custom emoji in display names
-- enable scrolling text for long display names
-- hide interaction buttons
-- show post dividers
-
-
-## Installation & Releases
-
-Moshidon is available on GitHub, Google Play, F-Droid, and the IzzyOnDroid repo. All sources provide the same ` moshidon.apk ` stable release. Older releases are available on the [Releases](https://github.com/LucasGGamerM/moshidon/releases) page.
-
-### How to Install from GitHub
-[Download the latest stable release from Github](https://github.com/LucasGGamerM/moshidon/releases/latest/download/moshidon.apk) and open it. You might have to accept installing APK files from your browser. Moshidon will automatically check for new updates available on GitHub and offer to download and install them within the app. You can also manually press “Check for updates” at the bottom of the settings page.
-
-### Nightly Version
-All ` moshidon-night.apk ` nightly builds can be downloaded on the [Nightly Releases](https://github.com/LucasGGamerM/moshidon-nightly/releases) page. This is an unstable version with an integrated updater for development and testing purposes. If you find any bugs with it, please file a bug report on our [Issues](https://github.com/LucasGGamerM/moshidon/issues) page.
-
-## Building & Contributing
-
-As this app is using Java 17 features, you need JDK 17 or newer to build it. Other than that, everything is pretty standard. You can either import the project into Android Studio and build it from there, or run the following command in the project directory:
-
+```sh
+git clone https://github.com/jcrabapple/moshidon.git
+cd moshidon
+echo "sdk.dir=$ANDROID_HOME" > local.properties
+./gradlew :mastodon:assembleGithubRelease
 ```
-./gradlew assembleRelease
-```
+
+JDK 17 and Android SDK 35. The APK is written to
+`mastodon/build/outputs/apk/githubRelease/mammut-githubRelease.apk`.
+
+Release builds are signed when `SIGNING_STORE_FILE`, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS` and
+`SIGNING_KEY_PASSWORD` are set. CI does this from the `KEYSTORE_BASE64` secret. See
+[docs/RELEASING.md](docs/RELEASING.md).
+
+## Credits
+
+Mammut would not exist without these projects:
+
+- **[Moshidon](https://github.com/LucasGGamerM/moshidon)** by Lucas Eduardo. Most of this app is his
+  work. [Donate if you can.](https://github.com/sponsors/LucasGGamerM)
+- **[megalodon](https://github.com/sk22/megalodon)** by sk22, the fork of the official app that
+  Moshidon grew from.
+- **[Mastodon for Android](https://github.com/mastodon/mastodon-android)** by
+  [Mastodon gGmbH](https://joinmastodon.org), the client all of this descends from.
+- The translators, testers and issue reporters across those projects whose work came along with the
+  code.
+
+Mammut is an independent fork. It is not affiliated with or endorsed by Mastodon gGmbH, the Moshidon
+project, or any server operator.
 
 ## License
 
-This project is released under the [GPL-3 License](./LICENSE).
-
-## Contact & Support
-
-**<a rel="me" href="https://floss.social/@moshidon">@moshidon@floss.social</a>**
-
-[Official Matrix Chatroom](https://matrix.to/#/#moshidon:matrix.org)
-
-[F.A.Q](FAQ.md)
-
-[Moshidon Roadmap](https://github.com/users/LucasGGamerM/projects/1)
-
+GPL-3.0, the same license as the projects above. See [LICENSE](LICENSE). Because this is a modified
+version distributed under the GPL, the complete corresponding source for every release lives in this
+repository, tagged to match the release.

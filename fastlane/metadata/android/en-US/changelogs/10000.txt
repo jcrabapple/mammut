@@ -1,0 +1,3 @@
+Initial release.
+
+Catch up, Reading Room, Composer 2.0 (drafts, threads, scheduling), the Caption Track, search operator chips, FAB navigation, per-timeline filters, media blur, hidden domains and UnifiedPush.
