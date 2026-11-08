@@ -43,6 +43,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.CheckBox;
+import android.widget.DatePicker;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -51,6 +52,7 @@ import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.TimePicker;
 import android.widget.Toast;
 
 import com.twitter.twittertext.TwitterTextEmojiRegex;
@@ -63,6 +65,7 @@ import org.joinmastodon.android.api.MastodonErrorResponse;
 import org.joinmastodon.android.api.MastodonAPIController;
 import org.joinmastodon.android.api.requests.statuses.CreateStatus;
 import org.joinmastodon.android.api.requests.statuses.EditStatus;
+import org.joinmastodon.android.api.requests.statuses.ScheduleStatus;
 import org.joinmastodon.android.api.session.AccountSession;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.drafts.ComposeDraft;
@@ -72,13 +75,16 @@ import org.joinmastodon.android.drafts.Segment;
 import org.joinmastodon.android.events.StatusCountersUpdatedEvent;
 import org.joinmastodon.android.events.StatusCreatedEvent;
 import org.joinmastodon.android.events.StatusUpdatedEvent;
+import org.joinmastodon.android.events.ScheduledStatusCreatedEvent;
 import org.joinmastodon.android.fragments.account_list.AccountSearchFragment;
+import org.joinmastodon.android.fragments.drafts.DraftsListFragment;
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.model.Emoji;
 import org.joinmastodon.android.model.EmojiCategory;
 import org.joinmastodon.android.model.Instance;
 import org.joinmastodon.android.model.Mention;
 import org.joinmastodon.android.model.Preferences;
+import org.joinmastodon.android.model.ScheduledStatus;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.model.StatusPrivacy;
 import org.joinmastodon.android.model.StatusQuotePolicy;
@@ -89,6 +95,7 @@ import org.joinmastodon.android.ui.ExtendedPopupMenu;
 import org.joinmastodon.android.ui.M3AlertDialogBuilder;
 import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.PopupKeyboard;
+import org.joinmastodon.android.ui.Snackbar;
 import org.joinmastodon.android.ui.displayitems.InlineStatusStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.StatusDisplayItem;
 import org.joinmastodon.android.ui.drawables.SpoilerStripesDrawable;
@@ -113,6 +120,14 @@ import org.joinmastodon.android.utils.ViewImageLoaderHolderTarget;
 import org.joinmastodon.android.utils.Tracking;
 import org.parceler.Parcels;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -197,6 +212,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private boolean creatingView;
 	private boolean ignoreSelectionChanges=false;
 	private MenuItem publishButton;
+	private MenuItem scheduleButton;
 	private boolean wasDetached;
 
 	private BackgroundColorSpan overLimitBG;
@@ -678,7 +694,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// §4: once part of the thread has been published, the anchor is the
 		// last published segment — a retry (or an autosave of the remaining
 		// tail) must chain below it, not below the original reply target.
-		d.replyToStatusId=threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId);
+		d.replyToStatusId=currentReplyAnchorId();
 		d.quotedStatusId=quotedStatus!=null ? quotedStatus.id : restoredQuotedStatusId;
 		// Note: a resumed draft carries replyToStatusId/quotedStatusId (§1).
 		// The reply id is consumed at publish time (review M4); only the
@@ -1065,6 +1081,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	public void onCreateOptionsMenu(Menu menu, MenuInflater inflater){
 		inflater.inflate(editingStatus==null ? R.menu.compose : R.menu.compose_edit, menu);
 		publishButton=menu.findItem(R.id.publish);
+		scheduleButton=menu.findItem(R.id.schedule);
 		updatePublishButtonState();
 	}
 
@@ -1075,6 +1092,8 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				checkAltTextsAndPublish();
 			else
 				publish();
+		}else if(item.getItemId()==R.id.schedule){
+			onScheduleClicked();
 		}
 		return true;
 	}
@@ -1185,6 +1204,12 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 					&& ts.mediaController.getNonDoneAttachmentCount()==0;
 		}
 		publishButton.setEnabled(enabled);
+		// MAMMUT (§5) — scheduling is single-segment only. With two or more
+		// segments the item stays tappable so it can explain why instead of
+		// going mysteriously grey; otherwise it mirrors the publish
+		// criteria — nothing schedule-worthy (or over-limit) keeps it off.
+		if(scheduleButton!=null)
+			scheduleButton.setEnabled(enabled || !extraSegments.isEmpty());
 		updateDraftState();
 	}
 
@@ -1345,7 +1370,20 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// §4 (review M4): a tail draft resumed after a partial publish
 		// carries replyToStatusId = the last published segment; chain below
 		// it so the retried thread continues instead of posting top-level.
-		publishNextSegment(pubs, 0, threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId));
+		publishNextSegment(pubs, 0, currentReplyAnchorId());
+	}
+
+	/**
+	 * §4/§5 — the single place that answers "what id does the next post
+	 * reply to": the last chained segment once part of the thread is out,
+	 * else the reply being composed to, else a reply restored from a
+	 * draft. Review M1: scheduling built its own request without this and
+	 * shipped replies as detached top-level posts — the same omission the
+	 * thread slice shipped with (its M4). Both publishNextSegment's
+	 * initial anchor and doSchedule must go through here.
+	 */
+	private String currentReplyAnchorId(){
+		return threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId);
 	}
 
 	/**
@@ -1707,6 +1745,189 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 					.setMessage(me.error)
 					.setPositiveButton(R.string.retry, (dlg, btn)->publish())
 					.setNegativeButton(R.string.cancel, null)
+					.show();
+		}else{
+			error.showToast(getActivity());
+		}
+	}
+
+	// MAMMUT: Composer 2.0 (§5) — scheduling. Single-segment posts only:
+	// a scheduled thread cannot be chained, because each segment needs the
+	// id the previous one gets at publish time.
+	/** "Sat 9:00 PM" — the snackbar and row format for a schedule instant. */
+	private static final DateTimeFormatter SCHEDULE_TIME_FORMAT=DateTimeFormatter.ofPattern("EEE h:mm a");
+
+	private void onScheduleClicked(){
+		if(!extraSegments.isEmpty()){
+			new M3AlertDialogBuilder(getActivity())
+					.setTitle(R.string.schedule_thread_title)
+					.setMessage(R.string.schedule_thread_unavailable)
+					.setPositiveButton(R.string.ok, null)
+					.show();
+			return;
+		}
+		showScheduleDatePicker();
+	}
+
+	/** §5: default is one hour from now, rounded up to the next five minutes. */
+	private static Instant defaultScheduleInstant(){
+		Instant oneHour=Instant.now().plus(1, ChronoUnit.HOURS);
+		long rounded=((oneHour.getEpochSecond()/300L)+1L)*300L;
+		return Instant.ofEpochSecond(rounded);
+	}
+
+	private static Instant minScheduleInstant(){
+		return Instant.now().plus(5, ChronoUnit.MINUTES);
+	}
+
+	private static Instant maxScheduleInstant(){
+		return Instant.now().plus(365, ChronoUnit.DAYS);
+	}
+
+	private void showScheduleDatePicker(){
+		ZonedDateTime def=defaultScheduleInstant().atZone(ZoneId.systemDefault());
+		DatePicker picker=new DatePicker(getActivity());
+		picker.setMinDate(minScheduleInstant().toEpochMilli());
+		picker.setMaxDate(maxScheduleInstant().toEpochMilli());
+		picker.updateDate(def.getYear(), def.getMonthValue()-1, def.getDayOfMonth());
+		new M3AlertDialogBuilder(getActivity())
+				.setTitle(R.string.schedule_pick_date)
+				.setView(picker)
+				.setPositiveButton(R.string.ok, (dlg, which)->showScheduleTimePicker(LocalDate.of(picker.getYear(), picker.getMonth()+1, picker.getDayOfMonth())))
+				.setNegativeButton(R.string.cancel, null)
+				.show();
+	}
+
+	private void showScheduleTimePicker(LocalDate date){
+		ZonedDateTime def=defaultScheduleInstant().atZone(ZoneId.systemDefault());
+		TimePicker picker=new TimePicker(getActivity());
+		picker.setIs24HourView(android.text.format.DateFormat.is24HourFormat(getActivity()));
+		picker.setHour(def.getHour());
+		picker.setMinute(def.getMinute());
+		new M3AlertDialogBuilder(getActivity())
+				.setTitle(R.string.schedule_pick_time)
+				.setView(picker)
+				.setPositiveButton(R.string.ok, (dlg, which)->{
+					ZonedDateTime chosen=LocalDateTime.of(date, LocalTime.of(picker.getHour(), picker.getMinute())).atZone(ZoneId.systemDefault());
+					validateAndSchedule(chosen.toInstant());
+				})
+				.setNegativeButton(R.string.cancel, null)
+				.show();
+	}
+
+	/**
+	 * §5 (§7.13): a time under five minutes ahead is refused with a message,
+	 * never silently moved; beyond a year is refused the same way, never
+	 * clamped.
+	 */
+	private void validateAndSchedule(Instant when){
+		if(when.isBefore(minScheduleInstant())){
+			Toast.makeText(getActivity(), R.string.schedule_too_soon, Toast.LENGTH_LONG).show();
+			return;
+		}
+		if(when.isAfter(maxScheduleInstant())){
+			Toast.makeText(getActivity(), R.string.schedule_too_far, Toast.LENGTH_LONG).show();
+			return;
+		}
+		actuallySchedule(when);
+	}
+
+	/**
+	 * §5 — the schedule request rides the same machinery as publish: alt
+	 * texts flush first, the sending overlay blocks input, and only a
+	 * server-accepted schedule retires the draft. On failure see
+	 * {@link #handleScheduleError}: the draft survives and the composer
+	 * stays open (§6).
+	 */
+	private void actuallySchedule(Instant when){
+		FrameLayout overlay=new FrameLayout(getActivity());
+		sendingOverlay=overlay;
+		WindowManager.LayoutParams overlayParams=new WindowManager.LayoutParams();
+		overlayParams.type=WindowManager.LayoutParams.TYPE_APPLICATION_PANEL;
+		overlayParams.flags=WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR | WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
+		overlayParams.width=overlayParams.height=WindowManager.LayoutParams.MATCH_PARENT;
+		overlayParams.format=PixelFormat.TRANSLUCENT;
+		overlayParams.softInputMode=WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED;
+		overlayParams.token=mainEditText.getWindowToken();
+		wm.addView(sendingOverlay, overlayParams);
+		addBackCallback(sendingBackButtonBlocker);
+
+		publishButton.setEnabled(false);
+		if(scheduleButton!=null)
+			scheduleButton.setEnabled(false);
+		V.setVisibilityAnimated(sendProgress, View.VISIBLE);
+
+		saveAllAltTextsBeforePublishing(()->doSchedule(when), this::handleScheduleError);
+	}
+
+	private void doSchedule(Instant when){
+		// Single-segment scope is enforced in onScheduleClicked, so the
+		// first segment's request builder is exactly the right body; only
+		// scheduledAt and the reply anchor are added on top of the publish
+		// shape. Review M1: without the anchor a scheduled reply goes out
+		// with in_reply_to_id=null and the server files it as a detached
+		// top-level status.
+		SegmentPublish pub=buildPublishForFirstSegment();
+		pub.req.inReplyToId=currentReplyAnchorId();
+		pub.req.scheduledAt=when;
+		new ScheduleStatus(pub.req, pub.idempotencyKey)
+				.setCallback(new Callback<>(){
+					@Override
+					public void onSuccess(ScheduledStatus result){
+						// §5: the server now owns this text — the composer
+						// closes and the draft is deleted. §6: the draft
+						// leaves the store only after this acceptance.
+						finished=true;
+						deleteDraftIfAny();
+						dismissSendingOverlay();
+						removeBackCallback(discardConfirmationCallback);
+						removeBackCallback(emojiKeyboardHider);
+						E.post(new ScheduledStatusCreatedEvent(result, accountID));
+						Activity activity=getActivity();
+						String timeStr=SCHEDULE_TIME_FORMAT.format(when.atZone(ZoneId.systemDefault()));
+						String snackText=getString(R.string.scheduled_for, timeStr);
+						Nav.finish(ComposeFragment.this);
+						// The appkit Snackbar lives in its own window, so it
+						// survives the composer finishing and shows over the
+						// restored timeline.
+						if(activity!=null && !activity.isFinishing()){
+							new Snackbar.Builder(activity)
+									.setText(snackText)
+									.setAction(R.string.view, ()->{
+										Bundle args=new Bundle();
+										args.putString("account", accountID);
+										args.putInt("tab", 1);
+										Nav.go(activity, DraftsListFragment.class, args);
+									})
+									.show();
+						}
+					}
+
+					@Override
+					public void onError(ErrorResponse error){
+						handleScheduleError(error);
+					}
+				})
+				.exec(accountID);
+	}
+
+	/**
+	 * §6 — a failed schedule loses nothing: deleteDraftIfAny runs only from
+	 * the success callback, so the draft (if any) is still on disk and the
+	 * fire-and-forget autosave keeps it fresh; finished stays false so that
+	 * autosave is not suppressed either. The composer stays open with the
+	 * text still in it.
+	 */
+	private void handleScheduleError(ErrorResponse error){
+		dismissSendingOverlay();
+		publishButton.setEnabled(true);
+		if(scheduleButton!=null)
+			scheduleButton.setEnabled(true);
+		if(error instanceof MastodonErrorResponse me){
+			new M3AlertDialogBuilder(getActivity())
+					.setTitle(R.string.post_failed)
+					.setMessage(me.error)
+					.setPositiveButton(R.string.ok, null)
 					.show();
 		}else{
 			error.showToast(getActivity());
