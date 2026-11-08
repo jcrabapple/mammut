@@ -1,0 +1,1 @@
+Conversations now say who a reply answers: "Replying to Mara" for replies to someone else, a quiet Thread badge for your own threads, and a plain statement when the parent post was not fetched. Replies no longer pretend to be a tree they cannot know. The end of a conversation now says how many posts were fetched.
