@@ -1,0 +1,1 @@
+New display setting: full-width posts. Post text, media and actions start at the edge of the timeline instead of lining up after the avatar.

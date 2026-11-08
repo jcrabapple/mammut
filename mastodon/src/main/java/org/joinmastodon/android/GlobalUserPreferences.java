@@ -56,6 +56,8 @@ public class GlobalUserPreferences{
 	public static AccountLocalPreferences.ColorPreference color;
 	public static boolean likeIcon;
 	public static boolean showDividers;
+	/** MAMMUT: post content spans the timeline's full width instead of starting after the avatar column. */
+	public static boolean fullWidthPosts;
 	public static boolean relocatePublishButton;
 	public static boolean defaultToUnlistedReplies;
 	public static boolean doubleTapToSearch;
@@ -127,6 +129,7 @@ public class GlobalUserPreferences{
 		likeIcon=prefs.getBoolean("likeIcon", false);
 		uniformNotificationIcon=prefs.getBoolean("uniformNotificationIcon", false);
 		showDividers =prefs.getBoolean("showDividers", false);
+		fullWidthPosts=prefs.getBoolean("fullWidthPosts", false);
 		relocatePublishButton=prefs.getBoolean("relocatePublishButton", true);
 		defaultToUnlistedReplies=prefs.getBoolean("defaultToUnlistedReplies", false);
 		doubleTapToSearch =prefs.getBoolean("doubleTapToSearch", true);
@@ -212,6 +215,7 @@ public class GlobalUserPreferences{
 				.putBoolean("hapticFeedback", hapticFeedback)
 				.putBoolean("mentionRebloggerAutomatically", mentionRebloggerAutomatically)
 				.putBoolean("showDividers", showDividers)
+				.putBoolean("fullWidthPosts", fullWidthPosts)
 				.putBoolean("relocatePublishButton", relocatePublishButton)
 				.putBoolean("enableDeleteNotifications", enableDeleteNotifications)
 				.putBoolean("showPostsWithoutAlt", showPostsWithoutAlt)

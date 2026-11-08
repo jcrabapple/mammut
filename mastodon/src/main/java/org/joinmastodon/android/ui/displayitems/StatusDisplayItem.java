@@ -282,7 +282,9 @@ public abstract class StatusDisplayItem{
 				items.add(new GapStatusDisplayItem(parentID, callbacks, context));
 		}
 		int i=1;
-		boolean fullWidth=(flags & FLAG_FULL_WIDTH)!=0;
+		// MAMMUT: the display setting makes every status layout full width, which is the
+		// same geometry the conversation screen has always used.
+		boolean fullWidth=(flags & FLAG_FULL_WIDTH)!=0 || GlobalUserPreferences.fullWidthPosts;
 		for(StatusDisplayItem item:items){
 			item.fullWidth=fullWidth;
 			item.index=i++;
