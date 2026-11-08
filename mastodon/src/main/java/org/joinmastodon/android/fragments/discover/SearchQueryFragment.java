@@ -5,6 +5,8 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.app.Fragment;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.graphics.Outline;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
@@ -21,12 +23,16 @@ import android.view.WindowInsets;
 import android.view.animation.AnimationUtils;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.HorizontalScrollView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toolbar;
 
 import org.joinmastodon.android.MainActivity;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.search.GetSearchResults;
+import org.joinmastodon.android.api.session.AccountSession;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.fragments.MastodonRecyclerFragment;
 import org.joinmastodon.android.model.Relationship;
@@ -35,14 +41,19 @@ import org.joinmastodon.android.model.SearchResults;
 import org.joinmastodon.android.model.viewmodel.ListItem;
 import org.joinmastodon.android.model.viewmodel.SearchResultViewModel;
 import org.joinmastodon.android.ui.DividerItemDecoration;
+import org.joinmastodon.android.ui.M3AlertDialogBuilder;
 import org.joinmastodon.android.ui.SearchViewHelper;
 import org.joinmastodon.android.ui.adapters.GenericListItemsAdapter;
+import org.joinmastodon.android.ui.drawables.EmptyDrawable;
 import org.joinmastodon.android.ui.utils.HideableSingleViewRecyclerAdapter;
+import org.joinmastodon.android.ui.utils.SearchQuerySupport;
 import org.joinmastodon.android.ui.utils.UiUtils;
+import org.joinmastodon.android.ui.views.FilterChipView;
 import org.joinmastodon.android.ui.viewholders.AccountViewHolder;
 import org.joinmastodon.android.ui.viewholders.SimpleListItemViewHolder;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -68,12 +79,15 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 	private static final Pattern USERNAME_REGEX=Pattern.compile("^@?([a-z0-9_-]+)(@[^\\s]+)?$", Pattern.CASE_INSENSITIVE);
 
 	private MergeRecyclerAdapter mergeAdapter=new MergeRecyclerAdapter();
-	private HideableSingleViewRecyclerAdapter recentsHeader;
+	private HideableSingleViewRecyclerAdapter recentsHeader, chipsHeader;
+	private FilterChipView[] chipViews=new FilterChipView[SearchQuerySupport.CHIPS.length];
+	private TextView chipHint;
 	private ListItem<Void> openUrlItem, goToHashtagItem, goToAccountItem, goToStatusSearchItem, goToAccountSearchItem;
 	private ArrayList<ListItem<Void>> topOptions=new ArrayList<>();
 	private GenericListItemsAdapter<Void> topOptionsAdapter;
 
 	private String accountID;
+	private String selfAcct;
 	private SearchViewHelper searchViewHelper;
 	private String currentQuery;
 	private LayerDrawable navigationIcon;
@@ -89,6 +103,8 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 		accountID=getArguments().getString("account");
 		setRefreshEnabled(false);
 		setEmptyText("");
+		AccountSession session=AccountSessionManager.get(accountID);
+		selfAcct=session.self.username+"@"+session.domain;
 
 		openUrlItem=new ListItem<>(R.string.search_open_url, 0, R.drawable.ic_link_24px, this::onOpenURLClick);
 		goToHashtagItem=new ListItem<>("", null, R.drawable.ic_tag_24px, this::onGoToHashtagClick);
@@ -120,7 +136,7 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 				}).collect(Collectors.toList()), false);
 				recentsHeader.setVisible(!data.isEmpty());
 			});
-		}else{
+		}else if(SearchQuerySupport.isValidStandaloneQuery(currentQuery, selfAcct)){
 			currentRequest=new GetSearchResults(currentQuery, null, false, null, 0, 0)
 					.limit(2)
 					.setCallback(new SimpleCallback<>(this){
@@ -140,11 +156,24 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 						}
 					})
 					.exec(accountID);
+		}else{
+			// Only operators, no keyword: the server rejects this ("At least one keyword or
+			// phrase is required"), so don't send it. The hint under the chip row explains why.
+			// doLoadData can run before the view exists (query passed in the arguments), and
+			// onDataLoaded touches views, so only update the list when there is one.
+			if(getView()!=null){
+				onDataLoaded(Collections.emptyList(), false);
+				recentsHeader.setVisible(false);
+			}
 		}
 	}
 
 	@Override
 	protected RecyclerView.Adapter<?> getAdapter(){
+		chipsHeader=new HideableSingleViewRecyclerAdapter(createChipsView());
+		chipsHeader.setVisible(false);
+		mergeAdapter.addAdapter(chipsHeader);
+
 		View header=getActivity().getLayoutInflater().inflate(R.layout.display_item_section_header, list, false);
 		TextView title=header.findViewById(R.id.title);
 		Button action=header.findViewById(R.id.action_btn);
@@ -189,7 +218,7 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 			searchIcon.setAlpha(0);
 			searchIcon.setAlpha(0);
 		}
-		list.addItemDecoration(new DividerItemDecoration(getActivity(), R.attr.colorM3OutlineVariant, 1, 0, 0, vh->!isInRecentMode() && vh.getAbsoluteAdapterPosition()==topOptions.size()-1));
+		list.addItemDecoration(new DividerItemDecoration(getActivity(), R.attr.colorM3OutlineVariant, 1, 0, 0, vh->!isInRecentMode() && vh.getAbsoluteAdapterPosition()==(chipsHeader.isVisible() ? 1 : 0)+topOptions.size()-1));
 	}
 
 	@Override
@@ -216,11 +245,22 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 
 	private void onQueryChangedNoDebounce(String q){
 		updateTopOptions(q);
+		// §3: the chip row is noise above "Recent searches", so it only shows once the field has content
+		chipsHeader.setVisible(!q.isEmpty());
+		updateChipStates(q);
 		if(!TextUtils.isEmpty(q)){
 			recentsHeader.setVisible(false);
 		}
 		data.clear();
 		mergeAdapter.notifyDataSetChanged();
+	}
+
+	// Chip on/off is derived from the query text on every change, never stored (§5, §8)
+	private void updateChipStates(String q){
+		for(int i=0;i<chipViews.length;i++){
+			chipViews[i].setSelected(SearchQuerySupport.containsToken(q, SearchQuerySupport.CHIPS[i].token));
+		}
+		chipHint.setVisibility(!q.trim().isEmpty() && !SearchQuerySupport.isValidStandaloneQuery(q, selfAcct) ? View.VISIBLE : View.GONE);
 	}
 
 	private void updateTopOptions(String q){
@@ -295,6 +335,15 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 	public void onSaveInstanceState(Bundle outState){
 		super.onSaveInstanceState(outState);
 		outState.putString("query", currentQuery);
+	}
+
+	@Override
+	public void onDestroyView(){
+		// A debounced query callback posted on the search field must not fire after
+		// teardown and touch dead views (e.g. a chip tap scheduled one, then finished).
+		if(searchViewHelper!=null)
+			searchViewHelper.cancelPendingDebounce();
+		super.onDestroyView();
 	}
 
 	@RequiresApi(api = Build.VERSION_CODES.S)
@@ -445,6 +494,89 @@ public class SearchQueryFragment extends MastodonRecyclerFragment<SearchResultVi
 			recentsHeader.setVisible(false);
 			mergeAdapter.notifyDataSetChanged();
 		}
+	}
+
+	private View createChipsView(){
+		LinearLayout root=new LinearLayout(getActivity());
+		root.setOrientation(LinearLayout.VERTICAL);
+
+		HorizontalScrollView chipsBar=new HorizontalScrollView(getActivity());
+		chipsBar.setHorizontalScrollBarEnabled(false);
+		LinearLayout chipsLayout=new LinearLayout(getActivity());
+		chipsLayout.setOrientation(LinearLayout.HORIZONTAL);
+		chipsLayout.setPaddingRelative(V.dp(16), V.dp(8), V.dp(16), V.dp(8));
+		chipsLayout.setDividerDrawable(new EmptyDrawable(V.dp(8), 1));
+		chipsLayout.setShowDividers(LinearLayout.SHOW_DIVIDER_MIDDLE);
+		chipsBar.addView(chipsLayout);
+
+		for(int i=0;i<SearchQuerySupport.CHIPS.length;i++){
+			SearchQuerySupport.ChipSpec spec=SearchQuerySupport.CHIPS[i];
+			FilterChipView chip=new FilterChipView(getActivity());
+			chip.setText(spec.labelRes);
+			chip.setTag(spec.token);
+			chip.setOnClickListener(this::onChipClick);
+			chipViews[i]=chip;
+			chipsLayout.addView(chip);
+		}
+
+		FilterChipView helpChip=new FilterChipView(getActivity());
+		helpChip.setText(R.string.search_chip_help);
+		helpChip.setContentDescription(getString(R.string.search_chip_help_description));
+		helpChip.setOnClickListener(v->showSearchOperatorsHelp());
+		chipsLayout.addView(helpChip);
+
+		chipHint=new TextView(getActivity());
+		chipHint.setTextAppearance(R.style.m3_body_small);
+		chipHint.setTextColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OnSurfaceVariant));
+		chipHint.setText(R.string.search_filters_need_keyword);
+		chipHint.setPaddingRelative(V.dp(16), 0, V.dp(16), V.dp(8));
+		chipHint.setVisibility(View.GONE);
+
+		root.addView(chipsBar);
+		root.addView(chipHint);
+		return root;
+	}
+
+	private void onChipClick(View v){
+		String token=(String)v.getTag();
+		String q=searchViewHelper.getQuery();
+		String newQuery=SearchQuerySupport.containsToken(q, token) ? SearchQuerySupport.removeToken(q, token) : SearchQuerySupport.addToken(q, token);
+		searchViewHelper.setQuery(newQuery);
+		currentQuery=newQuery;
+		// getQuery() may have flushed a pending debounce, which fires onQueryChanged and
+		// starts a suggestions request; cancel it so nothing is delivered to the fragment
+		// this tap is about to finish.
+		if(currentRequest!=null){
+			currentRequest.cancel();
+			currentRequest=null;
+		}
+		if(SearchQuerySupport.isValidStandaloneQuery(newQuery, selfAcct)){
+			// Same path as typing the query and pressing enter: the result is delivered to
+			// DiscoverFragment, which runs the search. GetSearchResults is never called here.
+			onSearchViewEnter();
+		}
+		// Otherwise the token stays in the field with the hint shown; typing a word (or
+		// tapping the query again) re-runs the search through the same path.
+	}
+
+	private void showSearchOperatorsHelp(){
+		String text=SearchQuerySupport.buildHelpText(getActivity());
+		TextView content=new TextView(getActivity());
+		content.setTextAppearance(R.style.m3_body_medium);
+		content.setTextColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OnSurface));
+		content.setPaddingRelative(V.dp(8), V.dp(4), V.dp(8), 0);
+		content.setText(text);
+		ScrollView scrollView=new ScrollView(getActivity());
+		scrollView.addView(content);
+		new M3AlertDialogBuilder(getActivity())
+				.setTitle(R.string.search_help_title)
+				.setView(scrollView)
+				.setPositiveButton(R.string.copy, (dlg, which)->{
+					ClipboardManager clipboard=getActivity().getSystemService(ClipboardManager.class);
+					clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.search_help_title), text));
+				})
+				.setNegativeButton(R.string.cancel, null)
+				.show();
 	}
 
 	private void deliverResult(String query, SearchResult.Type typeFilter){

@@ -124,6 +124,16 @@ public class SearchViewHelper{
 		searchEdit.removeCallbacks(debouncer);
 	}
 
+	/**
+	 * Drops a debounced query callback that has been posted but not yet run. The host
+	 * must call this when it is going away (onDestroyView); otherwise the runnable can
+	 * fire after teardown and touch dead views.
+	 */
+	public void cancelPendingDebounce(){
+		debouncing=false;
+		searchEdit.removeCallbacks(debouncer);
+	}
+
 	public String getQuery(){
 		if(debouncing){
 			searchEdit.removeCallbacks(debouncer);
