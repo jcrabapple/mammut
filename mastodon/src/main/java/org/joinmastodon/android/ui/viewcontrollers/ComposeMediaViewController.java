@@ -934,6 +934,65 @@ public class ComposeMediaViewController{
 		return nonDoneAttachmentCount;
 	}
 
+	// MAMMUT: Composer 2.0 (§4) — thread support. Each thread segment owns one
+	// ComposeMediaViewController; these three methods let ComposeFragment
+	// move attachment lists between segments (reorder), drop a published
+	// prefix without touching the server, and rebind views after either.
+
+	/**
+	 * Drops every attachment from this segment: in-flight uploads are
+	 * cancelled, the strip is emptied and hidden. Used when the segment the
+	 * attachments belonged to was already published — the copies stay on the
+	 * server, attached to the published post.
+	 */
+	public void clearAllAttachments(){
+		for(DraftMediaAttachment att:new ArrayList<>(attachments)){
+			if(att.isUploadingOrProcessing())
+				att.cancelUpload();
+		}
+		attachments.clear();
+		if(attachmentsView!=null)
+			attachmentsView.removeAllViews();
+		if(attachmentsScroller!=null)
+			attachmentsScroller.setVisibility(View.GONE);
+		rebuildDescriptionEditors();
+		fragment.updatePublishButtonState();
+		fragment.updateMediaPollStates();
+	}
+
+	/**
+	 * Rebuilds the strip from the retained attachment list, re-inflating one
+	 * tile per attachment. Used when a card is re-created after its view was
+	 * destroyed (rotation) or when two segments swapped their lists.
+	 */
+	public void reloadViewsFromState(){
+		if(attachmentsView==null)
+			return;
+		attachmentsView.removeAllViews();
+		for(DraftMediaAttachment att:attachments){
+			attachmentsView.addView(createMediaAttachmentView(att), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT));
+		}
+		attachmentsScroller.setVisibility(attachments.isEmpty() ? View.GONE : View.VISIBLE);
+		updateMediaAttachmentsLayout();
+		rebuildDescriptionEditors();
+		fragment.updatePublishButtonState();
+		fragment.updateMediaPollStates();
+	}
+
+	/**
+	 * Swaps the attachment lists of two segments. Private state is
+	 * accessible across instances of this class, so the exchange never
+	 * copies DraftMediaAttachment objects — the same objects keep their
+	 * upload state and descriptions, only their segment changes.
+	 */
+	public void swapAttachmentsWith(ComposeMediaViewController other){
+		ArrayList<DraftMediaAttachment> tmp=other.attachments;
+		other.attachments=this.attachments;
+		this.attachments=tmp;
+		reloadViewsFromState();
+		other.reloadViewsFromState();
+	}
+
 	public void saveAltTextsBeforePublishing(Runnable onSuccess, Consumer<ErrorResponse> onError){
 		ArrayList<UpdateAttachment> updateAltTextRequests=new ArrayList<>();
 		for(DraftMediaAttachment att:attachments){

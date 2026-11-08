@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: Composer 2.0 (§4) — one card of the thread below the first
+ segment. Mirrors the main surface: number, CW toggle and overflow in the
+ header, text field, counter, media strip and inline description block.
+ Inflated into the composer's segment list by ComposeFragment. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
+	android:orientation="vertical"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:layout_marginHorizontal="16dp"
+	android:layout_marginTop="12dp"
+	android:background="@drawable/bg_inline_status"
+	android:paddingTop="4dp"
+	android:paddingBottom="12dp">
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="40dp"
+		android:layout_marginHorizontal="12dp"
+		android:gravity="center_vertical"
+		android:orientation="horizontal">
+
+		<TextView
+			android:id="@+id/segment_number"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:minWidth="24dp"
+			android:gravity="center"
+			android:textAppearance="@style/m3_label_large"
+			android:textColor="?colorM3Primary"
+			tools:text="2"/>
+
+		<Space
+			android:layout_width="0dp"
+			android:layout_height="1dp"
+			android:layout_weight="1"/>
+
+		<ImageButton
+			android:id="@+id/segment_cw"
+			android:layout_width="32dp"
+			android:layout_height="32dp"
+			android:layout_marginEnd="4dp"
+			android:background="@drawable/bg_compose_button"
+			android:contentDescription="@string/content_warning"
+			android:tooltipText="@string/content_warning"
+			android:padding="0px"
+			android:tint="@color/compose_button"
+			android:tintMode="src_in"
+			android:src="@drawable/ic_compose_cw"/>
+
+		<ImageButton
+			android:id="@+id/segment_overflow"
+			android:layout_width="32dp"
+			android:layout_height="32dp"
+			android:background="@drawable/bg_compose_button"
+			android:contentDescription="@string/compose_segment_options"
+			android:tooltipText="@string/compose_segment_options"
+			android:padding="4dp"
+			android:tint="@color/compose_button"
+			android:tintMode="src_in"
+			android:src="@drawable/ic_fluent_accessibility_more_24_regular"/>
+
+	</LinearLayout>
+
+	<org.joinmastodon.android.ui.views.FloatingHintEditTextLayout
+		android:id="@+id/segment_spoiler_wrap"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginHorizontal="12dp"
+		android:layout_marginTop="4dp"
+		android:paddingTop="8dp"
+		android:paddingBottom="8dp"
+		android:visibility="gone"
+		android:background="@drawable/bg_cw_edit"
+		android:addStatesFromChildren="true"
+		app:labelTextColor="?colorM3Primary"
+		app:editTextOffsetY="8dp"
+		tools:visibility="visible">
+
+		<EditText
+			android:id="@+id/segment_content_warning"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:elevation="0dp"
+			android:hint="@string/content_warning"
+			android:inputType="textMultiLine|textCapSentences"
+			android:textColorHint="?colorM3OnSurfaceVariant"
+			android:paddingLeft="21dp"
+			android:paddingRight="21dp"
+			android:paddingTop="8dp"
+			android:paddingBottom="8dp"
+			android:minHeight="40dp"
+			android:textAppearance="@style/m3_body_large"
+			android:textColor="?colorM3OnSurface"
+			android:background="@null"
+			android:maxLines="3"/>
+
+	</org.joinmastodon.android.ui.views.FloatingHintEditTextLayout>
+
+	<org.joinmastodon.android.ui.views.ComposeEditText
+		android:id="@+id/segment_text"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="8dp"
+		android:paddingLeft="16dp"
+		android:paddingRight="16dp"
+		android:paddingBottom="8dp"
+		android:textAppearance="@style/m3_body_large"
+		android:textSize="16sp"
+		android:gravity="top"
+		android:background="@null"
+		android:hint="@string/compose_hint"
+		android:elevation="0dp"
+		android:textColor="?colorM3OnSurface"
+		android:textColorHint="?colorM3OnSurfaceVariant"
+		android:inputType="textMultiLine|textCapSentences"/>
+
+	<TextView
+		android:id="@+id/segment_counter"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_gravity="end"
+		android:layout_marginEnd="16dp"
+		android:textAppearance="@style/m3_label_large"
+		android:textColor="?colorM3OnSurfaceVariant"
+		tools:text="500"/>
+
+	<org.joinmastodon.android.ui.views.HorizontalScrollViewThatRespectsMatchParent
+		android:id="@id/attachments_scroller"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="8dp"
+		android:fillViewport="true"
+		android:scrollbars="none"
+		android:clipChildren="false"
+		android:visibility="gone">
+
+		<org.joinmastodon.android.ui.views.ReorderableLinearLayout
+			android:id="@id/attachments"
+			android:layout_width="wrap_content"
+			android:layout_height="200dp"
+			android:orientation="horizontal"
+			android:showDividers="middle"
+			android:clipToPadding="false"
+			android:paddingHorizontal="16dp"/>
+
+	</org.joinmastodon.android.ui.views.HorizontalScrollViewThatRespectsMatchParent>
+
+	<!-- MAMMUT: The Caption Track — inline image description rows, sibling of
+		the card's media strip. The strip uses the same ids as the main
+		composer: each card's media controller does its own
+		findViewById on the card root (review M1). -->
+	<LinearLayout
+		android:id="@id/attachment_descriptions"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginHorizontal="16dp"
+		android:layout_marginTop="8dp"
+		android:orientation="vertical"
+		android:visibility="gone"
+		tools:visibility="visible"/>
+
+</LinearLayout>
