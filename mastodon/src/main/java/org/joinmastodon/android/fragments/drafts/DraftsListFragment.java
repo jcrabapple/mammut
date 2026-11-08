@@ -1,6 +1,7 @@
 package org.joinmastodon.android.fragments.drafts;
 
 import android.app.Fragment;
+import android.app.FragmentTransaction;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
@@ -97,10 +98,16 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 			public void onTabReselected(TabLayout.Tab tab){}
 		});
 		if(savedInstanceState==null){
-			createPages();
+			// Review M2: the requested tab decides which page starts
+			// visible — the snackbar's View action lands here with
+			// tab=1, and selecting it before visiblePage matches the
+			// actually-shown page used to throw hide(null) and then
+			// desync the tabs when visiblePage was overwritten below.
+			int initialTab=getArguments()!=null ? getArguments().getInt("tab", 0) : 0;
+			createPages(initialTab);
 			// MAMMUT: Composer 2.0 (§5) — the composer's "Scheduled for … ·
 			// View" snackbar lands here directly on the Scheduled tab.
-			if(getArguments().getInt("tab", 0)==1 && tabLayout.getTabCount()>1)
+			if(initialTab==1 && tabLayout.getTabCount()>1)
 				tabLayout.getTabAt(1).select();
 		}else{
 			draftsPage=(DraftsPageFragment) getChildFragmentManager().findFragmentByTag("drafts");
@@ -108,24 +115,31 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 			if(draftsPage==null || scheduledPage==null){
 				// The child fragments died without saved tags (retained parent)
 				// — rebuild the pages instead of rendering empty tabs (N1).
-				createPages();
+				createPages(0);
+			}else if(visiblePage==null){
+				// Process-death recreation: the child manager restored each
+				// page's hidden state, so visiblePage can be rebuilt from it.
+				visiblePage=draftsPage.isHidden() ? scheduledPage : draftsPage;
 			}
 		}
-		visiblePage=draftsPage;
 		return view;
 	}
 
-	private void createPages(){
+	private void createPages(int initialTab){
 		Bundle args=new Bundle();
 		args.putString("account", accountID);
 		draftsPage=new DraftsPageFragment();
 		draftsPage.setArguments(args);
 		scheduledPage=new ScheduledPageFragment();
 		scheduledPage.setArguments(args);
+		// Review M2: hide the page the user did NOT ask for up front, so
+		// visiblePage always matches what is actually on screen before any
+		// tab-selection listener can run.
+		visiblePage=initialTab==1 ? scheduledPage : draftsPage;
 		getChildFragmentManager().beginTransaction()
 				.add(R.id.drafts_page_container, draftsPage, "drafts")
 				.add(R.id.drafts_page_container, scheduledPage, "scheduled")
-				.hide(scheduledPage)
+				.hide(initialTab==1 ? draftsPage : scheduledPage)
 				.commit();
 	}
 
@@ -133,10 +147,10 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 		Fragment target=position==0 ? draftsPage : scheduledPage;
 		if(target==null || target==visiblePage)
 			return;
-		getChildFragmentManager().beginTransaction()
-				.hide(visiblePage)
-				.show(target)
-				.commit();
+		FragmentTransaction transaction=getChildFragmentManager().beginTransaction();
+		if(visiblePage!=null)
+			transaction.hide(visiblePage);
+		transaction.show(target).commit();
 		visiblePage=target;
 	}
 

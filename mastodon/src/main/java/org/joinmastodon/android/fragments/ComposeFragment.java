@@ -694,7 +694,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// §4: once part of the thread has been published, the anchor is the
 		// last published segment — a retry (or an autosave of the remaining
 		// tail) must chain below it, not below the original reply target.
-		d.replyToStatusId=threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId);
+		d.replyToStatusId=currentReplyAnchorId();
 		d.quotedStatusId=quotedStatus!=null ? quotedStatus.id : restoredQuotedStatusId;
 		// Note: a resumed draft carries replyToStatusId/quotedStatusId (§1).
 		// The reply id is consumed at publish time (review M4); only the
@@ -1370,7 +1370,20 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// §4 (review M4): a tail draft resumed after a partial publish
 		// carries replyToStatusId = the last published segment; chain below
 		// it so the retried thread continues instead of posting top-level.
-		publishNextSegment(pubs, 0, threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId));
+		publishNextSegment(pubs, 0, currentReplyAnchorId());
+	}
+
+	/**
+	 * §4/§5 — the single place that answers "what id does the next post
+	 * reply to": the last chained segment once part of the thread is out,
+	 * else the reply being composed to, else a reply restored from a
+	 * draft. Review M1: scheduling built its own request without this and
+	 * shipped replies as detached top-level posts — the same omission the
+	 * thread slice shipped with (its M4). Both publishNextSegment's
+	 * initial anchor and doSchedule must go through here.
+	 */
+	private String currentReplyAnchorId(){
+		return threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId);
 	}
 
 	/**
@@ -1850,8 +1863,12 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private void doSchedule(Instant when){
 		// Single-segment scope is enforced in onScheduleClicked, so the
 		// first segment's request builder is exactly the right body; only
-		// scheduledAt is added on top of the publish shape.
+		// scheduledAt and the reply anchor are added on top of the publish
+		// shape. Review M1: without the anchor a scheduled reply goes out
+		// with in_reply_to_id=null and the server files it as a detached
+		// top-level status.
 		SegmentPublish pub=buildPublishForFirstSegment();
+		pub.req.inReplyToId=currentReplyAnchorId();
 		pub.req.scheduledAt=when;
 		new ScheduleStatus(pub.req, pub.idempotencyKey)
 				.setCallback(new Callback<>(){
