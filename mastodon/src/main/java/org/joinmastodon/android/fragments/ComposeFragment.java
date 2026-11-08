@@ -264,6 +264,16 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 * replyToStatusId.
 	 */
 	private String threadAnchorId;
+	/**
+	 * MAMMUT (§4) — set once a partial publish has written the tail draft
+	 * to the store. From then on the fire-and-forget autosave must not
+	 * touch that draft: it is the retry artifact, carrying the tail's own
+	 * per-segment idempotency keys, and a later composer-level save could
+	 * only rebind or prepend state it must not carry (review M3). Only a
+	 * successfully landed write sets this — a failed tail save must not
+	 * block the next chance to persist.
+	 */
+	private boolean tailDraftSaved;
 
 	public ComposeFragment(){
 		super(R.layout.toolbar_fragment_with_progressbar);
@@ -299,8 +309,8 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			}else{
 				// §4: reuse the persisted per-segment idempotency key, and
 				// keep the reply/quote context ids in the model across
-				// re-saves even though slice 1 cannot rebuild the Status
-				// objects themselves (M2).
+				// re-saves: the reply id chains the publish (review M4),
+				// the quote id survives for the warning dialog.
 				if(!draftToRestore.segments.isEmpty())
 					draftIdempotencyKey=draftToRestore.segments.get(0).idempotencyKey;
 				restoredReplyToStatusId=draftToRestore.replyToStatusId;
@@ -655,6 +665,12 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private CountDownLatch saveDraft(Runnable onSaved){
 		if(editingStatus!=null)
 			return null;
+		// §4 (review M3): after a partial publish the tail draft on disk is
+		// the source of truth for the remaining thread; the fire-and-forget
+		// autosave must not overwrite it. The explicit Save-draft button
+		// (onSaved != null) still writes — the author asked for it.
+		if(onSaved==null && tailDraftSaved)
+			return null;
 		final ComposeDraft d=new ComposeDraft();
 		d.id=draftId!=null ? draftId : UUID.randomUUID().toString();
 		d.updatedAt=System.currentTimeMillis();
@@ -664,10 +680,10 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// tail) must chain below it, not below the original reply target.
 		d.replyToStatusId=threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId);
 		d.quotedStatusId=quotedStatus!=null ? quotedStatus.id : restoredQuotedStatusId;
-		// Note: a resumed draft carries replyToStatusId/quotedStatusId (§1)
-		// but rebuilding the in-memory reply/quote context from an id alone
-		// is threads-slice work; applyDraft tells the author instead of
-		// dropping it silently (M2).
+		// Note: a resumed draft carries replyToStatusId/quotedStatusId (§1).
+		// The reply id is consumed at publish time (review M4); only the
+		// quote is truly unrestorable from an id, and applyDraft says so
+		// instead of dropping it silently.
 		Segment seg=new Segment();
 		seg.text=mainEditText.getText().toString();
 		if(hasSpoiler){
@@ -975,12 +991,11 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			restoredDraftVisibility=true;
 			updateVisibilityButton(false);
 		}
-		if(d.replyToStatusId!=null || d.quotedStatusId!=null){
-			// MAMMUT: Composer 2.0 (§1/§6, M2) — the ids are persisted, but
-			// slice 1 cannot rebuild the in-memory reply/quote Status objects
-			// from ids alone (that fetch is threads-slice work). Say so
-			// plainly: publishing this resumed draft now would post a new
-			// top-level status, and that must never be a silent surprise.
+		if(d.quotedStatusId!=null){
+			// MAMMUT: Composer 2.0 (§1/§6, review M4) — the reply context
+			// is consumed at publish time through replyToStatusId, so only
+			// the quote is truly lost on a resumed draft, and that must
+			// never be a silent surprise.
 			new M3AlertDialogBuilder(getActivity())
 					.setTitle(R.string.draft_context_lost_title)
 					.setMessage(R.string.draft_context_lost)
@@ -1245,15 +1260,19 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private void publish(){
 		Runnable publishAction=()->{
 			// MAMMUT (§4) — the overlay is a FrameLayout so the chain can say
-			// "Posting 2 of 4" mid-publish; a single post keeps the old
-			// silent look (no progress label).
+			// "Posting 2 of 4" mid-publish. The pill exists only when there
+			// is an actual chain: a single post keeps the old silent look
+			// (review M5) — an empty outlined box mid-screen helped no one.
 			FrameLayout overlay=new FrameLayout(getActivity());
-			postingProgressText=new TextView(getActivity());
-			postingProgressText.setTextAppearance(R.style.m3_label_large);
-			postingProgressText.setTextColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OnSurface));
-			postingProgressText.setBackgroundResource(R.drawable.bg_composer_visibility);
-			postingProgressText.setPadding(V.dp(16), V.dp(8), V.dp(16), V.dp(8));
-			overlay.addView(postingProgressText, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+			postingProgressText=null;
+			if(!extraSegments.isEmpty()){
+				postingProgressText=new TextView(getActivity());
+				postingProgressText.setTextAppearance(R.style.m3_label_large);
+				postingProgressText.setTextColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OnSurface));
+				postingProgressText.setBackgroundResource(R.drawable.bg_composer_visibility);
+				postingProgressText.setPadding(V.dp(16), V.dp(8), V.dp(16), V.dp(8));
+				overlay.addView(postingProgressText, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+			}
 			sendingOverlay=overlay;
 			WindowManager.LayoutParams overlayParams=new WindowManager.LayoutParams();
 			overlayParams.type=WindowManager.LayoutParams.TYPE_APPLICATION_PANEL;
@@ -1323,7 +1342,10 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			pubs.add(buildPublishForThreadSegment(ts));
 		if(pubs.size()>1)
 			updatePostingProgress(1, pubs.size());
-		publishNextSegment(pubs, 0, threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : null));
+		// §4 (review M4): a tail draft resumed after a partial publish
+		// carries replyToStatusId = the last published segment; chain below
+		// it so the retried thread continues instead of posting top-level.
+		publishNextSegment(pubs, 0, threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId));
 	}
 
 	/**
@@ -1514,10 +1536,23 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private void handlePartialPublishFailure(int publishedCount, ErrorResponse error){
 		// The tail draft snapshots the current fields on the UI thread
 		// before the prefix is cleared from under them.
-		saveThreadTailAsDraft(publishedCount);
+		CountDownLatch tailSaved=saveThreadTailAsDraft(publishedCount);
 		removePublishedPrefix(publishedCount);
+		// §6/N4: the tail write is awaited, not fire-and-forget — the same
+		// class of loss as the slice-1 autosave that vanished. Bounded so a
+		// slow media copy can only delay, never wedge, the UI thread. After
+		// the wait the tail draft is on disk (or its failure was surfaced),
+		// so the autosave guard below is decided on fact, not hope.
+		if(tailSaved!=null){
+			try{
+				tailSaved.await(3, TimeUnit.SECONDS);
+			}catch(InterruptedException ignored){}
+		}
 		dismissSendingOverlay();
-		publishButton.setEnabled(true);
+		// No publishButton.setEnabled(true) here (review M2): the promoted
+		// tail went through updatePublishButtonState inside
+		// removePublishedPrefix, and the button may only be what that
+		// computed — an empty or over-limit lead segment keeps it off.
 		String msg=getResources().getQuantityString(R.plurals.thread_partial_publish, publishedCount, publishedCount);
 		new M3AlertDialogBuilder(getActivity())
 				.setTitle(R.string.post_failed)
@@ -1533,7 +1568,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 * same keys — Mastodon's Idempotency-Key dedupes a replayed segment and
 	 * the published prefix is not in the draft at all.
 	 */
-	private void saveThreadTailAsDraft(int publishedCount){
+	private CountDownLatch saveThreadTailAsDraft(int publishedCount){
 		final ComposeDraft d=new ComposeDraft();
 		d.id=draftId!=null ? draftId : UUID.randomUUID().toString();
 		d.updatedAt=System.currentTimeMillis();
@@ -1555,20 +1590,33 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		}
 		draftId=d.id;
 		final String draftIdFinal=d.id;
+		// §6/N4: the write is awaited by handlePartialPublishFailure through
+		// this latch — a process kill in the gap between scheduling and the
+		// write would silently lose the only copy of the tail.
+		final CountDownLatch saveDone=new CountDownLatch(1);
 		MastodonAPIController.runInBackground(()->{
 			try{
-				for(int i=0;i<tail.size();i++)
-					d.segments.get(i).attachments=tail.get(i).mediaController.buildDraftAttachments(threadAttachmentSnapshots.get(i), draftStore, draftIdFinal);
-				draftStore.save(d);
-			}catch(Exception x){
-				android.util.Log.w(TAG, "saveThreadTailAsDraft: failed", x);
-				// §6: a failed save is surfaced, never silent.
-				UiUtils.runOnUiThread(()->{
-					if(getActivity()!=null)
-						Toast.makeText(getActivity(), R.string.draft_save_failed, Toast.LENGTH_LONG).show();
-				});
+				try{
+					for(int i=0;i<tail.size();i++)
+						d.segments.get(i).attachments=tail.get(i).mediaController.buildDraftAttachments(threadAttachmentSnapshots.get(i), draftStore, draftIdFinal);
+					draftStore.save(d);
+					// §4 (review M3): only a landed write may suppress the
+					// autosave; a failed one must not block the next chance
+					// to persist the tail.
+					tailDraftSaved=true;
+				}catch(Exception x){
+					android.util.Log.w(TAG, "saveThreadTailAsDraft: failed", x);
+					// §6: a failed save is surfaced, never silent.
+					UiUtils.runOnUiThread(()->{
+						if(getActivity()!=null)
+							Toast.makeText(getActivity(), R.string.draft_save_failed, Toast.LENGTH_LONG).show();
+					});
+				}
+			}finally{
+				saveDone.countDown();
 			}
 		});
+		return saveDone;
 	}
 
 	/**
@@ -1596,8 +1644,27 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		mediaViewController.clearAllAttachments();
 		for(int i=0;i<publishedCount-1;i++)
 			removeSegmentCard(extraSegments.get(0));
+		// Promote the tail's first segment onto the main surface (review
+		// M2): after this the composer holds exactly the unpublished tail
+		// and the next publish chains below threadAnchorId. The promoted
+		// segment keeps its own idempotency key (M3) — the retried first
+		// request must replay the key the failed attempt already used, or
+		// a timeout-class failure can double-post it.
+		if(!extraSegments.isEmpty()){
+			ThreadSegment promoted=extraSegments.get(0);
+			draftIdempotencyKey=promoted.idempotencyKey;
+			if(promoted.hasSpoiler){
+				hasSpoiler=true;
+				spoilerWrap.setVisibility(View.VISIBLE);
+				spoilerBtn.setSelected(true);
+				if(promoted.spoilerEdit.length()>0)
+					spoilerEdit.setText(promoted.spoilerEdit.getText().toString());
+			}
+			mainEditText.setText(promoted.text.getText().toString());
+			mediaViewController.swapAttachmentsWith(promoted.mediaController);
+			removeSegmentCard(promoted);
+		}
 		activeSegmentIndex=0;
-		spoilerBtn.setSelected(false);
 		updateCharCounter();
 		updateActiveCounterDisplay();
 		updateMediaPollStates();

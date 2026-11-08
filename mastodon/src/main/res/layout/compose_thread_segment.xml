@@ -128,7 +128,7 @@
 		tools:text="500"/>
 
 	<org.joinmastodon.android.ui.views.HorizontalScrollViewThatRespectsMatchParent
-		android:id="@+id/segment_attachments_scroller"
+		android:id="@id/attachments_scroller"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		android:layout_marginTop="8dp"
@@ -138,7 +138,7 @@
 		android:visibility="gone">
 
 		<org.joinmastodon.android.ui.views.ReorderableLinearLayout
-			android:id="@+id/segment_attachments"
+			android:id="@id/attachments"
 			android:layout_width="wrap_content"
 			android:layout_height="200dp"
 			android:orientation="horizontal"
@@ -149,9 +149,11 @@
 	</org.joinmastodon.android.ui.views.HorizontalScrollViewThatRespectsMatchParent>
 
 	<!-- MAMMUT: The Caption Track — inline image description rows, sibling of
-		the card's media strip -->
+		the card's media strip. The strip uses the same ids as the main
+		composer: each card's media controller does its own
+		findViewById on the card root (review M1). -->
 	<LinearLayout
-		android:id="@+id/segment_attachment_descriptions"
+		android:id="@id/attachment_descriptions"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		android:layout_marginHorizontal="16dp"

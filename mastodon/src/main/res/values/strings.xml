@@ -1103,8 +1103,8 @@
 	</plurals>
 	<!-- MAMMUT: Composer 2.0 review fixes (M1/M2/M4) — honest failure and context surfaces -->
 	<string name="draft_save_failed">Couldn\'t save the draft. Your text is still in the composer.</string>
-	<string name="draft_context_lost_title">Reply or quote not restored</string>
-	<string name="draft_context_lost">This draft was saved as a reply or a quote, and that context can\'t be restored yet. Publishing it now will create a new top-level post. Your text and media are intact.</string>
+	<string name="draft_context_lost_title">Quote not restored</string>
+	<string name="draft_context_lost">This draft was saved with a quote, and that context can\'t be restored yet — publishing it now will post without the quote. (A draft saved as a reply still chains to that reply.) Your text and media are intact.</string>
 	<!-- MAMMUT: Composer 2.0 (§4) — threads -->
 	<string name="add_another_post">Add another post</string>
 	<string name="move_up">Move up</string>
