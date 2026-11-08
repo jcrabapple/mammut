@@ -1117,4 +1117,19 @@
 		<item quantity="other">Posted the first %1$d. Saved the rest as a draft.</item>
 	</plurals>
 	<string name="thread_move_poll_blocked">Remove the poll to move the first post.</string>
+<!-- MAMMUT: Composer 2.0 (§5) — scheduling -->
+<string name="schedule">Schedule</string>
+<string name="schedule_pick_date">Pick a date</string>
+<string name="schedule_pick_time">Pick a time</string>
+<string name="schedule_too_soon">Pick a time at least 5 minutes from now.</string>
+<string name="schedule_too_far">Can\'t schedule a post more than a year ahead.</string>
+<string name="schedule_thread_title">Can\'t schedule a thread</string>
+<string name="schedule_thread_unavailable">A scheduled thread can\'t be chained: each post needs the id the previous one gets only when it publishes. Publish the thread now, or keep it to one scheduled post.</string>
+<string name="scheduled_for">Scheduled for %1$s</string>
+<string name="scheduled_time_relative">%1$s (%2$s)</string>
+<string name="cancel_scheduled_post">Cancel scheduled post?</string>
+<string name="cancel_scheduled_post_message">This deletes the post on the server. Its text isn\'t saved anywhere else and can\'t be recovered.</string>
+<string name="cancel_scheduled_post_action">Cancel post</string>
+<string name="keep">Keep</string>
+<string name="view">View</string>
 </resources>
