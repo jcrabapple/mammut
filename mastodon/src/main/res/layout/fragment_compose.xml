@@ -334,6 +334,18 @@
 							android:paddingHorizontal="16dp"/>
 					</org.joinmastodon.android.ui.views.HorizontalScrollViewThatRespectsMatchParent>
 
+					<!-- MAMMUT: The Caption Track (docs/CAPTION-TRACK-SPEC.md §3) — inline image
+						 description fields, one row per image, sibling of the media strip. -->
+					<LinearLayout
+						android:id="@+id/attachment_descriptions"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:layout_marginHorizontal="16dp"
+						android:layout_marginTop="8dp"
+						android:orientation="vertical"
+						android:visibility="gone"
+						tools:visibility="visible"/>
+
 					<FrameLayout
 						android:id="@+id/quoted_post_wrap"
 						android:layout_width="match_parent"

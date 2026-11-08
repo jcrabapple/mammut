@@ -7,23 +7,31 @@ import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.provider.OpenableColumns;
+import android.text.Editable;
+import android.text.InputFilter;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -44,6 +52,7 @@ import org.joinmastodon.android.model.Attachment;
 import org.joinmastodon.android.model.Instance;
 import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.drawables.EmptyDrawable;
+import org.joinmastodon.android.ui.utils.ImageDescriptionMetadata;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.views.ReorderableLinearLayout;
 import org.joinmastodon.android.utils.TransferSpeedTracker;
@@ -54,6 +63,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Locale;
@@ -77,7 +87,13 @@ public class ComposeMediaViewController{
 	
 	private ReorderableLinearLayout attachmentsView;
 	private HorizontalScrollView attachmentsScroller;
-	
+
+	// MAMMUT: The Caption Track (§3/§4) — inline description rows beneath the strip,
+	// keyed by the DraftMediaAttachment they edit so removal/reorder never mispairs text.
+	private LinearLayout attachmentDescriptions;
+	private final LinkedHashMap<DraftMediaAttachment, DescriptionEditor> descriptionEditors=new LinkedHashMap<>();
+	private boolean descriptionBlockHiddenByPoll;
+
 	private ArrayList<DraftMediaAttachment> attachments=new ArrayList<>();
 	private boolean attachmentsErrorShowing;
 
@@ -88,6 +104,7 @@ public class ComposeMediaViewController{
 	public void setView(View view, Bundle savedInstanceState){
 		attachmentsView=view.findViewById(R.id.attachments);
 		attachmentsScroller=view.findViewById(R.id.attachments_scroller);
+		attachmentDescriptions=view.findViewById(R.id.attachment_descriptions);
 		attachmentsView.setDividerDrawable(new EmptyDrawable(V.dp(8), 0));
 		attachmentsView.setDragListener(new AttachmentDragListener());
 		attachmentsView.setMoveInBothDimensions(true);
@@ -108,6 +125,7 @@ public class ComposeMediaViewController{
 			}
 			updateMediaAttachmentsLayout();
 		}
+		rebuildDescriptionEditors();
 	}
 
 	public void onViewCreated(Bundle savedInstanceState){
@@ -123,6 +141,7 @@ public class ComposeMediaViewController{
 				attachments.add(da);
 			}
 			updateMediaAttachmentsLayout();
+			rebuildDescriptionEditors();
 		}
 	}
 
@@ -167,7 +186,15 @@ public class ComposeMediaViewController{
 		attachments.add(draft);
 		attachmentsScroller.setVisibility(View.VISIBLE);
 		updateMediaAttachmentsLayout();
+		rebuildDescriptionEditors();
 //		draft.setOverlayVisible(true, false);
+
+		// MAMMUT: The Caption Track (§2) — prefill an empty image description from the
+		// file's own metadata. The read is async; if the author has typed by the time it
+		// finishes, the prefill is dropped silently.
+		if(TextUtils.isEmpty(draft.description) && isImage(draft)){
+			prefillDescriptionFromMetadata(draft);
+		}
 
 		if(!areThereAnyUploadingAttachments()){
 			uploadNextQueuedAttachment();
@@ -276,7 +303,14 @@ public class ComposeMediaViewController{
 		}else if(draft.state==AttachmentUploadState.DONE){
 			draft.setDescriptionToTitle();
 			draft.progressBar.setVisibility(View.GONE);
-			draft.editButton.setOnClickListener(this::onEditMediaDescriptionClick);
+			if(isImage(draft)){
+				// MAMMUT: The Caption Track (§3) — images have one editor: the inline field.
+				// The edit button is hidden; the ALT chip focuses the field. Video/audio
+				// keep the edit button and the description dialog.
+				draft.editButton.setVisibility(View.GONE);
+			}else{
+				draft.editButton.setOnClickListener(this::onEditMediaDescriptionClick);
+			}
 		}else{
 			draft.editButton.setVisibility(View.GONE);
 			draft.removeButton.setImageResource(R.drawable.ic_baseline_close_24);
@@ -285,6 +319,11 @@ public class ComposeMediaViewController{
 			}else{
 				draft.titleView.setText(fragment.getString(R.string.attachment_x_percent_uploaded, 0));
 			}
+		}
+
+		if(isImage(draft)){
+			// MAMMUT: The Caption Track (§3, §5) — the ALT status chip focuses the inline field
+			draft.titleView.setOnClickListener(v->focusDescriptionEditor(draft));
 		}
 
 		return thumb;
@@ -301,6 +340,7 @@ public class ComposeMediaViewController{
 		attachments.add(draft);
 		attachmentsScroller.setVisibility(View.VISIBLE);
 		updateMediaAttachmentsLayout();
+		rebuildDescriptionEditors();
 		finishMediaAttachmentUpload(draft);
 	}
 
@@ -400,6 +440,7 @@ public class ComposeMediaViewController{
 		if(!attachments.isEmpty())
 			UiUtils.beginLayoutTransition(attachmentsScroller);
 		attachmentsView.removeView(att.view);
+		rebuildDescriptionEditors();
 		if(getMediaAttachmentsCount()==0){
 			attachmentsScroller.setVisibility(View.GONE);
 		}else{
@@ -483,9 +524,14 @@ public class ComposeMediaViewController{
 		attachment.state=AttachmentUploadState.DONE;
 		attachment.editButton.setImageResource(R.drawable.ic_edit_24px);
 		attachment.removeButton.setImageResource(R.drawable.ic_delete_24px);
-		attachment.editButton.setOnClickListener(this::onEditMediaDescriptionClick);
+		if(isImage(attachment)){
+			// MAMMUT: The Caption Track (§3) — one editor for images: the inline field
+			attachment.editButton.setVisibility(View.GONE);
+		}else{
+			attachment.editButton.setOnClickListener(this::onEditMediaDescriptionClick);
+			V.setVisibilityAnimated(attachment.editButton, View.VISIBLE);
+		}
 		V.setVisibilityAnimated(attachment.progressBar, View.GONE);
-		V.setVisibilityAnimated(attachment.editButton, View.VISIBLE);
 		attachment.setDescriptionToTitle();
 		if(!areThereAnyUploadingAttachments())
 			uploadNextQueuedAttachment();
@@ -511,6 +557,12 @@ public class ComposeMediaViewController{
 
 	private void onEditMediaDescriptionClick(View v){
 		DraftMediaAttachment att=(DraftMediaAttachment) v.getTag();
+		// MAMMUT: The Caption Track (§3) — the ALT dialog is removed for images in the
+		// composer; the inline field is the one editor. Video/audio keep this path.
+		if(isImage(att)){
+			focusDescriptionEditor(att);
+			return;
+		}
 		if(att.serverAttachment==null)
 			return;
 		Bundle args=new Bundle();
@@ -525,6 +577,200 @@ public class ComposeMediaViewController{
 			args.putInt("height", img.getIntrinsicHeight());
 		}
 		Nav.goForResult(fragment.getActivity(), ComposeImageDescriptionFragment.class, args, ComposeFragment.IMAGE_DESCRIPTION_RESULT, fragment);
+	}
+
+	// MAMMUT: The Caption Track (§2-§4) — metadata prefill and the inline description block.
+
+	private static boolean isImage(DraftMediaAttachment att){
+		if(att.mimeType!=null)
+			return att.mimeType.startsWith("image/");
+		return att.serverAttachment!=null && att.serverAttachment.type==Attachment.Type.IMAGE;
+	}
+
+	/**
+	 * Reads the image's own metadata off the main thread and, if the field is still
+	 * empty when the read finishes, fills it as a draft. The callback is keyed by the
+	 * DraftMediaAttachment object itself, never by position, so several images added in
+	 * quick succession each receive only their own text.
+	 */
+	private void prefillDescriptionFromMetadata(DraftMediaAttachment draft){
+		Uri uri=draft.uri;
+		// Local, not-yet-uploaded attachments only — never read remote or uploaded files
+		if(uri==null || draft.serverAttachment!=null || !"content".equalsIgnoreCase(uri.getScheme()))
+			return;
+		MastodonAPIController.runInBackground(()->{
+			String raw;
+			try{
+				raw=ImageDescriptionMetadata.read(fragment.getActivity(), uri);
+			}catch(Exception x){
+				Log.w(TAG, "prefillDescriptionFromMetadata: metadata read failed", x);
+				raw=null;
+			}
+			if(raw==null)
+				return;
+			// Existing composer sanitizer (Gboard paste guard), then collapse newlines,
+			// trim, and truncate to 1500 on a word boundary.
+			String prefill=ImageDescriptionMetadata.normalizePrefill(fragment.sanitizeMediaDescription(raw));
+			if(TextUtils.isEmpty(prefill))
+				return;
+			String result=prefill;
+			UiUtils.runOnUiThread(()->{
+				// Drop silently if the attachment was removed, the author typed while the
+				// read was in flight, or a description already exists — never overwrite.
+				if(fragment.getActivity()==null || !attachments.contains(draft) || !TextUtils.isEmpty(draft.description))
+					return;
+				draft.description=result;
+				draft.descriptionSaved=false; // make saveAltTextsBeforePublishing send exactly this
+				DescriptionEditor editor=descriptionEditors.get(draft);
+				if(editor!=null)
+					editor.setText(result);
+				draft.setDescriptionToTitle(); // filled ALT chip
+			});
+		});
+	}
+
+	/**
+	 * Rebuilds the description block beneath the media strip: one row per image, in
+	 * attachment order. Rows are keyed by the attachment object in descriptionEditors,
+	 * so removing or reordering attachments never mispairs text with an image.
+	 */
+	private void rebuildDescriptionEditors(){
+		if(attachmentDescriptions==null)
+			return;
+		attachmentDescriptions.removeAllViews();
+		descriptionEditors.clear();
+		List<DraftMediaAttachment> images=attachments.stream().filter(ComposeMediaViewController::isImage).collect(Collectors.toList());
+		int count=images.size();
+		for(int i=0;i<count;i++){
+			DraftMediaAttachment att=images.get(i);
+			DescriptionEditor editor=createDescriptionEditor(att);
+			editor.bind(i+1, count);
+			descriptionEditors.put(att, editor);
+			attachmentDescriptions.addView(editor.view);
+		}
+		updateDescriptionBlockVisibility();
+	}
+
+	private DescriptionEditor createDescriptionEditor(DraftMediaAttachment att){
+		View row=fragment.getActivity().getLayoutInflater().inflate(R.layout.compose_attachment_description_row, attachmentDescriptions, false);
+		DescriptionEditor editor=new DescriptionEditor(att, row);
+		editor.thumb.setOutlineProvider(OutlineProviders.roundedRect(8));
+		editor.thumb.setClipToOutline(true);
+		if(att.serverAttachment!=null && att.serverAttachment.previewUrl!=null){
+			ViewImageLoader.load(editor.thumb, att.serverAttachment.blurhashPlaceholder, new UrlImageLoaderRequest(att.serverAttachment.previewUrl, V.dp(32), V.dp(32)));
+		}else if(att.uri!=null){
+			ViewImageLoader.load(editor.thumb, null, new UrlImageLoaderRequest(att.uri, V.dp(32), V.dp(32)));
+		}
+		// Hard 1500 cap; InputFilter truncates paste beyond the limit instead of rejecting it
+		editor.field.setFilters(new InputFilter[]{new InputFilter.LengthFilter(ImageDescriptionMetadata.MAX_DESCRIPTION_LENGTH)});
+		editor.field.addTextChangedListener(new TextWatcher(){
+			@Override
+			public void beforeTextChanged(CharSequence s, int start, int count, int after){}
+
+			@Override
+			public void onTextChanged(CharSequence s, int start, int before, int count){}
+
+			@Override
+			public void afterTextChanged(Editable s){
+				if(editor.updating)
+					return;
+				// Write through to the attachment model on every change: rotation and
+				// process death preserve the text, and saveAltTextsBeforePublishing
+				// sends exactly what the field shows.
+				att.description=s.toString();
+				att.descriptionSaved=false;
+				editor.updateHelperAndCounter();
+				att.setDescriptionToTitle(); // ALT chip state follows the field immediately
+			}
+		});
+		return editor;
+	}
+
+	public void setDescriptionBlockHiddenByPoll(boolean hidden){
+		descriptionBlockHiddenByPoll=hidden;
+		updateDescriptionBlockVisibility();
+	}
+
+	private void updateDescriptionBlockVisibility(){
+		if(attachmentDescriptions==null)
+			return;
+		boolean show=!descriptionEditors.isEmpty() && !descriptionBlockHiddenByPoll;
+		attachmentDescriptions.setVisibility(show ? View.VISIBLE : View.GONE);
+	}
+
+	/**
+	 * Scrolls the image's row into view and focuses its field, showing the keyboard.
+	 * Used by the ALT status chip (and, defensively, the hidden edit button path).
+	 */
+	private void focusDescriptionEditor(DraftMediaAttachment att){
+		DescriptionEditor editor=descriptionEditors.get(att);
+		if(editor==null || fragment.getActivity()==null)
+			return;
+		updateDescriptionBlockVisibility();
+		editor.view.post(()->{
+			editor.view.requestRectangleOnScreen(new Rect(0, 0, editor.view.getWidth(), editor.view.getHeight()), false);
+			editor.field.requestFocus();
+			InputMethodManager imm=(InputMethodManager)fragment.getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
+			if(imm!=null)
+				imm.showSoftInput(editor.field, InputMethodManager.SHOW_IMPLICIT);
+		});
+	}
+
+	/**
+	 * One row of the description block: 32dp thumbnail, "Image N" label, multiline field,
+	 * and a shared helper/counter slot (§3, §5).
+	 */
+	private class DescriptionEditor{
+		final DraftMediaAttachment attachment;
+		final View view;
+		final ImageView thumb;
+		final TextView label, helper;
+		final EditText field;
+		boolean updating;
+
+		DescriptionEditor(DraftMediaAttachment attachment, View view){
+			this.attachment=attachment;
+			this.view=view;
+			thumb=view.findViewById(R.id.thumb);
+			label=view.findViewById(R.id.label);
+			field=view.findViewById(R.id.edit);
+			helper=view.findViewById(R.id.helper);
+		}
+
+		void bind(int imageIndex, int imageCount){
+			label.setText(fragment.getString(R.string.image_x, imageIndex));
+			field.setContentDescription(fragment.getString(R.string.image_description_a11y, imageIndex, imageCount));
+			setText(attachment.description);
+		}
+
+		void setText(String text){
+			if(Objects.equals(text==null ? "" : text, field.getText().toString())){
+				updateHelperAndCounter();
+				return;
+			}
+			updating=true;
+			field.setText(text);
+			updating=false;
+			updateHelperAndCounter();
+		}
+
+		/**
+		 * Helper line when the field is empty; "N/1500" counter only in the last 200
+		 * characters (§3); hidden otherwise. The slot is a polite live region so the
+		 * counter is announced only while visible (§5).
+		 */
+		void updateHelperAndCounter(){
+			int len=field.getText().length();
+			if(len>ImageDescriptionMetadata.MAX_DESCRIPTION_LENGTH-200){
+				helper.setVisibility(View.VISIBLE);
+				helper.setText(fragment.getString(R.string.image_description_counter, len, ImageDescriptionMetadata.MAX_DESCRIPTION_LENGTH));
+			}else if(len==0){
+				helper.setVisibility(View.VISIBLE);
+				helper.setText(R.string.image_description_helper);
+			}else{
+				helper.setVisibility(View.GONE);
+			}
+		}
 	}
 
 	public int getMediaAttachmentsCount(){
@@ -687,12 +933,52 @@ public class ComposeMediaViewController{
 		}
 
 		public void setDescriptionToTitle(){
+			// MAMMUT: The Caption Track (§3) — for images the tile's label is a status chip:
+			// filled when a description exists, outlined when not, and tapping it focuses
+			// the matching inline field. Video/audio keep the old label behavior.
+			if(ComposeMediaViewController.isImage(this)){
+				updateAltChip();
+				return;
+			}
 			if(TextUtils.isEmpty(description)){
 				titleView.setText(R.string.add_alt_text);
 				titleView.setTextColor(UiUtils.getThemeColor(titleView.getContext(), R.attr.colorM3Error));
 			}else{
 				titleView.setText(description);
 				titleView.setTextColor(UiUtils.getThemeColor(titleView.getContext(), R.attr.colorM3OnSurface));
+			}
+		}
+
+		/**
+		 * MAMMUT: The Caption Track (§3, §5) — the ALT chip. Only applies once the upload
+		 * is done; while uploading, the title keeps showing progress.
+		 */
+		private void updateAltChip(){
+			if(titleView==null || state!=AttachmentUploadState.DONE)
+				return;
+			boolean described=!TextUtils.isEmpty(description);
+			Context ctx=titleView.getContext();
+			GradientDrawable bg=new GradientDrawable();
+			bg.setCornerRadius(V.dp(12));
+			if(described){
+				bg.setColor(UiUtils.getThemeColor(ctx, R.attr.colorM3Primary));
+				titleView.setTextColor(UiUtils.getThemeColor(ctx, R.attr.colorM3OnPrimary));
+			}else{
+				bg.setColor(0x00000000);
+				bg.setStroke(V.dp(1), UiUtils.getThemeColor(ctx, R.attr.colorM3Outline));
+				titleView.setTextColor(UiUtils.getThemeColor(ctx, R.attr.colorM3OnSurfaceVariant));
+			}
+			titleView.setBackground(bg);
+			titleView.setText(R.string.alt_chip);
+			titleView.setPadding(V.dp(8), 0, V.dp(8), 0);
+			ViewGroup.LayoutParams lp=titleView.getLayoutParams();
+			if(lp instanceof RelativeLayout.LayoutParams){
+				RelativeLayout.LayoutParams rlp=(RelativeLayout.LayoutParams) lp;
+				rlp.width=ViewGroup.LayoutParams.WRAP_CONTENT;
+				rlp.height=V.dp(24);
+				rlp.setMarginStart(V.dp(8));
+				rlp.setMarginEnd(0);
+				titleView.setLayoutParams(rlp);
 			}
 		}
 
@@ -777,6 +1063,8 @@ public class ComposeMediaViewController{
 		public void onDragEnd(View view){
 			if(currentAnimations.containsKey(view))
 				currentAnimations.get(view).cancel();
+			// MAMMUT: The Caption Track (§4) — rows follow the new attachment order
+			rebuildDescriptionEditors();
 			AnimatorSet set=new AnimatorSet();
 			DraftMediaAttachment att=(DraftMediaAttachment) view.getTag();
 			set.playTogether(
