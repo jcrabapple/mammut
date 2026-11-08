@@ -57,8 +57,18 @@ public class PollFooterStatusDisplayItem extends StatusDisplayItem{
 				text+=" · "+item.context.getString(R.string.poll_closed);
 			}
 			this.text.setText(text);
-			voteButton.setEnabled(item.poll.selectedOptions!=null && !item.poll.selectedOptions.isEmpty() && !item.poll.isExpired() && !item.poll.voted);
-			toggleResultsButton.setVisibility(item.poll.isExpired() || item.poll.voted ? View.GONE : View.VISIBLE);
+			// MAMMUT: voting is one-way, and the results are already on screen once the server
+			// says you voted. Leaving a filled, inert Vote button there reads as "press me" and
+			// does nothing — so it goes. Before that, a button that cannot act (nothing selected)
+			// is dimmed rather than merely disabled, since the filled style showed no difference.
+			boolean voted=item.poll.voted;
+			boolean expired=item.poll.isExpired();
+			boolean hasSelection=item.poll.selectedOptions!=null && !item.poll.selectedOptions.isEmpty();
+			boolean canVote=hasSelection && !expired && !voted;
+			voteButton.setVisibility(voted || expired ? View.GONE : View.VISIBLE);
+			voteButton.setEnabled(canVote);
+			voteButton.setAlpha(canVote ? 1f : 0.38f);
+			toggleResultsButton.setVisibility(expired || voted ? View.GONE : View.VISIBLE);
 			toggleResultsButton.setText(item.poll.showResults ? R.string.poll_hide_results : R.string.poll_see_results);
 		}
 	}
