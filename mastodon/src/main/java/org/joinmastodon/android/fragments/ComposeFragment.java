@@ -30,6 +30,7 @@ import android.transition.Fade;
 import android.transition.TransitionManager;
 import android.transition.TransitionSet;
 import android.view.KeyEvent;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -47,6 +48,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -240,6 +242,29 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 */
 	private volatile boolean finished;
 
+	// MAMMUT: Composer 2.0 (§4) — the thread. The first segment is the
+	// existing main surface (mainEditText, the poll and the bottom-bar
+	// buttons); segments 2..n are cards in the segment list. A single post
+	// is a thread of one: there is no mode switch. editingStatus never gains
+	// any of this — the edit path stays single-segment.
+	private final ArrayList<ThreadSegment> extraSegments=new ArrayList<>();
+	private ViewGroup segmentsContainer;
+	private View addSegmentBtn;
+	private View segmentOneHeader;
+	private TextView segmentOneNumber;
+	private ImageButton segmentOneOverflow;
+	/** "Posting 2 of 4" — lives on the sending overlay */
+	private TextView postingProgressText;
+	/** The segment the bottom-bar buttons act on; 0 is the main surface */
+	private int activeSegmentIndex;
+	/**
+	 * MAMMUT (§4) — id of the most recently published segment of this
+	 * session. A retry after a partial failure chains the remaining
+	 * segments below it, and the saved tail draft records it as its
+	 * replyToStatusId.
+	 */
+	private String threadAnchorId;
+
 	public ComposeFragment(){
 		super(R.layout.toolbar_fragment_with_progressbar);
 	}
@@ -382,7 +407,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			});
 		}
 		pollBtn.setOnClickListener(v->togglePoll());
-		emojiBtn.setOnClickListener(v->emojiKeyboard.toggleKeyboardPopup(mainEditText));
+		emojiBtn.setOnClickListener(v->emojiKeyboard.toggleKeyboardPopup(activeSegmentIndex==0 ? mainEditText : extraSegments.get(activeSegmentIndex-1).text));
 		spoilerBtn.setOnClickListener(v->toggleSpoiler());
 		languageBtn.setOnClickListener(v->showLanguageAlert());
 		visibilityBtn.setOnClickListener(this::onVisibilityClick);
@@ -482,6 +507,65 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			removeQuote();
 		});
 
+		// MAMMUT: Composer 2.0 (§4) — thread wiring. The add control, the
+		// first segment's number/overflow, and active-segment focus tracking
+		// for the bottom-bar buttons.
+		segmentsContainer=view.findViewById(R.id.compose_segments);
+		addSegmentBtn=view.findViewById(R.id.add_segment);
+		segmentOneHeader=view.findViewById(R.id.segment_one_header);
+		segmentOneNumber=view.findViewById(R.id.segment_number_one);
+		segmentOneOverflow=view.findViewById(R.id.segment_overflow_one);
+		addSegmentBtn.setOnClickListener(v->{
+			ThreadSegment ts=addThreadSegment(null);
+			ts.text.requestFocus();
+			InputMethodManager imm=getActivity().getSystemService(InputMethodManager.class);
+			if(imm!=null)
+				imm.showSoftInput(ts.text, 0);
+		});
+		segmentOneOverflow.setOnClickListener(v->showSegmentOverflow(segmentOneOverflow, 0));
+		View.OnFocusChangeListener mainFocusListener=(v, hasFocus)->{
+			if(hasFocus)
+				setActiveSegment(0);
+		};
+		mainEditText.setOnFocusChangeListener(mainFocusListener);
+		spoilerEdit.setOnFocusChangeListener(mainFocusListener);
+		if(editingStatus!=null){
+			// §4: editing an existing post is always single-segment — no
+			// add control, no thread chrome, no thread code path runs.
+			addSegmentBtn.setVisibility(View.GONE);
+			segmentOneHeader.setVisibility(View.GONE);
+		}else if(!extraSegments.isEmpty()){
+			// Rotation with a retained instance: the holders survived, their
+			// views did not. Rebuild every card from the holder state.
+			for(ThreadSegment ts:extraSegments)
+				attachThreadSegmentCard(ts, null);
+			renumberSegments();
+		}else if(savedInstanceState!=null){
+			// Recreated after process death: rebuild the cards from the
+			// saved per-segment state.
+			int segCount=savedInstanceState.getInt("threadSegCount", 0);
+			for(int i=0;i<segCount;i++){
+				ThreadSegment ts=addThreadSegment(savedInstanceState.getBundle("threadSeg"+i));
+				String text=savedInstanceState.getString("threadSeg"+i+"_text");
+				if(!TextUtils.isEmpty(text)){
+					ts.text.setText(text);
+					ts.textMirror=text;
+				}
+				if(savedInstanceState.getBoolean("threadSeg"+i+"_hasSpoiler", false)){
+					ts.hasSpoiler=true;
+					ts.spoilerWrap.setVisibility(View.VISIBLE);
+					ts.cwBtn.setSelected(true);
+					String spoiler=savedInstanceState.getString("threadSeg"+i+"_spoiler");
+					if(!TextUtils.isEmpty(spoiler)){
+						ts.spoilerEdit.setText(spoiler);
+						ts.spoilerTextMirror=spoiler;
+					}
+				}
+				ts.idempotencyKey=savedInstanceState.getString("threadSeg"+i+"_idem");
+				updateThreadSegmentCounter(ts);
+			}
+		}
+
 		creatingView=false;
 
 		return view;
@@ -508,6 +592,19 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		outState.putSerializable("visibility", statusVisibility);
 		outState.putString("draftId", draftId);
 		outState.putParcelable("postLang", Parcels.wrap(postLang));
+		// MAMMUT: Composer 2.0 (§4) — the thread survives process death the
+		// same way the main surface does: one state bundle per segment.
+		outState.putInt("threadSegCount", extraSegments.size());
+		for(int i=0;i<extraSegments.size();i++){
+			ThreadSegment ts=extraSegments.get(i);
+			Bundle segBundle=new Bundle();
+			ts.mediaController.onSaveInstanceState(segBundle);
+			outState.putBundle("threadSeg"+i, segBundle);
+			outState.putString("threadSeg"+i+"_text", ts.text.getText().toString());
+			outState.putBoolean("threadSeg"+i+"_hasSpoiler", ts.hasSpoiler);
+			outState.putString("threadSeg"+i+"_spoiler", ts.hasSpoiler ? ts.spoilerEdit.getText().toString() : null);
+			outState.putString("threadSeg"+i+"_idem", ts.idempotencyKey);
+		}
 		if(currentAutocompleteSpan!=null){
 			Editable e=mainEditText.getText();
 			outState.putInt("autocompleteStart", e.getSpanStart(currentAutocompleteSpan));
@@ -562,7 +659,10 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		d.id=draftId!=null ? draftId : UUID.randomUUID().toString();
 		d.updatedAt=System.currentTimeMillis();
 		d.visibility=statusVisibility;
-		d.replyToStatusId=replyTo!=null ? replyTo.id : restoredReplyToStatusId;
+		// §4: once part of the thread has been published, the anchor is the
+		// last published segment — a retry (or an autosave of the remaining
+		// tail) must chain below it, not below the original reply target.
+		d.replyToStatusId=threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId);
 		d.quotedStatusId=quotedStatus!=null ? quotedStatus.id : restoredQuotedStatusId;
 		// Note: a resumed draft carries replyToStatusId/quotedStatusId (§1)
 		// but rebuilding the in-memory reply/quote context from an id alone
@@ -579,11 +679,27 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// every later save of this composer session and on resume.
 		seg.idempotencyKey=draftIdempotencyKey!=null ? draftIdempotencyKey : (draftIdempotencyKey=UUID.randomUUID().toString());
 		d.segments.add(seg);
+		// MAMMUT (§4) — one draft.json for the whole thread: segment cards
+		// follow the main surface in list order.
+		final List<ThreadSegment> segsSnapshot=new ArrayList<>(extraSegments);
+		for(ThreadSegment ts:segsSnapshot){
+			Segment s=new Segment();
+			s.text=ts.text.getText().toString();
+			if(ts.hasSpoiler){
+				s.spoilerText=ts.spoilerEdit.length()>0 ? ts.spoilerEdit.getText().toString() : null;
+				s.sensitive=ts.spoilerEdit.length()==0;
+			}
+			s.idempotencyKey=ts.idempotencyKey!=null ? ts.idempotencyKey : (ts.idempotencyKey=UUID.randomUUID().toString());
+			d.segments.add(s);
+		}
 		draftId=d.id;
-		// Snapshot the attachment list on the UI thread (M5): the copy itself
+		// Snapshot the attachment lists on the UI thread (M5): the copy itself
 		// used to run on the worker and could throw mid-iteration while the
 		// UI thread added or removed attachments, silently skipping the save.
 		final List<ComposeMediaViewController.DraftMediaAttachment> attachmentSnapshot=mediaViewController.snapshotAttachments();
+		final List<List<ComposeMediaViewController.DraftMediaAttachment>> threadAttachmentSnapshots=new ArrayList<>();
+		for(ThreadSegment ts:segsSnapshot)
+			threadAttachmentSnapshots.add(ts.mediaController.snapshotAttachments());
 		final CountDownLatch saveDone=new CountDownLatch(1);
 		MastodonAPIController.runInBackground(()->{
 			try{
@@ -597,6 +713,8 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 					return;
 				try{
 					seg.attachments=mediaViewController.buildDraftAttachments(attachmentSnapshot, draftStore, d.id);
+					for(int i=0;i<segsSnapshot.size();i++)
+						d.segments.get(i+1).attachments=segsSnapshot.get(i).mediaController.buildDraftAttachments(threadAttachmentSnapshots.get(i), draftStore, d.id);
 					draftStore.save(d);
 				}catch(Exception x){
 					android.util.Log.w(TAG, "saveDraft: failed", x);
@@ -888,6 +1006,33 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		updateCharCounter();
 		updateMediaPollStates();
 		updateDraftState();
+		// MAMMUT: Composer 2.0 (§4) — a resumed draft may be a whole
+		// thread: every segment after the first becomes a card, keeping its
+		// own text, CW, media with descriptions, and idempotency key. The
+		// poll stays with the first segment; a poll on any other segment is
+		// not a shape the composer can produce and is ignored.
+		for(int i=1;i<d.segments.size();i++){
+			Segment s=d.segments.get(i);
+			ThreadSegment ts=addThreadSegment(null);
+			ts.idempotencyKey=s.idempotencyKey;
+			if(!TextUtils.isEmpty(s.text)){
+				ts.text.setText(s.text);
+				ts.textMirror=s.text;
+			}
+			if(s.spoilerText!=null || s.sensitive){
+				ts.hasSpoiler=true;
+				ts.spoilerWrap.setVisibility(View.VISIBLE);
+				ts.cwBtn.setSelected(true);
+				if(s.spoilerText!=null){
+					ts.spoilerEdit.setText(s.spoilerText);
+					ts.spoilerTextMirror=s.spoilerText;
+				}
+			}
+			for(DraftAttachment da:s.attachments)
+				ts.mediaController.addRestoredAttachment(da);
+			updateThreadSegmentCounter(ts);
+		}
+		renumberSegments();
 	}
 
 	@Override
@@ -928,44 +1073,103 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	@SuppressLint("NewApi")
 	private void updateCharCounter(){
 		Editable text=mainEditText.getText();
-
-		String countableText=TwitterTextEmojiRegex.VALID_EMOJI_PATTERN.matcher(
-				MENTION_PATTERN.matcher(
-						HtmlParser.URL_PATTERN.matcher(text).replaceAll("$2xxxxxxxxxxxxxxxxxxxxxxx")
-				).replaceAll("$1@$3")
-		).replaceAll("x");
-		charCount=0;
-		breakIterator.setText(countableText);
-		while(breakIterator.next()!=BreakIterator.DONE){
-			charCount++;
-		}
-
+		charCount=countTextChars(text);
 		if(hasSpoiler){
 			charCount+=spoilerEdit.length();
 		}
-		charCounter.setText(String.valueOf(charLimit-charCount));
+		applyOverLimitSpans(text, charCount);
+		if(activeSegmentIndex==0)
+			updateCounterView(charCounter, charCount);
+		trimmedCharCount=text.toString().trim().length();
+		updatePublishButtonState();
+	}
 
+	/**
+	 * The weighted character count of one segment's text: URLs, mentions
+	 * and emoji count the way the instance's limit expects (§4: letters
+	 * count per segment against the instance's own limits).
+	 */
+	private int countTextChars(Editable text){
+		String countableText=TwitterTextEmojiRegex.VALID_EMOJI_PATTERN.matcher(
+			MENTION_PATTERN.matcher(
+					HtmlParser.URL_PATTERN.matcher(text).replaceAll("$2xxxxxxxxxxxxxxxxxxxxxxx")
+			).replaceAll("$1@$3")
+		).replaceAll("x");
+		int count=0;
+		breakIterator.setText(countableText);
+		while(breakIterator.next()!=BreakIterator.DONE){
+			count++;
+		}
+		return count;
+	}
+
+	/** Over-limit highlight on the segment's own text field. */
+	private void applyOverLimitSpans(Editable text, int count){
 		text.removeSpan(overLimitBG);
 		text.removeSpan(overLimitFG);
-		if(charCount>charLimit){
-			charCounter.setTextColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3Error));
-			int start=text.length()-(charCount-charLimit);
+		if(count>charLimit){
+			int start=text.length()-(count-charLimit);
 			int end=text.length();
 			text.setSpan(overLimitFG, start, end, 0);
 			text.setSpan(overLimitBG, start, end, 0);
-		}else{
-			charCounter.setTextColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OnSurface));
 		}
+	}
 
-		trimmedCharCount=text.toString().trim().length();
+	/** Remaining characters and error color on one counter label. */
+	private void updateCounterView(TextView counter, int count){
+		counter.setText(String.valueOf(charLimit-count));
+		counter.setTextColor(UiUtils.getThemeColor(getActivity(), count>charLimit ? R.attr.colorM3Error : R.attr.colorM3OnSurface));
+	}
+
+	/**
+	 * MAMMUT (§4) — one card's counter after an edit. The card's own
+	 * counter always reflects its segment; the shared bottom-bar counter
+	 * mirrors whichever segment is active.
+	 */
+	private void updateThreadSegmentCounter(ThreadSegment ts){
+		Editable editable=ts.text.getText();
+		int count=countTextChars(editable);
+		if(ts.hasSpoiler)
+			count+=ts.spoilerEdit.length();
+		ts.charCount=count;
+		applyOverLimitSpans(editable, count);
+		updateCounterView(ts.counter, count);
+		ts.trimmedCharCount=editable.toString().trim().length();
+		if(activeSegmentIndex==extraSegments.indexOf(ts)+1)
+			updateCounterView(charCounter, count);
 		updatePublishButtonState();
+	}
+
+	/**
+	 * MAMMUT (§4) — the bottom-bar counter shows the active segment's
+	 * remaining characters; its CW and media buttons act on that segment.
+	 */
+	private void setActiveSegment(int index){
+		if(activeSegmentIndex!=index){
+			activeSegmentIndex=index;
+			spoilerBtn.setSelected(segmentHasSpoilerAt(index));
+		}
+		updateActiveCounterDisplay();
+		updateMediaPollStates();
+	}
+
+	private void updateActiveCounterDisplay(){
+		updateCounterView(charCounter, activeSegmentIndex==0 ? charCount : extraSegments.get(activeSegmentIndex-1).charCount);
 	}
 
 	public void updatePublishButtonState(){
 		uuid=null;
 		if(publishButton==null)
 			return;
-		publishButton.setEnabled((trimmedCharCount>0 || !mediaViewController.isEmpty()) && charCount<=charLimit && mediaViewController.getNonDoneAttachmentCount()==0 && (pollViewController.isEmpty() || pollViewController.getNonEmptyOptionsCount()>1));
+		boolean enabled=(trimmedCharCount>0 || !mediaViewController.isEmpty()) && charCount<=charLimit && mediaViewController.getNonDoneAttachmentCount()==0 && (pollViewController.isEmpty() || pollViewController.getNonEmptyOptionsCount()>1);
+		// MAMMUT (§4) — every segment must be publishable on its own before
+		// the thread can start; an empty or over-limit middle segment would
+		// fail mid-chain, after the prefix is already public.
+		for(ThreadSegment ts:extraSegments){
+			enabled &= (ts.trimmedCharCount>0 || !ts.mediaController.isEmpty()) && ts.charCount<=charLimit
+					&& ts.mediaController.getNonDoneAttachmentCount()==0;
+		}
+		publishButton.setEnabled(enabled);
 		updateDraftState();
 	}
 
@@ -1011,11 +1215,17 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	}
 
 	private void checkAltTextsAndPublish(){
+		// MAMMUT (§4) — the reminder covers every segment's media.
 		int count=mediaViewController.getMissingAltTextAttachmentCount();
+		boolean allImages=mediaViewController.areAllAttachmentsImages();
+		for(ThreadSegment ts:extraSegments){
+			count+=ts.mediaController.getMissingAltTextAttachmentCount();
+			allImages &= ts.mediaController.areAllAttachmentsImages();
+		}
 		if(count==0){
 			publish();
 		}else{
-			String msg=getResources().getQuantityString(mediaViewController.areAllAttachmentsImages() ? R.plurals.alt_text_reminder_x_images : R.plurals.alt_text_reminder_x_attachments,
+			String msg=getResources().getQuantityString(allImages ? R.plurals.alt_text_reminder_x_images : R.plurals.alt_text_reminder_x_attachments,
 					count, switch(count){
 						case 1 -> getString(R.string.count_one);
 						case 2 -> getString(R.string.count_two);
@@ -1034,7 +1244,17 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 
 	private void publish(){
 		Runnable publishAction=()->{
-			sendingOverlay=new View(getActivity());
+			// MAMMUT (§4) — the overlay is a FrameLayout so the chain can say
+			// "Posting 2 of 4" mid-publish; a single post keeps the old
+			// silent look (no progress label).
+			FrameLayout overlay=new FrameLayout(getActivity());
+			postingProgressText=new TextView(getActivity());
+			postingProgressText.setTextAppearance(R.style.m3_label_large);
+			postingProgressText.setTextColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OnSurface));
+			postingProgressText.setBackgroundResource(R.drawable.bg_composer_visibility);
+			postingProgressText.setPadding(V.dp(16), V.dp(8), V.dp(16), V.dp(8));
+			overlay.addView(postingProgressText, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+			sendingOverlay=overlay;
 			WindowManager.LayoutParams overlayParams=new WindowManager.LayoutParams();
 			overlayParams.type=WindowManager.LayoutParams.TYPE_APPLICATION_PANEL;
 			overlayParams.flags=WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR | WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
@@ -1048,7 +1268,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			publishButton.setEnabled(false);
 			V.setVisibilityAnimated(sendProgress, View.VISIBLE);
 
-			mediaViewController.saveAltTextsBeforePublishing(this::actuallyPublish, this::handlePublishError);
+			// §4: save every segment's alt texts first — the chain starts
+			// only when all of them are on the server.
+			saveAllAltTextsBeforePublishing(this::actuallyPublish, this::handlePublishError);
 		};
 		if(quotedStatus!=null && !AccountSessionManager.getInstance().isSelf(accountID, quotedStatus.account) && statusVisibility==StatusPrivacy.PRIVATE && !GlobalUserPreferences.alertSeen("quoteFollowersOnly")){
 			new M3AlertDialogBuilder(getActivity())
@@ -1068,7 +1290,47 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		}
 	}
 
+	/**
+	 * MAMMUT (§4) — flushes unsaved image descriptions segment by segment;
+	 * the chain starts only when every segment's batch has landed. Media
+	 * upload itself already happened per attachment through the existing
+	 * {@code UploadAttachment} queue; this is the last write before publish.
+	 */
+	private void saveAllAltTextsBeforePublishing(Runnable onSuccess, Consumer<ErrorResponse> onError){
+		saveAltTextsBeforePublishingFrom(0, onSuccess, onError);
+	}
+
+	private void saveAltTextsBeforePublishingFrom(int index, Runnable onSuccess, Consumer<ErrorResponse> onError){
+		if(index>extraSegments.size()){
+			onSuccess.run();
+			return;
+		}
+		ComposeMediaViewController controller=index==0 ? mediaViewController : extraSegments.get(index-1).mediaController;
+		controller.saveAltTextsBeforePublishing(()->saveAltTextsBeforePublishingFrom(index+1, onSuccess, onError), onError);
+	}
+
 	private void actuallyPublish(){
+		if(editingStatus!=null){
+			actuallyPublishEdit();
+			return;
+		}
+		// MAMMUT (§4) — publish the thread in order, each segment a plain
+		// CreateStatus chained to the id the server returned for the
+		// previous one. No batch path.
+		final List<SegmentPublish> pubs=new ArrayList<>();
+		pubs.add(buildPublishForFirstSegment());
+		for(ThreadSegment ts:extraSegments)
+			pubs.add(buildPublishForThreadSegment(ts));
+		if(pubs.size()>1)
+			updatePostingProgress(1, pubs.size());
+		publishNextSegment(pubs, 0, threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : null));
+	}
+
+	/**
+	 * MAMMUT (§4) — the edit path is untouched by threads: one request, one
+	 * EditStatus, exactly as before slice 2.
+	 */
+	private void actuallyPublishEdit(){
 		String text=mainEditText.getText().toString();
 		// MAMMUT: port from upstream master — strip tracking parameters from published URLs
 		if(GlobalUserPreferences.removeTrackingParams)
@@ -1078,9 +1340,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		req.visibility=statusVisibility;
 		if(!mediaViewController.isEmpty()){
 			req.mediaIds=mediaViewController.getAttachmentIDs();
-			if(editingStatus != null){
-				req.mediaAttributes=mediaViewController.getAttachmentAttributes();
-			}
+			req.mediaAttributes=mediaViewController.getAttachmentAttributes();
 		}
 		if(replyTo!=null){
 			req.inReplyToId=replyTo.id;
@@ -1101,33 +1361,16 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			req.quoteApprovalPolicy=statusQuotePolicy;
 		if(quotedStatus!=null)
 			req.quotedStatusId=quotedStatus.id;
-		// MAMMUT: Composer 2.0 (§4) — a draft resumed from the store publishes
-		// with its persisted per-segment key, so a retry after failure cannot
-		// double-post. Fresh composers mint one as before.
-		if(uuid==null)
-			uuid=draftIdempotencyKey!=null ? draftIdempotencyKey : UUID.randomUUID().toString();
 
 		Callback<Status> resCallback=new Callback<>(){
 			@Override
 			public void onSuccess(Status result){
-				// MAMMUT: Composer 2.0 (§2/§6) — a successful publish retires
-				// the draft; nothing autosaves after this point.
 				finished=true;
 				deleteDraftIfAny();
-				wm.removeView(sendingOverlay);
-				sendingOverlay=null;
-				removeBackCallback(sendingBackButtonBlocker);
+				dismissSendingOverlay();
 				removeBackCallback(discardConfirmationCallback);
 				removeBackCallback(emojiKeyboardHider);
-				if(editingStatus==null){
-					E.post(new StatusCreatedEvent(result, accountID));
-					if(replyTo!=null){
-						replyTo.repliesCount++;
-						E.post(new StatusCountersUpdatedEvent(replyTo, StatusCountersUpdatedEvent.CounterType.REPLIES));
-					}
-				}else{
-					E.post(new StatusUpdatedEvent(result));
-				}
+				E.post(new StatusUpdatedEvent(result));
 				Nav.finish(ComposeFragment.this);
 			}
 
@@ -1137,23 +1380,259 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			}
 		};
 
-		if(editingStatus!=null){
-			new EditStatus(req, editingStatus.id)
-					.setCallback(resCallback)
-					.exec(accountID);
-		}else{
-			new CreateStatus(req, uuid)
-					.setCallback(resCallback)
-					.exec(accountID);
+		new EditStatus(req, editingStatus.id)
+				.setCallback(resCallback)
+				.exec(accountID);
+	}
+
+	/**
+	 * MAMMUT (§4) — the first segment's request. Reply and quote context
+	 * belong here and only here; visibility, quote policy and language are
+	 * thread-wide and ride on every segment's request.
+	 */
+	private SegmentPublish buildPublishForFirstSegment(){
+		String text=mainEditText.getText().toString();
+		// MAMMUT: port from upstream master — strip tracking parameters from published URLs
+		if(GlobalUserPreferences.removeTrackingParams)
+			text=Tracking.cleanUrlsInText(text);
+		CreateStatus.Request req=new CreateStatus.Request();
+		req.status=text;
+		req.visibility=statusVisibility;
+		if(!mediaViewController.isEmpty()){
+			req.mediaIds=mediaViewController.getAttachmentIDs();
+		}
+		if(!pollViewController.isEmpty()){
+			req.poll=pollViewController.getPollForRequest();
+		}
+		if(hasSpoiler){
+			if(spoilerEdit.length()>0)
+				req.spoilerText=spoilerEdit.getText().toString();
+			else
+				req.sensitive=true;
+		}
+		if(postLang!=null){
+			req.language=postLang.locale.toLanguageTag();
+		}
+		if(statusQuotePolicy!=null && instance.supportsQuotePostAuthoring())
+			req.quoteApprovalPolicy=statusQuotePolicy;
+		if(quotedStatus!=null)
+			req.quotedStatusId=quotedStatus.id;
+		// §4: a draft resumed from the store publishes with its persisted
+		// per-segment key, so a retry after failure cannot double-post.
+		if(uuid==null)
+			uuid=draftIdempotencyKey!=null ? draftIdempotencyKey : UUID.randomUUID().toString();
+		return new SegmentPublish(req, uuid);
+	}
+
+	private SegmentPublish buildPublishForThreadSegment(ThreadSegment ts){
+		String text=ts.text.getText().toString();
+		if(GlobalUserPreferences.removeTrackingParams)
+			text=Tracking.cleanUrlsInText(text);
+		CreateStatus.Request req=new CreateStatus.Request();
+		req.status=text;
+		req.visibility=statusVisibility;
+		if(!ts.mediaController.isEmpty()){
+			req.mediaIds=ts.mediaController.getAttachmentIDs();
+		}
+		if(ts.hasSpoiler){
+			if(ts.spoilerEdit.length()>0)
+				req.spoilerText=ts.spoilerEdit.getText().toString();
+			else
+				req.sensitive=true;
+		}
+		if(postLang!=null){
+			req.language=postLang.locale.toLanguageTag();
+		}
+		if(statusQuotePolicy!=null && instance.supportsQuotePostAuthoring())
+			req.quoteApprovalPolicy=statusQuotePolicy;
+		if(ts.idempotencyKey==null)
+			ts.idempotencyKey=UUID.randomUUID().toString();
+		return new SegmentPublish(req, ts.idempotencyKey);
+	}
+
+	/**
+	 * MAMMUT (§4) — publish one segment, then the next, chained on the id
+	 * the server returned. On success of the last segment the thread is
+	 * done; on failure of any segment the chain stops and
+	 * {@link #handlePartialPublishFailure} takes over.
+	 */
+	private void publishNextSegment(List<SegmentPublish> pubs, int index, String inReplyToId){
+		SegmentPublish pub=pubs.get(index);
+		pub.req.inReplyToId=inReplyToId;
+		new CreateStatus(pub.req, pub.idempotencyKey)
+				.setCallback(new Callback<>(){
+					@Override
+					public void onSuccess(Status result){
+						threadAnchorId=result.id;
+						E.post(new StatusCreatedEvent(result, accountID));
+						if(index+1<pubs.size()){
+							updatePostingProgress(index+2, pubs.size());
+							publishNextSegment(pubs, index+1, result.id);
+						}else{
+							// MAMMUT: Composer 2.0 (§2/§6) — a successful publish retires
+							// the draft; nothing autosaves after this point.
+							finished=true;
+							deleteDraftIfAny();
+							dismissSendingOverlay();
+							removeBackCallback(discardConfirmationCallback);
+							removeBackCallback(emojiKeyboardHider);
+							if(replyTo!=null){
+								replyTo.repliesCount++;
+								E.post(new StatusCountersUpdatedEvent(replyTo, StatusCountersUpdatedEvent.CounterType.REPLIES));
+							}
+							Nav.finish(ComposeFragment.this);
+						}
+					}
+
+					@Override
+					public void onError(ErrorResponse error){
+						if(index==0){
+							// Nothing made it out: the plain single-post
+							// failure dialog, with Retry, exactly as before.
+							handlePublishError(error);
+						}else{
+							handlePartialPublishFailure(index, error);
+						}
+					}
+				})
+				.exec(accountID);
+	}
+
+	private void updatePostingProgress(int current, int total){
+		if(postingProgressText!=null)
+			postingProgressText.setText(getString(R.string.thread_posting_progress, current, total));
+	}
+
+	/**
+	 * MAMMUT (§4) — segment k+1 failed after k segments went public. The
+	 * published prefix is left alone on the server (never retried, never
+	 * edited, never deleted); the remaining tail stays in the composer and
+	 * is written to the drafts store under one draft, reusing each
+	 * segment's persisted idempotency key so a retry cannot double-post
+	 * the prefix. The user is told plainly what happened.
+	 */
+	private void handlePartialPublishFailure(int publishedCount, ErrorResponse error){
+		// The tail draft snapshots the current fields on the UI thread
+		// before the prefix is cleared from under them.
+		saveThreadTailAsDraft(publishedCount);
+		removePublishedPrefix(publishedCount);
+		dismissSendingOverlay();
+		publishButton.setEnabled(true);
+		String msg=getResources().getQuantityString(R.plurals.thread_partial_publish, publishedCount, publishedCount);
+		new M3AlertDialogBuilder(getActivity())
+				.setTitle(R.string.post_failed)
+				.setMessage(msg)
+				.setPositiveButton(R.string.ok, null)
+				.show();
+	}
+
+	/**
+	 * Writes segments publishedCount..n as one draft. The draft reuses the
+	 * composer's draftId when there is one, and each tail segment keeps its
+	 * idempotency key, so resuming the draft and publishing it replays the
+	 * same keys — Mastodon's Idempotency-Key dedupes a replayed segment and
+	 * the published prefix is not in the draft at all.
+	 */
+	private void saveThreadTailAsDraft(int publishedCount){
+		final ComposeDraft d=new ComposeDraft();
+		d.id=draftId!=null ? draftId : UUID.randomUUID().toString();
+		d.updatedAt=System.currentTimeMillis();
+		d.visibility=statusVisibility;
+		// The tail's first segment chains below the last published one.
+		d.replyToStatusId=threadAnchorId;
+		final List<ThreadSegment> tail=new ArrayList<>(extraSegments.subList(publishedCount-1, extraSegments.size()));
+		final List<List<ComposeMediaViewController.DraftMediaAttachment>> threadAttachmentSnapshots=new ArrayList<>();
+		for(ThreadSegment ts:tail){
+			Segment s=new Segment();
+			s.text=ts.text.getText().toString();
+			if(ts.hasSpoiler){
+				s.spoilerText=ts.spoilerEdit.length()>0 ? ts.spoilerEdit.getText().toString() : null;
+				s.sensitive=ts.spoilerEdit.length()==0;
+			}
+			s.idempotencyKey=ts.idempotencyKey!=null ? ts.idempotencyKey : (ts.idempotencyKey=UUID.randomUUID().toString());
+			d.segments.add(s);
+			threadAttachmentSnapshots.add(ts.mediaController.snapshotAttachments());
+		}
+		draftId=d.id;
+		final String draftIdFinal=d.id;
+		MastodonAPIController.runInBackground(()->{
+			try{
+				for(int i=0;i<tail.size();i++)
+					d.segments.get(i).attachments=tail.get(i).mediaController.buildDraftAttachments(threadAttachmentSnapshots.get(i), draftStore, draftIdFinal);
+				draftStore.save(d);
+			}catch(Exception x){
+				android.util.Log.w(TAG, "saveThreadTailAsDraft: failed", x);
+				// §6: a failed save is surfaced, never silent.
+				UiUtils.runOnUiThread(()->{
+					if(getActivity()!=null)
+						Toast.makeText(getActivity(), R.string.draft_save_failed, Toast.LENGTH_LONG).show();
+				});
+			}
+		});
+	}
+
+	/**
+	 * Drops the published prefix from the composer surface so the visible
+	 * thread is exactly the unpublished tail. Nothing server-side is
+	 * touched — the prefix stays public, alone.
+	 */
+	private void removePublishedPrefix(int publishedCount){
+		// The quote was published with the prefix; the tail must not quote
+		// it a second time on retry.
+		if(quotedStatus!=null){
+			quotedStatus=null;
+			restoredQuotedStatusId=null;
+			quotedPostWrap.setVisibility(View.GONE);
+		}
+		if(pollViewController.isShown())
+			pollViewController.toggle();
+		if(hasSpoiler){
+			hasSpoiler=false;
+			spoilerWrap.setVisibility(View.GONE);
+			spoilerEdit.setText("");
+			spoilerBtn.setSelected(false);
+		}
+		mainEditText.setText("");
+		mediaViewController.clearAllAttachments();
+		for(int i=0;i<publishedCount-1;i++)
+			removeSegmentCard(extraSegments.get(0));
+		activeSegmentIndex=0;
+		spoilerBtn.setSelected(false);
+		updateCharCounter();
+		updateActiveCounterDisplay();
+		updateMediaPollStates();
+		updatePublishButtonState();
+		updateDraftState();
+	}
+
+	/**
+	 * One segment of the publish chain: the prepared request plus the
+	 * idempotency key CreateStatus must send with it.
+	 */
+	private static class SegmentPublish{
+		final CreateStatus.Request req;
+		final String idempotencyKey;
+
+		SegmentPublish(CreateStatus.Request req, String idempotencyKey){
+			this.req=req;
+			this.idempotencyKey=idempotencyKey;
 		}
 	}
 
-	private void handlePublishError(ErrorResponse error){
-		if(sendingOverlay.isAttachedToWindow())
-			wm.removeView(sendingOverlay);
-		sendingOverlay=null;
+	/** Tears down the sending overlay and re-enables the publish button. */
+	private void dismissSendingOverlay(){
+		if(sendingOverlay!=null){
+			if(sendingOverlay.isAttachedToWindow())
+				wm.removeView(sendingOverlay);
+			sendingOverlay=null;
+		}
+		postingProgressText=null;
 		removeBackCallback(sendingBackButtonBlocker);
 		V.setVisibilityAnimated(sendProgress, View.GONE);
+	}
+
+	private void handlePublishError(ErrorResponse error){
+		dismissSendingOverlay();
 		publishButton.setEnabled(true);
 		if(error instanceof MastodonErrorResponse me){
 			new M3AlertDialogBuilder(getActivity())
@@ -1177,7 +1656,14 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			return pollViewController.isPollChanged();
 		}
 		boolean pollFieldsHaveContent=pollViewController.getNonEmptyOptionsCount()>0;
-		return (mainEditText.length()>0 && !mainEditText.getText().toString().equals(initialText)) || !mediaViewController.isEmpty() || pollFieldsHaveContent;
+		if((mainEditText.length()>0 && !mainEditText.getText().toString().equals(initialText)) || !mediaViewController.isEmpty() || pollFieldsHaveContent)
+			return true;
+		// MAMMUT (§4) — any content in any segment makes the draft real.
+		for(ThreadSegment ts:extraSegments){
+			if(ts.text.length()>0 || !ts.mediaController.isEmpty() || ts.hasSpoiler)
+				return true;
+		}
+		return false;
 	}
 
 	private void updateDraftState(){
@@ -1206,7 +1692,11 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		if(reqCode==IMAGE_DESCRIPTION_RESULT && success){
 			String attID=result.getString("attachment");
 			String text=result.getString("text");
+			// MAMMUT (§4) — the video/audio description dialog may belong to
+			// any segment's controller; the others no-op.
 			mediaViewController.setAltTextByID(attID, text);
+			for(ThreadSegment ts:extraSegments)
+				ts.mediaController.setAltTextByID(attID, text);
 		}else if(reqCode==AUTOCOMPLETE_ACCOUNT_RESULT && success){
 			Account acc=Parcels.unwrap(result.getParcelable("selectedAccount"));
 			if(currentAutocompleteSpan==null)
@@ -1293,8 +1783,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		boolean usePhotoPicker=!forceGetContent && UiUtils.isPhotoPickerAvailable();
 		if(usePhotoPicker){
 			intent=new Intent(MediaStore.ACTION_PICK_IMAGES);
-			if(mediaViewController.getMaxAttachments()-mediaViewController.getMediaAttachmentsCount()>1)
-				intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, mediaViewController.getMaxAttachments()-mediaViewController.getMediaAttachmentsCount());
+			ComposeMediaViewController activeMedia=getActiveMediaController();
+			if(activeMedia.getMaxAttachments()-activeMedia.getMediaAttachmentsCount()>1)
+				intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, activeMedia.getMaxAttachments()-activeMedia.getMediaAttachmentsCount());
 		}else{
 			intent=new Intent(Intent.ACTION_GET_CONTENT);
 			intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -1320,13 +1811,15 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	@Override
 	public void onActivityResult(int requestCode, int resultCode, Intent data){
 		if(requestCode==MEDIA_RESULT && resultCode==Activity.RESULT_OK){
+			// MAMMUT (§4) — picker media lands in the active segment.
+			ComposeMediaViewController activeMedia=getActiveMediaController();
 			Uri single=data.getData();
 			if(single!=null){
-				mediaViewController.addMediaAttachment(single, null);
+				activeMedia.addMediaAttachment(single, null);
 			}else{
 				ClipData clipData=data.getClipData();
 				for(int i=0;i<clipData.getItemCount();i++){
-					mediaViewController.addMediaAttachment(clipData.getItemAt(i).getUri(), null);
+					activeMedia.addMediaAttachment(clipData.getItemAt(i).getUri(), null);
 				}
 			}
 		}
@@ -1335,10 +1828,32 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 
 	public void updateMediaPollStates(){
 		pollBtn.setSelected(pollViewController.isShown());
-		mediaBtn.setEnabled(!pollViewController.isShown() && mediaViewController.canAddMoreAttachments() && quotedStatus==null);
+		// MAMMUT (§4) — media goes to the active segment; a poll (first
+		// segment only) disables media on that segment as today, and never
+		// on the other segments, which stay plain.
+		boolean activePoll=activeSegmentIndex==0 && pollViewController.isShown();
+		ComposeMediaViewController activeMedia=getActiveMediaController();
+		mediaBtn.setEnabled(!activePoll && activeMedia.canAddMoreAttachments() && quotedStatus==null);
 		pollBtn.setEnabled(mediaViewController.isEmpty() && quotedStatus==null);
 		// MAMMUT: The Caption Track (§4) — the description block hides while a poll is attached
 		mediaViewController.setDescriptionBlockHiddenByPoll(pollViewController.isShown());
+	}
+
+	/** MAMMUT (§4) — the media controller of the active segment. */
+	private ComposeMediaViewController getActiveMediaController(){
+		return activeSegmentIndex==0 ? mediaViewController : extraSegments.get(activeSegmentIndex-1).mediaController;
+	}
+
+	private boolean segmentHasSpoilerAt(int index){
+		return index==0 ? hasSpoiler : extraSegments.get(index-1).hasSpoiler;
+	}
+
+	private ComposeMediaViewController segmentMediaAt(int index){
+		return index==0 ? mediaViewController : extraSegments.get(index-1).mediaController;
+	}
+
+	private String segmentTextAt(int index){
+		return index==0 ? mainEditText.getText().toString() : extraSegments.get(index-1).text.getText().toString();
 	}
 
 	private void togglePoll(){
@@ -1348,6 +1863,24 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	}
 
 	private void toggleSpoiler(){
+		// MAMMUT (§4) — the CW toggle acts on the active segment: the main
+		// surface or the card holding the focused field.
+		if(activeSegmentIndex!=0){
+			ThreadSegment ts=extraSegments.get(activeSegmentIndex-1);
+			ts.hasSpoiler=!ts.hasSpoiler;
+			if(ts.hasSpoiler){
+				ts.spoilerWrap.setVisibility(View.VISIBLE);
+				ts.cwBtn.setSelected(true);
+				ts.spoilerEdit.requestFocus();
+			}else{
+				ts.spoilerWrap.setVisibility(View.GONE);
+				ts.spoilerEdit.setText("");
+				ts.cwBtn.setSelected(false);
+				ts.text.requestFocus();
+			}
+			updateThreadSegmentCounter(ts);
+			return;
+		}
 		hasSpoiler=!hasSpoiler;
 		if(hasSpoiler){
 			spoilerWrap.setVisibility(View.VISIBLE);
@@ -1650,6 +2183,251 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 
 	private void setPostLanguage(ComposeLanguageAlertViewController.SelectedOption language){
 		postLang=language;
+	}
+
+	// MAMMUT: Composer 2.0 (§4) — segment management. Every method here is
+	// thread-only; the edit path never reaches them.
+
+	private ThreadSegment addThreadSegment(Bundle mediaSavedState){
+		ThreadSegment ts=new ThreadSegment();
+		attachThreadSegmentCard(ts, mediaSavedState);
+		int pos=segmentsContainer.indexOfChild(addSegmentBtn);
+		segmentsContainer.addView(ts.card, pos);
+		extraSegments.add(ts);
+		renumberSegments();
+		updatePublishButtonState();
+		updateMediaPollStates();
+		updateDraftState();
+		return ts;
+	}
+
+	/**
+	 * Inflates a card for the holder and wires everything: its own media
+	 * controller, its counter, its CW toggle, its overflow, and focus
+	 * tracking so the bottom-bar buttons act on it while it holds the
+	 * focus. {@code mediaSavedState} is non-null only when recreating a
+	 * card after process death.
+	 */
+	private void attachThreadSegmentCard(ThreadSegment ts, Bundle mediaSavedState){
+		View card=getActivity().getLayoutInflater().inflate(R.layout.compose_thread_segment, segmentsContainer, false);
+		ts.card=card;
+		ts.number=card.findViewById(R.id.segment_number);
+		ts.counter=card.findViewById(R.id.segment_counter);
+		ts.overflowBtn=card.findViewById(R.id.segment_overflow);
+		ts.cwBtn=card.findViewById(R.id.segment_cw);
+		ts.text=card.findViewById(R.id.segment_text);
+		ts.spoilerWrap=card.findViewById(R.id.segment_spoiler_wrap);
+		ts.spoilerEdit=card.findViewById(R.id.segment_content_warning);
+
+		LayerDrawable spoilerBg=(LayerDrawable) ts.spoilerWrap.getBackground().mutate();
+		spoilerBg.setDrawableByLayerId(R.id.left_drawable, new SpoilerStripesDrawable(false));
+		spoilerBg.setDrawableByLayerId(R.id.right_drawable, new SpoilerStripesDrawable(false));
+		ts.spoilerWrap.setBackground(spoilerBg);
+		ts.spoilerWrap.setClipToOutline(true);
+		ts.spoilerWrap.setOutlineProvider(OutlineProviders.roundedRect(8));
+
+		// ComposeEditText dereferences its selection listener from
+		// onCreateInputConnection, so a card's field always gets one:
+		// keyboard/paste/drag media lands in the segment it was dropped on.
+		ts.text.setSelectionListener(new ComposeEditText.SelectionListener(){
+			@Override
+			public void onSelectionChanged(int start, int end){}
+
+			@Override
+			public String[] onGetAllowedMediaMimeTypes(){
+				return ComposeFragment.this.onGetAllowedMediaMimeTypes();
+			}
+
+			@Override
+			public boolean onAddMediaAttachmentFromEditText(Uri uri, String description){
+				description=sanitizeMediaDescription(description);
+				return ts.mediaController.addMediaAttachment(uri, description);
+			}
+		});
+		ts.text.addTextChangedListener(new TextWatcher(){
+			@Override
+			public void beforeTextChanged(CharSequence s, int start, int count, int after){}
+
+			@Override
+			public void onTextChanged(CharSequence s, int start, int before, int count){}
+
+			@Override
+			public void afterTextChanged(Editable s){
+				ts.textMirror=s.toString();
+				updateThreadSegmentCounter(ts);
+				updateDraftState();
+			}
+		});
+		ts.spoilerEdit.addTextChangedListener(new SimpleTextWatcher(e->{
+			ts.spoilerTextMirror=e.toString();
+			updateThreadSegmentCounter(ts);
+		}));
+		View.OnFocusChangeListener focusListener=(v, hasFocus)->{
+			if(hasFocus)
+				setActiveSegment(extraSegments.indexOf(ts)+1);
+		};
+		ts.text.setOnFocusChangeListener(focusListener);
+		ts.spoilerEdit.setOnFocusChangeListener(focusListener);
+		ts.cwBtn.setOnClickListener(v->toggleSpoiler());
+		ts.overflowBtn.setOnClickListener(v->showSegmentOverflow(ts.overflowBtn, extraSegments.indexOf(ts)+1));
+		ts.mediaController.setView(card, mediaSavedState);
+		// Rebuilding an existing holder (rotation): views were destroyed,
+		// the state was not.
+		if(ts.textMirror!=null)
+			ts.text.setText(ts.textMirror);
+		if(ts.hasSpoiler){
+			ts.spoilerWrap.setVisibility(View.VISIBLE);
+			ts.cwBtn.setSelected(true);
+			if(ts.spoilerTextMirror!=null)
+				ts.spoilerEdit.setText(ts.spoilerTextMirror);
+		}
+		updateThreadSegmentCounter(ts);
+	}
+
+	private void removeSegmentCard(ThreadSegment ts){
+		ts.mediaController.cancelAllUploads();
+		segmentsContainer.removeView(ts.card);
+		extraSegments.remove(ts);
+		if(activeSegmentIndex>extraSegments.size())
+			activeSegmentIndex=0;
+		renumberSegments();
+		updateActiveCounterDisplay();
+		updateMediaPollStates();
+		updatePublishButtonState();
+		updateDraftState();
+	}
+
+	private void renumberSegments(){
+		segmentOneNumber.setText("1");
+		segmentOneNumber.setContentDescription(getString(R.string.thread_post_number, 1));
+		for(int i=0;i<extraSegments.size();i++){
+			ThreadSegment ts=extraSegments.get(i);
+			ts.number.setText(String.valueOf(i+2));
+			ts.number.setContentDescription(getString(R.string.thread_post_number, i+2));
+		}
+	}
+
+	private void showSegmentOverflow(View anchor, int index){
+		PopupMenu popup=new PopupMenu(getActivity(), anchor);
+		popup.inflate(R.menu.compose_segment_overflow);
+		int count=extraSegments.size()+1;
+		popup.getMenu().findItem(R.id.move_up).setEnabled(index>0);
+		popup.getMenu().findItem(R.id.move_down).setEnabled(index<count-1);
+		popup.getMenu().findItem(R.id.delete).setVisible(count>1);
+		popup.setOnMenuItemClickListener(item->{
+			int id=item.getItemId();
+			if(id==R.id.move_up)
+				moveSegment(index, -1);
+			else if(id==R.id.move_down)
+				moveSegment(index, 1);
+			else if(id==R.id.delete)
+				deleteSegment(index);
+			return true;
+		});
+		popup.show();
+	}
+
+	/**
+	 * §4 — Move up / Move down exchange two adjacent segments wholesale:
+	 * text, CW and media. The poll is fixed to the first position (a poll
+	 * is allowed on the first segment only), so a first segment carrying
+	 * one cannot move down.
+	 */
+	private void moveSegment(int index, int direction){
+		int target=index+direction;
+		if(target<0 || target>extraSegments.size())
+			return;
+		if(index==0 && pollViewController.isShown()){
+			Toast.makeText(getActivity(), R.string.thread_move_poll_blocked, Toast.LENGTH_SHORT).show();
+			return;
+		}
+		swapSegments(index, target);
+	}
+
+	private void swapSegments(int a, int b){
+		// Text
+		String textA=segmentTextAt(a);
+		setSegmentTextAt(a, segmentTextAt(b));
+		setSegmentTextAt(b, textA);
+		// CW state
+		boolean spoilerA=segmentHasSpoilerAt(a);
+		String spoilerTextA=segmentSpoilerTextAt(a);
+		setSegmentSpoilerAt(a, segmentHasSpoilerAt(b), segmentSpoilerTextAt(b));
+		setSegmentSpoilerAt(b, spoilerA, spoilerTextA);
+		// Media (attachment objects move unchanged, uploads and
+		// descriptions included)
+		segmentMediaAt(a).swapAttachmentsWith(segmentMediaAt(b));
+		renumberSegments();
+		updateCharCounter();
+		updateActiveCounterDisplay();
+		updateMediaPollStates();
+		updatePublishButtonState();
+		updateDraftState();
+	}
+
+	private String segmentSpoilerTextAt(int index){
+		EditText field=index==0 ? spoilerEdit : extraSegments.get(index-1).spoilerEdit;
+		return field.getText().toString();
+	}
+
+	private void setSegmentTextAt(int index, String text){
+		EditText field=index==0 ? mainEditText : extraSegments.get(index-1).text;
+		field.setText(text);
+	}
+
+	private void setSegmentSpoilerAt(int index, boolean has, String text){
+		if(index==0){
+			hasSpoiler=has;
+			spoilerWrap.setVisibility(has ? View.VISIBLE : View.GONE);
+			spoilerBtn.setSelected(has);
+			spoilerEdit.setText(text);
+		}else{
+			ThreadSegment ts=extraSegments.get(index-1);
+			ts.hasSpoiler=has;
+			ts.spoilerWrap.setVisibility(has ? View.VISIBLE : View.GONE);
+			ts.cwBtn.setSelected(has);
+			ts.spoilerEdit.setText(text);
+		}
+	}
+
+	/**
+	 * §4 — a segment can be removed unless it is the only one. Deleting the
+	 * first segment promotes the second onto the main surface.
+	 */
+	private void deleteSegment(int index){
+		if(extraSegments.isEmpty())
+			return;
+		if(index==0){
+			// The poll belongs to the deleted segment; it dies with it
+			// rather than inheriting the segment that moves up.
+			if(pollViewController.isShown())
+				pollViewController.toggle();
+			swapSegments(0, 1);
+			removeSegmentCard(extraSegments.get(0));
+		}else{
+			removeSegmentCard(extraSegments.get(index-1));
+		}
+	}
+
+	/**
+	 * MAMMUT: Composer 2.0 (§4) — one card of the thread below the first
+	 * segment. Holds the card's views, its own media controller and its
+	 * persisted idempotency key; {@link #textMirror} and
+	 * {@link #spoilerTextMirror} keep the text across view rebuilds
+	 * (rotation), since the EditText itself does not survive them.
+	 */
+	private class ThreadSegment{
+		View card;
+		TextView number, counter;
+		ImageButton overflowBtn, cwBtn;
+		ComposeEditText text;
+		View spoilerWrap;
+		EditText spoilerEdit;
+		final ComposeMediaViewController mediaController=new ComposeMediaViewController(ComposeFragment.this);
+		String idempotencyKey;
+		boolean hasSpoiler;
+		String textMirror, spoilerTextMirror;
+		int charCount, trimmedCharCount;
 	}
 
 	@Override

@@ -1105,4 +1105,16 @@
 	<string name="draft_save_failed">Couldn\'t save the draft. Your text is still in the composer.</string>
 	<string name="draft_context_lost_title">Reply or quote not restored</string>
 	<string name="draft_context_lost">This draft was saved as a reply or a quote, and that context can\'t be restored yet. Publishing it now will create a new top-level post. Your text and media are intact.</string>
+	<!-- MAMMUT: Composer 2.0 (§4) — threads -->
+	<string name="add_another_post">Add another post</string>
+	<string name="move_up">Move up</string>
+	<string name="move_down">Move down</string>
+	<string name="compose_segment_options">Post options</string>
+	<string name="thread_post_number">Post %1$d</string>
+	<string name="thread_posting_progress">Posting %1$d of %2$d</string>
+	<plurals name="thread_partial_publish">
+		<item quantity="one">Posted the first one. Saved the rest as a draft.</item>
+		<item quantity="other">Posted the first %1$d. Saved the rest as a draft.</item>
+	</plurals>
+	<string name="thread_move_poll_blocked">Remove the poll to move the first post.</string>
 </resources>
