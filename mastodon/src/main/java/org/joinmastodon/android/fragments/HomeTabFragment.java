@@ -855,6 +855,28 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		return hashtagsItems.values();
 	}
 
+	/** MAMMUT: which timeline the pager is showing, so the FAB menu can highlight it. */
+	public TimelineDefinition.TimelineType getCurrentTimelineType(){
+		if(timelines==null || pager==null)
+			return TimelineDefinition.TimelineType.HOME;
+		int pos=pager.getCurrentItem();
+		return pos>=0 && pos<timelines.length ? timelines[pos].getType() : TimelineDefinition.TimelineType.HOME;
+	}
+
+	/** MAMMUT: select the page showing this timeline type, if the account has one. */
+	public boolean selectTimelineType(TimelineDefinition.TimelineType type){
+		if(timelines==null || pager==null)
+			return false;
+		for(int i=0;i<timelines.length;i++){
+			if(timelines[i].getType()==type){
+				if(pager.getCurrentItem()!=i)
+					pager.setCurrentItem(i, false);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public Fragment getCurrentFragment() {
 		return fragments[pager.getCurrentItem()];
 	}

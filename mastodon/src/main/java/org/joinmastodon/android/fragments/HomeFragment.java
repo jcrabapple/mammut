@@ -21,6 +21,7 @@ import org.joinmastodon.android.events.NotificationsMarkerUpdatedEvent;
 import org.joinmastodon.android.events.StatusDisplaySettingsChangedEvent;
 import org.joinmastodon.android.fragments.discover.FederatedTimelineFragment;
 import org.joinmastodon.android.fragments.discover.LocalTimelineFragment;
+import org.joinmastodon.android.model.TimelineDefinition;
 import org.joinmastodon.android.ui.NavDestination;
 import org.joinmastodon.android.ui.NavMenuController;
 import org.joinmastodon.android.ui.utils.NavToolbarUtils;
@@ -39,8 +40,6 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	private FragmentRootLinearLayout content;
 	private FrameLayout mainContainer;
 	private HomeTabFragment homeTabFragment;
-	private LocalTimelineFragment localTimelineFragment;
-	private FederatedTimelineFragment federatedTimelineFragment;
 	private NotificationsListFragment notificationsFragment;
 	private NavMenuController navMenuController;
 	private NavDestination currentDestination=NavDestination.HOME;
@@ -77,10 +76,6 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 			homeTabFragment.setArguments(args);
 			args=new Bundle(args);
 			args.putBoolean("noAutoLoad", true);
-			localTimelineFragment=new LocalTimelineFragment();
-			localTimelineFragment.setArguments(new Bundle(args));
-			federatedTimelineFragment=new FederatedTimelineFragment();
-			federatedTimelineFragment.setArguments(new Bundle(args));
 			notificationsFragment=new NotificationsListFragment();
 			notificationsFragment.setArguments(new Bundle(args));
 		}
@@ -112,8 +107,6 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 			Fragment current=fragmentForDestination(currentDestination);
 			getChildFragmentManager().beginTransaction()
 					.add(me.grishka.appkit.R.id.fragment_wrap, homeTabFragment)
-					.add(me.grishka.appkit.R.id.fragment_wrap, localTimelineFragment).hide(localTimelineFragment)
-					.add(me.grishka.appkit.R.id.fragment_wrap, federatedTimelineFragment).hide(federatedTimelineFragment)
 					.add(me.grishka.appkit.R.id.fragment_wrap, notificationsFragment).hide(notificationsFragment)
 					.show(current)
 					.commit();
@@ -123,7 +116,7 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		navMenuController.attach(mainContainer);
 		navMenuController.setDestination(currentDestination);
 		// Re-point the scroll rule whenever the home pager flips to another timeline
-		homeTabFragment.addPageChangeListener(this::updateScrollTarget);
+		homeTabFragment.addPageChangeListener(this::onHomePageChanged);
 		content.post(this::updateScrollTarget);
 		updateBackCallback();
 
@@ -138,15 +131,11 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		if(savedInstanceState==null)
 			return;
 		homeTabFragment=(HomeTabFragment) getChildFragmentManager().getFragment(savedInstanceState, "homeTabFragment");
-		homeTabFragment.addPageChangeListener(this::updateScrollTarget);
-		localTimelineFragment=(LocalTimelineFragment) getChildFragmentManager().getFragment(savedInstanceState, "localTimelineFragment");
-		federatedTimelineFragment=(FederatedTimelineFragment) getChildFragmentManager().getFragment(savedInstanceState, "federatedTimelineFragment");
+		homeTabFragment.addPageChangeListener(this::onHomePageChanged);
 		notificationsFragment=(NotificationsListFragment) getChildFragmentManager().getFragment(savedInstanceState, "notificationsFragment");
 		Fragment current=fragmentForDestination(currentDestination);
 		getChildFragmentManager().beginTransaction()
 				.hide(homeTabFragment)
-				.hide(localTimelineFragment)
-				.hide(federatedTimelineFragment)
 				.hide(notificationsFragment)
 				.show(current)
 				.commit();
@@ -182,18 +171,42 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		}
 		WindowInsets topOnlyInsets=insets.replaceSystemWindowInsets(0, insets.getSystemWindowInsetTop(), 0, 0);
 		homeTabFragment.onApplyWindowInsets(topOnlyInsets);
-		localTimelineFragment.onApplyWindowInsets(topOnlyInsets);
-		federatedTimelineFragment.onApplyWindowInsets(topOnlyInsets);
 		notificationsFragment.onApplyWindowInsets(topOnlyInsets);
 	}
 
 	private Fragment fragmentForDestination(NavDestination destination){
+		// HOME, LOCAL and FEDERATED are pages of the home pager — one surface, one
+		// current timeline. Only notifications is a separate screen.
+		return destination==NavDestination.NOTIFICATIONS ? notificationsFragment : homeTabFragment;
+	}
+
+	private static TimelineDefinition.TimelineType timelineTypeFor(NavDestination destination){
 		return switch(destination){
-			case HOME -> homeTabFragment;
-			case LOCAL -> localTimelineFragment;
-			case FEDERATED -> federatedTimelineFragment;
-			case NOTIFICATIONS -> notificationsFragment;
+			case LOCAL -> TimelineDefinition.TimelineType.LOCAL;
+			case FEDERATED -> TimelineDefinition.TimelineType.FEDERATED;
+			default -> TimelineDefinition.TimelineType.HOME;
 		};
+	}
+
+	private static NavDestination destinationFor(TimelineDefinition.TimelineType type){
+		return switch(type){
+			case LOCAL -> NavDestination.LOCAL;
+			case FEDERATED -> NavDestination.FEDERATED;
+			default -> NavDestination.HOME;
+		};
+	}
+
+	/** MAMMUT: a swipe changed the visible timeline, so the menu must follow it. */
+	private void onHomePageChanged(){
+		updateScrollTarget();
+		if(navMenuController==null || homeTabFragment==null || currentDestination==NavDestination.NOTIFICATIONS)
+			return;
+		NavDestination now=destinationFor(homeTabFragment.getCurrentTimelineType());
+		if(now!=currentDestination){
+			currentDestination=now;
+			navMenuController.setDestination(now);
+			updateBackCallback();
+		}
 	}
 
 	/**
@@ -203,7 +216,9 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	public void setDestination(NavDestination destination){
 		if(destination==currentDestination){
 			navMenuController.closeMenu();
-			Fragment current=fragmentForDestination(currentDestination);
+			Fragment current=destination==NavDestination.NOTIFICATIONS
+					? notificationsFragment
+					: homeTabFragment.getCurrentFragment();
 			if(current instanceof ScrollableToTop scrollable)
 				scrollable.scrollToTop();
 			return;
@@ -211,7 +226,19 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		navMenuController.closeMenu();
 		Fragment current=fragmentForDestination(currentDestination);
 		Fragment newFragment=fragmentForDestination(destination);
-		getChildFragmentManager().beginTransaction().hide(current).show(newFragment).commit();
+		if(destination==NavDestination.NOTIFICATIONS){
+			getChildFragmentManager().beginTransaction().hide(current).show(newFragment).commit();
+		}else{
+			// Show the pager, then select the page this destination names. An account
+			// without that timeline falls back to Home rather than to a blank screen.
+			if(current!=newFragment)
+				getChildFragmentManager().beginTransaction().hide(current).show(newFragment).commit();
+			if(!homeTabFragment.selectTimelineType(timelineTypeFor(destination))){
+				if(!homeTabFragment.selectTimelineType(TimelineDefinition.TimelineType.HOME))
+					return;
+				destination=NavDestination.HOME;
+			}
+		}
 		maybeTriggerLoading(newFragment);
 		currentDestination=destination;
 		navMenuController.setDestination(destination);
@@ -297,8 +324,6 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 
 		// MOSHIDON: we use the isAdded because of user themes
 		if(homeTabFragment.isAdded()) getChildFragmentManager().putFragment(outState, "homeTabFragment", homeTabFragment);
-		if(localTimelineFragment.isAdded()) getChildFragmentManager().putFragment(outState, "localTimelineFragment", localTimelineFragment);
-		if(federatedTimelineFragment.isAdded()) getChildFragmentManager().putFragment(outState, "federatedTimelineFragment", federatedTimelineFragment);
 		if(notificationsFragment.isAdded()) getChildFragmentManager().putFragment(outState, "notificationsFragment", notificationsFragment);
 	}
 
