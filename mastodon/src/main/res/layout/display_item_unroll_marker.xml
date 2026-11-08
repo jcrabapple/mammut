@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: Reading Room (docs/READING-ROOM-SPEC.md §5.4) — the inline side-branch
+	 marker. One quiet line: "2 replies to this post · Show in full conversation."
+	 The whole line is the tap target; content is never interleaved into the story. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:foreground="?android:attr/selectableItemBackground">
+
+	<TextView
+		android:id="@+id/label"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:paddingHorizontal="16dp"
+		android:paddingTop="4dp"
+		android:paddingBottom="12dp"
+		android:textAppearance="@style/m3_label_medium"
+		android:textColor="?colorM3OnSurfaceVariant"
+		tools:text="2 replies to this post · Show in full conversation."/>
+</FrameLayout>

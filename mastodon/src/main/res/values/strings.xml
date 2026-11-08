@@ -578,6 +578,33 @@
 	</plurals>
 	<string name="catch_up_change_filters">Change view filters</string>
 	<string name="catch_up_error_offline">Can’t reach %s.</string>
+	<!-- MAMMUT: Reading Room — Conversation + Unroll (docs/READING-ROOM-SPEC.md §3, §5) -->
+	<plurals name="thread_posts_count">
+		<item quantity="one">%d post</item>
+		<item quantity="other">%d posts</item>
+	</plurals>
+	<plurals name="thread_people_count">
+		<item quantity="one">%d person</item>
+		<item quantity="other">%d people</item>
+	</plurals>
+	<string name="thread_unroll_action">Unroll</string>
+	<plurals name="thread_all_posts">
+		<item quantity="one">All %d post</item>
+		<item quantity="other">All %d posts</item>
+	</plurals>
+	<plurals name="thread_unroll_subtitle">
+		<item quantity="one">Unrolled · %1$s\'s %2$d post</item>
+		<item quantity="other">Unrolled · %1$s\'s %2$d posts</item>
+	</plurals>
+	<plurals name="thread_side_branch_marker">
+		<item quantity="one">%d reply to this post · Show in full conversation.</item>
+		<item quantity="other">%d replies to this post · Show in full conversation.</item>
+	</plurals>
+	<string name="thread_unroll_footer_end">End of %s\'s thread</string>
+	<plurals name="thread_unroll_footer_side_branches">
+		<item quantity="one">The other %d post is a side reply, not part of this story.</item>
+		<item quantity="other">The other %d posts are side replies, not part of this story.</item>
+	</plurals>
 	<string name="catch_up_error_unchanged">Your place in this timeline is unchanged.</string>
 	<string name="try_again">Try again</string>
 	<string name="settings_delete_filter">Delete filter</string>

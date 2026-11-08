@@ -35,6 +35,7 @@ import org.joinmastodon.android.model.AsyncRefresh;
 import org.joinmastodon.android.model.FilterContext;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.model.StatusContext;
+import org.joinmastodon.android.ui.ConversationChain;
 import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.NavDestination;
 import org.joinmastodon.android.ui.NavMenuController;
@@ -45,6 +46,8 @@ import org.joinmastodon.android.ui.displayitems.HeaderStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.SpoilerStatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.StatusDisplayItem;
 import org.joinmastodon.android.ui.displayitems.TextStatusDisplayItem;
+import org.joinmastodon.android.ui.displayitems.UnrollBranchMarkerStatusDisplayItem;
+import org.joinmastodon.android.ui.displayitems.UnrollFooterStatusDisplayItem;
 import org.joinmastodon.android.ui.text.HtmlParser;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.utils.UnreadNotificationCounter;
@@ -62,6 +65,7 @@ import java.util.function.Consumer;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.ListUpdateCallback;
 import androidx.recyclerview.widget.RecyclerView;
 import me.grishka.appkit.Nav;
@@ -88,6 +92,14 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 	private Runnable asyncRefreshPartialRunnable=this::checkAsyncRefreshAndMaybeShowSnackbar;
 	private int prevNewRepliesCount;
 	private HashSet<String> newReplyIDs=new HashSet<>();
+	// MAMMUT: Reading Room (docs/READING-ROOM-SPEC.md) — the Unroll reading mode is a
+	// flag on this fragment, never a second destination. The chain is recomputed from
+	// the fetched set every time the conversation changes.
+	private boolean unrollMode=false;
+	private ConversationChain chain;
+	private MenuItem unrollMenuItem;
+	private int savedFirstVisiblePosition=-1;
+	private int savedFirstVisibleOffset=0;
 	private boolean highlightDecorationAdded=false;
 	private NewRepliesHighlightDecoration highlightDecoration=new NewRepliesHighlightDecoration();
 	private float highlightAlpha=0;
@@ -115,10 +127,11 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			knownAccounts.put(inReplyToAccount.id, inReplyToAccount);
 		data.add(mainStatus);
 		onAppendItems(Collections.singletonList(mainStatus));
-		// MAMMUT: destination-style title; the supporting line names the origin
-		// surface instead of repeating the author's display name
+		// MAMMUT: Reading Room (docs/READING-ROOM-SPEC.md §3) — this screen is a
+		// Conversation. The title says so; the subtitle carries the factual counts
+		// ("14 posts · 5 people") once the context has been fetched.
 		setTitle(R.string.nav_thread);
-		setSubtitle(getString(R.string.nav_subtitle_thread_origin, getString(R.string.nav_destination_home)));
+		updateSubtitle();
 		setRefreshEnabled(false);
 		setHasOptionsMenu(true);
 	}
@@ -145,6 +158,13 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 
 	@Override
 	protected List<StatusDisplayItem> buildDisplayItems(Status s){
+		if(unrollMode && chain!=null && chain.eligible){
+			// Reading Room §5.1: only chain members are rendered, in reading order —
+			// the rebuild loop iterates the chain, so a non-member never reaches here.
+			int chainIndex=chain.indexOf(s.id);
+			if(chainIndex>=0)
+				return buildUnrolledPostItems(s, chainIndex);
+		}
 		List<StatusDisplayItem> items=StatusDisplayItem.buildItems(this, getActivity(), s, accountID, s, knownAccounts, StatusDisplayItem.FLAG_NO_IN_REPLY_TO);
 		if(s.id.equals(mainStatus.id)){
 			for(StatusDisplayItem item:items){
@@ -164,6 +184,35 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			}
 			items.add(items.size()-1, new ExtendedFooterStatusDisplayItem(s.id, this, getActivity(), s.getContentStatus(), accountID));
 		}
+		return items;
+	}
+
+	// Reading Room §5.1-§5.3: the first chain post keeps its author header; later
+	// posts render with FLAG_NO_HEADER, full width, reading typography — their author
+	// context is carried by the gutter line and numbering instead of repeated avatars.
+	private List<StatusDisplayItem> buildUnrolledPostItems(Status s, int chainIndex){
+		int flags=StatusDisplayItem.FLAG_NO_IN_REPLY_TO;
+		if(chainIndex>0)
+			flags|=StatusDisplayItem.FLAG_NO_HEADER;
+		List<StatusDisplayItem> items=StatusDisplayItem.buildItems(this, getActivity(), s, accountID, s, knownAccounts, flags);
+		boolean focused=s.id.equals(mainStatus.id);
+		for(StatusDisplayItem item:items){
+			item.fullWidth=true;
+			if(item instanceof TextStatusDisplayItem text){
+				text.textSelectable=!item.isQuote;
+				text.largerFont=true;
+			}
+			if(focused && item instanceof FooterStatusDisplayItem footer)
+				footer.hideCounts=true;
+			if(item instanceof SpoilerStatusDisplayItem spoiler){
+				for(StatusDisplayItem subItem:spoiler.contentItems){
+					if(subItem instanceof TextStatusDisplayItem text)
+						text.textSelectable=!subItem.isQuote;
+				}
+			}
+		}
+		if(focused)
+			items.add(items.size()-1, new ExtendedFooterStatusDisplayItem(s.id, this, getActivity(), s.getContentStatus(), accountID));
 		return items;
 	}
 
@@ -276,6 +325,7 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 							list.scrollToPosition(displayItems.size()-count);
 						}
 						setRefreshEnabled(true);
+						onConversationChanged();
 					}
 				})
 				.exec(accountID);
@@ -379,13 +429,26 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			footerProgress.setVisibility(View.VISIBLE);
 
 		list.addItemDecoration(new ReplyLinesItemDecoration());
+		list.addItemDecoration(new UnrollReadingLineDecoration());
 	}
 
 	protected void onStatusCreated(Status status){
 		if(status.inReplyToId!=null && getStatusByID(status.inReplyToId)!=null){
-			onAppendItems(Collections.singletonList(status));
+			if(!unrollMode)
+				onAppendItems(Collections.singletonList(status));
 			data.add(status);
+			// The chain is computed from what is in memory at bind time; a new reply
+			// may extend it, and the counts and the Unroll action must stay honest.
+			onConversationChanged();
 		}
+	}
+
+	@Override
+	protected void removeStatus(Status status){
+		super.removeStatus(status);
+		// §6: a member deleted between fetch and open shortens the chain rather than
+		// showing a hole; if it drops below eligibility the mode exits quietly.
+		onConversationChanged();
 	}
 
 	@Override
@@ -435,10 +498,33 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		if(BuildConfig.DEBUG){
 			menu.add("Simulate new replies");
 		}
+		// Reading Room §5.6: Unroll ↔ "All N posts" lives in the app bar. Hidden until
+		// the fetched context proves a chain exists (§3.4: no chain, no action).
+		unrollMenuItem=menu.add(R.string.thread_unroll_action);
+		unrollMenuItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+		unrollMenuItem.setVisible(false);
+	}
+
+	@Override
+	public void onPrepareOptionsMenu(Menu menu){
+		if(unrollMenuItem==null)
+			return;
+		if(unrollMode){
+			unrollMenuItem.setVisible(true);
+			int total=chain!=null ? chain.totalPosts : data.size();
+			unrollMenuItem.setTitle(getResources().getQuantityString(R.plurals.thread_all_posts, total, total));
+		}else{
+			unrollMenuItem.setTitle(R.string.thread_unroll_action);
+			unrollMenuItem.setVisible(chain!=null && chain.eligible);
+		}
 	}
 
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item){
+		if(item==unrollMenuItem){
+			setUnrollMode(!unrollMode);
+			return true;
+		}
 		if(BuildConfig.DEBUG){
 			ArrayList<Status> toRemove=new ArrayList<>();
 			Random r=ThreadLocalRandom.current();
@@ -449,8 +535,111 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			for(Status s:toRemove)
 				removeStatus(s);
 			showMoreRepliesSnackbar();
+			return true;
 		}
-		return true;
+		return super.onOptionsItemSelected(item);
+	}
+
+// Reading Room mode machinery (docs/READING-ROOM-SPEC.md §3-§6)
+
+	/** Recompute the chain from what is in memory, refresh the subtitle, and offer or withdraw Unroll. */
+	private void onConversationChanged(){
+		chain=ConversationChain.build(data, mainStatus);
+		boolean wasUnroll=unrollMode;
+		if(unrollMode && !chain.eligible)
+			unrollMode=false; // §6: a missing link shortens the chain; below 3 members the mode quietly exits
+		updateSubtitle();
+		if(wasUnroll || unrollMode)
+			rebuildList();
+		if(getActivity()!=null)
+			getActivity().invalidateOptionsMenu();
+	}
+
+	private void updateSubtitle(){
+		if(unrollMode && chain!=null && chain.eligible){
+			// §5.5: "Unrolled · Mara's 4 posts"
+			int n=chain.chain.size();
+			setSubtitle(getResources().getQuantityString(R.plurals.thread_unroll_subtitle, n, chain.authorDisplayName, n));
+		}else{
+			// §3.2: factual counts over the fetched context, including the focused post
+			HashSet<String> people=new HashSet<>();
+			for(Status s:data){
+				if(s.account!=null)
+					people.add(s.account.id);
+			}
+			int posts=data.size();
+			setSubtitle(getResources().getQuantityString(R.plurals.thread_posts_count, posts, posts)
+					+" · "
+					+getResources().getQuantityString(R.plurals.thread_people_count, people.size(), people.size()));
+		}
+	}
+
+	private void setUnrollMode(boolean on){
+		if(on && (chain==null || !chain.eligible))
+			return; // §7: no automatic unroll — and no manual one without a chain
+		if(unrollMode==on)
+			return;
+		unrollMode=on;
+		if(on && list!=null && list.getLayoutManager() instanceof LinearLayoutManager llm){
+			savedFirstVisiblePosition=llm.findFirstVisibleItemPosition();
+			View first=list.getChildAt(0);
+			savedFirstVisibleOffset=first==null ? 0 : first.getTop();
+		}
+		rebuildList();
+		updateSubtitle();
+		if(getActivity()!=null)
+			getActivity().invalidateOptionsMenu();
+		// §5.9: entering starts at the first chain post; exiting restores the position
+		list.post(()->{
+			if(list==null)
+				return;
+			if(unrollMode){
+				list.scrollToPosition(0);
+			}else if(savedFirstVisiblePosition>=0 && list.getLayoutManager() instanceof LinearLayoutManager llm){
+				llm.scrollToPositionWithOffset(savedFirstVisiblePosition, savedFirstVisibleOffset);
+			}
+		});
+	}
+
+	private void rebuildList(){
+		displayItems.clear();
+		if(unrollMode && chain!=null && chain.eligible){
+			for(Status s:chain.chain){
+				List<StatusDisplayItem> postItems=buildDisplayItems(s);
+				populateNestedQuotes(postItems);
+				displayItems.addAll(postItems);
+				Integer replies=chain.sideBranchCounts.get(s.id);
+				if(replies!=null && replies>0){
+					// §5.4: one inline marker per post with off-chain replies
+					String label=getResources().getQuantityString(R.plurals.thread_side_branch_marker, replies, replies);
+					displayItems.add(new UnrollBranchMarkerStatusDisplayItem(s.id, this, getActivity(), label, ()->showInFullConversation(s.id)));
+				}
+			}
+			// §5.7: end-of-story footer, with the side-branch line only when applicable
+			String footerTitle=getString(R.string.thread_unroll_footer_end, chain.authorDisplayName);
+			String footerBody=chain.sideBranchTotal>0
+					? getResources().getQuantityString(R.plurals.thread_unroll_footer_side_branches, chain.sideBranchTotal, chain.sideBranchTotal)
+					: null;
+			displayItems.add(new UnrollFooterStatusDisplayItem("unroll_footer", this, getActivity(), footerTitle, footerBody));
+		}else{
+			for(Status s:data){
+				List<StatusDisplayItem> postItems=buildDisplayItems(s);
+				populateNestedQuotes(postItems);
+				displayItems.addAll(postItems);
+			}
+		}
+		adapter.notifyDataSetChanged();
+	}
+
+	private void showInFullConversation(String statusID){
+		if(unrollMode)
+			setUnrollMode(false);
+		for(int i=0;i<displayItems.size();i++){
+			if(statusID.equals(displayItems.get(i).parentID)){
+				list.scrollToPosition(i);
+				return;
+			}
+		}
 	}
 
 	private void openReply(){
@@ -465,6 +654,8 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 
 	@Override
 	protected void drawDivider(View child, View bottomSibling, RecyclerView.ViewHolder holder, RecyclerView.ViewHolder siblingHolder, RecyclerView parent, Canvas c, Paint paint){
+		if(unrollMode && (holder instanceof UnrollBranchMarkerStatusDisplayItem.Holder || siblingHolder instanceof UnrollBranchMarkerStatusDisplayItem.Holder))
+			return; // the marker belongs to the post above it; no divider between them
 		if(holder instanceof StatusDisplayItem.Holder<?> statusHolder && siblingHolder instanceof StatusDisplayItem.Holder<?> siblingStatusHolder){
 			Status siblingStatus=getStatusByID(siblingStatusHolder.getItemID());
 			if(siblingStatus==null)
@@ -550,6 +741,8 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 
 		@Override
 		public void onDraw(@NonNull Canvas c, @NonNull RecyclerView parent, @NonNull RecyclerView.State state){
+			if(unrollMode)
+				return; // the conversation reply lines don't describe the unrolled story
 			String currentID=null;
 			boolean connectUp=false, connectToRoot=false, connectReply=false;
 			paint.setColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OutlineVariant));
@@ -597,6 +790,65 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 					c.drawLine(lineX, top, lineX, bottom, paint);
 				}
 				c.restore();
+			}
+		}
+	}
+
+	private class UnrollReadingLineDecoration extends RecyclerView.ItemDecoration{
+		private final Paint linePaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final Paint numberPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final Rect tmpRect=new Rect();
+
+		UnrollReadingLineDecoration(){
+			linePaint.setStyle(Paint.Style.STROKE);
+			linePaint.setStrokeWidth(V.dp(2));
+			linePaint.setStrokeCap(Paint.Cap.ROUND);
+			numberPaint.setTextSize(V.dp(11));
+		}
+
+		@Override
+		public void getItemOffsets(@NonNull Rect outRect, @NonNull View view, @NonNull RecyclerView parent, @NonNull RecyclerView.State state){
+			// Reading Room §5.2/§5.3: chain posts (and their side-branch markers) give
+			// up a strip of the left edge for the reading line and the quiet numbering.
+			if(!unrollMode || chain==null || !chain.eligible)
+				return;
+			if(parent.getChildViewHolder(view) instanceof StatusDisplayItem.Holder<?> holder && chain.indexOf(holder.getItemID())>=0)
+				outRect.left=V.dp(44);
+		}
+
+		@Override
+		public void onDrawOver(@NonNull Canvas c, @NonNull RecyclerView parent, @NonNull RecyclerView.State state){
+			if(!unrollMode || chain==null || !chain.eligible || getActivity()==null)
+				return;
+			// Grape neutral: the Mammut neutral ramp is built from Dusty Grape, so the
+			// outline-variant/OnSurfaceVariant pair is the quiet grape register — the
+			// same family the conversation reply lines use.
+			linePaint.setColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OutlineVariant));
+			numberPaint.setColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OnSurfaceVariant));
+			int total=chain.chain.size();
+			float lineX=V.dp(30);
+			for(int i=0;i<parent.getChildCount();i++){
+				View child=parent.getChildAt(i);
+				if(!(parent.getChildViewHolder(child) instanceof StatusDisplayItem.Holder<?> holder))
+					continue;
+				int chainIndex=chain.indexOf(holder.getItemID());
+				if(chainIndex<0)
+					continue;
+				parent.getDecoratedBoundsWithMargins(child, tmpRect);
+				// The line runs through every row of the chain posts; because the rows
+				// tile the vertical space it connects consecutive posts and stops at
+				// the last one, never implying a stranger's reply joined the story.
+				linePaint.setAlpha(Math.round(255*child.getAlpha()));
+				c.drawLine(lineX, tmpRect.top, lineX, tmpRect.bottom, linePaint);
+				// §5.3: numbering on the first row of each post only — "1/4", quiet,
+				// smaller than body text, never a second timeline column.
+				int position=holder.getBindingAdapterPosition();
+				if(position>0 && position<=displayItems.size() && holder.getItemID().equals(displayItems.get(position-1).parentID))
+					continue;
+				numberPaint.setAlpha(Math.round(255*child.getAlpha()));
+				String number=(chainIndex+1)+"/"+total;
+				float numberY=tmpRect.top+V.dp(4)-numberPaint.ascent();
+				c.drawText(number, lineX-V.dp(6)-numberPaint.measureText(number), numberY, numberPaint);
 			}
 		}
 	}

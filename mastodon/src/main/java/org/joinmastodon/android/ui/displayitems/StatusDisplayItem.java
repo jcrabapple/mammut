@@ -125,6 +125,10 @@ public abstract class StatusDisplayItem{
 			case CATCH_UP_FOOTER -> new CatchUpFooterStatusDisplayItem.Holder(activity, parent);
 			case CATCH_UP_PROGRESS -> new CatchUpProgressStatusDisplayItem.Holder(activity, parent);
 			case CATCH_UP_TIMESTAMP -> new CatchUpTimestampStatusDisplayItem.Holder(activity, parent);
+			// MAMMUT: Reading Room unroll mode (docs/READING-ROOM-SPEC.md §5) — the
+			// side-branch marker and the end-of-story footer.
+			case UNROLL_MARKER -> new UnrollBranchMarkerStatusDisplayItem.Holder(activity, parent);
+			case UNROLL_FOOTER -> new UnrollFooterStatusDisplayItem.Holder(activity, parent);
 			};
 	}
 
@@ -336,7 +340,10 @@ public abstract class StatusDisplayItem{
 		CATCH_UP_HEADER,
 		CATCH_UP_FOOTER,
 		CATCH_UP_PROGRESS,
-		CATCH_UP_TIMESTAMP
+		CATCH_UP_TIMESTAMP,
+		// MAMMUT: Reading Room unroll mode (docs/READING-ROOM-SPEC.md §5)
+		UNROLL_MARKER,
+		UNROLL_FOOTER
 	}
 
 	public static abstract class Holder<T> extends BindableViewHolder<T> implements UsableRecyclerView.DisableableClickable{

@@ -16,7 +16,7 @@
 	<string name="nav_subtitle_federated">The known fediverse</string>
 	<string name="nav_destination_notifications">Notifications</string>
 	<string name="nav_subtitle_notifications">Mentions &amp; activity</string>
-	<string name="nav_thread">Thread</string>
+	<string name="nav_thread">Conversation</string>
 	<string name="nav_subtitle_thread_origin">From %s</string>
 	<string name="nav_cd_home_timeline">Home timeline</string>
 	<string name="nav_cd_local_timeline">Local timeline</string>
