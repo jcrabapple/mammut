@@ -313,6 +313,10 @@ public class CatchUpFragment extends StatusListFragment{
 				for(Status s:g.posts){
 					List<StatusDisplayItem> postItems=buildDisplayItems(s, StatusDisplayItem.FLAG_NO_HEADER);
 					populateNestedQuotes(postItems);
+					// MAMMUT: with no header row, a media-only post starts flush against the
+					// divider above it. Give the first block a gap so it reads as a post.
+					if(!postItems.isEmpty() && postItems.get(0) instanceof org.joinmastodon.android.ui.displayitems.MediaGridStatusDisplayItem mg)
+						mg.extraTopSpacingPx=me.grishka.appkit.utils.V.dp(8);
 					displayItems.addAll(postItems);
 				}
 			}

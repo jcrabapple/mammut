@@ -53,6 +53,8 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 	private final Map<String, Pair<String, String>> translatedAttachments = new HashMap<>();
 	private final ArrayList<ImageLoaderRequest> requests=new ArrayList<>();
 	public final Status status;
+	/** MAMMUT: extra top padding for callers that render a post without a header row (Catch up). */
+	public int extraTopSpacingPx;
 	public boolean sensitiveRevealed;
 	public String sensitiveTitle;
 	// MAMMUT: F2 — true when the cover is a Blur filter cover rather than a sensitive-media cover,
@@ -170,7 +172,7 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 		@Override
 		public void onBind(MediaGridStatusDisplayItem item){
 			thereAreFailedImages=false;
-			wrapper.setPaddingRelative(V.dp(item.fullWidth ? 16 : 64), 0, V.dp(16), V.dp(8));
+			wrapper.setPaddingRelative(V.dp(item.fullWidth ? 16 : 64), item.extraTopSpacingPx, V.dp(16), V.dp(8));
 
 			layout.setTiledLayout(item.tiledLayout);
 			for(MediaAttachmentViewController c:controllers){
