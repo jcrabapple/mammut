@@ -31,6 +31,9 @@ import me.grishka.appkit.imageloader.requests.ImageLoaderRequest;
 import me.grishka.appkit.utils.V;
 
 public class TextStatusDisplayItem extends StatusDisplayItem{
+	/** MAMMUT: leading inset override for hosts without an avatar column (Catch up cards). */
+	public int leadingInsetPx=-1;
+
 	private CharSequence text;
 	private CustomEmojiHelper emojiHelper=new CustomEmojiHelper();
 	private CharSequence translatedText;
@@ -115,7 +118,7 @@ public class TextStatusDisplayItem extends StatusDisplayItem{
 			text.setTextIsSelectable(item.textSelectable);
 			text.setInvalidateOnEveryFrame(false);
 			itemView.setClickable(false);
-			itemView.setPaddingRelative(V.dp(item.fullWidth ? 0 : 48), 0, 0, 0);
+			itemView.setPaddingRelative(item.leadingInsetPx>=0 ? item.leadingInsetPx : V.dp(item.fullWidth ? 0 : 48), 0, 0, 0);
 			text.setTextColor(UiUtils.getThemeColor(text.getContext(), R.attr.colorM3OnSurface));
 			text.setTextSize(TypedValue.COMPLEX_UNIT_SP, item.largerFont ? 18 : 16);
 			updateTranslation(false);

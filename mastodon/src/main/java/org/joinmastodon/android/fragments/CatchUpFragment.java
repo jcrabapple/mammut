@@ -346,6 +346,13 @@ public class CatchUpFragment extends StatusListFragment{
 							// The card supplies the outer margin, so media starts level with the
 							// text instead of carrying the ordinary header-row inset.
 							mg.leadingInsetPx=me.grishka.appkit.utils.V.dp(16);
+						}else if(di instanceof org.joinmastodon.android.ui.displayitems.TextStatusDisplayItem t){
+							// No avatar column exists inside a card, so the 48dp header inset would
+							// leave the text floating in the middle of the card.
+							t.leadingInsetPx=0;
+						}else if(di instanceof org.joinmastodon.android.ui.displayitems.FooterStatusDisplayItem f){
+							// The action row keeps its own 8dp, landing it on the same 16dp line as text.
+							f.leadingInsetPx=me.grishka.appkit.utils.V.dp(8);
 						}
 					}
 					for(int i=0; i<postItems.size(); i++)

@@ -45,6 +45,9 @@ import me.grishka.appkit.Nav;
 import me.grishka.appkit.utils.V;
 
 public class FooterStatusDisplayItem extends StatusDisplayItem{
+	/** MAMMUT: leading inset override for hosts without an avatar column (Catch up cards). */
+	public int leadingInsetPx=-1;
+
 	public final Status status;
 	private final String accountID;
 	public boolean hideCounts;
@@ -154,7 +157,7 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 			// MOSHIDON
 			spacer3.setVisibility(item.fullWidth ? View.VISIBLE : View.GONE);
 
-			itemView.setPaddingRelative(V.dp(item.fullWidth ? 8 : 56), itemView.getPaddingTop(), itemView.getPaddingEnd(), itemView.getPaddingBottom());
+			itemView.setPaddingRelative(item.leadingInsetPx>=0 ? item.leadingInsetPx : V.dp(item.fullWidth ? 8 : 56), itemView.getPaddingTop(), itemView.getPaddingEnd(), itemView.getPaddingBottom());
 			bindButton(reply, item.status.repliesCount);
 			bindButton(boost, item.status.reblogsCount);
 			bindButton(favorite, item.status.favouritesCount);

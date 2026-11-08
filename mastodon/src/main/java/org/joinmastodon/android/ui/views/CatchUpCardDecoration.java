@@ -2,6 +2,8 @@ package org.joinmastodon.android.ui.views;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.view.View;
@@ -42,14 +44,33 @@ public class CatchUpCardDecoration extends RecyclerView.ItemDecoration{
 		cardInset=V.dp(8);
 		gap=V.dp(12);
 
-		fillPaint.setColor(UiUtils.getThemeColor(context, R.attr.colorM3SurfaceVariant));
+		// A shade below the theme's surface variant: the card should sit on the page, not
+		// merely tint it. Blending toward black works in both themes, where a fixed colour
+		// would only work in one.
+		int base=UiUtils.getThemeColor(context, R.attr.colorM3SurfaceVariant);
+		fillPaint.setColor(Color.rgb(
+				(int)(Color.red(base)*0.93f),
+				(int)(Color.green(base)*0.93f),
+				(int)(Color.blue(base)*0.93f)
+		));
 		outlinePaint.setStyle(Paint.Style.STROKE);
 		outlinePaint.setStrokeWidth(V.dp(1));
-		outlinePaint.setColor(UiUtils.getThemeColor(context, R.attr.colorM3OutlineVariant));
+		outlinePaint.setColor(Color.argb(0x66,
+				Color.red(UiUtils.getThemeColor(context, R.attr.colorM3Outline)),
+				Color.green(UiUtils.getThemeColor(context, R.attr.colorM3Outline)),
+				Color.blue(UiUtils.getThemeColor(context, R.attr.colorM3Outline))
+		));
 		for(int i=0; i<shadowPaints.length; i++){
 			shadowPaints[i]=new Paint(Paint.ANTI_ALIAS_FLAG);
 			shadowPaints[i].setColor(0x00000000);
 		}
+	}
+
+	private static int darken(int color, float amount){
+		int r=Math.round(Color.red(color)*(1-amount));
+		int g=Math.round(Color.green(color)*(1-amount));
+		int b=Math.round(Color.blue(color)*(1-amount));
+		return Color.argb(Color.alpha(color), r, g, b);
 	}
 
 	public void setGroups(@NonNull int[] groups){
@@ -104,8 +125,8 @@ public class CatchUpCardDecoration extends RecyclerView.ItemDecoration{
 
 	private void drawCard(Canvas c, RecyclerView parent){
 		// Faint layers, each a little larger and lower, read as a soft edge without a layer type.
-		float[] spread={V.dp(2), V.dp(1.25f), V.dp(0.5f)};
-		int[] color={0x0A000000, 0x0C000000, 0x10000000};
+		float[] spread={V.dp(4), V.dp(2.5f), V.dp(1.25f)};
+		int[] color={0x0E000000, 0x12000000, 0x1C000000};
 		for(int i=0; i<spread.length; i++){
 			shadowPaints[i].setColor(color[i]);
 			RectF s=new RectF(rect);
