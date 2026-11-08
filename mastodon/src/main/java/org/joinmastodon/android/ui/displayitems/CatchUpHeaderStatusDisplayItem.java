@@ -83,7 +83,7 @@ public class CatchUpHeaderStatusDisplayItem extends StatusDisplayItem{
 			}
 			if(item.account!=null && item.account.avatar!=null){
 				avatar.setVisibility(View.VISIBLE);
-				ViewImageLoader.load(avatar, null, new UrlImageLoaderRequest(item.account.avatar, V.dp(64), V.dp(64)));
+				ViewImageLoader.load(avatar, null, new UrlImageLoaderRequest(item.account.avatar, V.dp(28), V.dp(28)));
 			}else{
 				avatar.setVisibility(View.GONE);
 			}

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MAMMUT: Catch up — the head of an author's card: avatar, name and count, centred.
-	 The same layout carries the boosts section header, which has no avatar and adds a
-	 chevron beside its title. Wraps at any font scale; the minimum height keeps the
-	 boosts toggle a valid touch target. -->
+<!-- MAMMUT: Catch up — the head of an author's card: a small avatar beside the name,
+	 with the post count centred beneath. The same layout carries the boosts section
+	 header, which has no avatar and adds a chevron beside its title. Wraps at any font
+	 scale; the minimum height keeps the boosts toggle a valid touch target. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:tools="http://schemas.android.com/tools"
 	android:layout_width="match_parent"
@@ -12,25 +12,25 @@
 	android:gravity="center_horizontal"
 	android:paddingStart="16dp"
 	android:paddingEnd="16dp"
-	android:paddingTop="20dp"
+	android:paddingTop="16dp"
 	android:paddingBottom="8dp">
-
-	<ImageView
-		android:id="@+id/avatar"
-		android:layout_width="64dp"
-		android:layout_height="64dp"
-		android:scaleType="centerCrop"
-		android:importantForAccessibility="no"
-		android:visibility="gone"
-		tools:visibility="visible" />
 
 	<LinearLayout
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
-		android:layout_marginTop="10dp"
 		android:orientation="horizontal"
 		android:gravity="center_vertical"
 		android:baselineAligned="false">
+
+		<ImageView
+			android:id="@+id/avatar"
+			android:layout_width="28dp"
+			android:layout_height="28dp"
+			android:layout_marginEnd="8dp"
+			android:scaleType="centerCrop"
+			android:importantForAccessibility="no"
+			android:visibility="gone"
+			tools:visibility="visible" />
 
 		<TextView
 			android:id="@+id/title"

@@ -65,6 +65,9 @@ import me.grishka.appkit.imageloader.requests.UrlImageLoaderRequest;
 import me.grishka.appkit.utils.V;
 
 public class HeaderStatusDisplayItem extends StatusDisplayItem{
+	/** MAMMUT: suppresses the relative timestamp in the header subtitle. */
+	public boolean hideTimestamp;
+
 	private Account user;
 	private Instant createdAt;
 	private ImageLoaderRequest avaRequest;
@@ -302,7 +305,9 @@ public class HeaderStatusDisplayItem extends StatusDisplayItem{
 				time=item.context.getString(R.string.edited_timestamp, UiUtils.formatRelativeTimestamp(itemView.getContext(), item.status.editedAt));
 
 			// MAMMUT: port from upstream master — pronouns in timelines and threads
-			String subtitle=time+" · @"+item.user.acct;
+			// MAMMUT: hosts that show the absolute time per post (Catch up) drop the
+			// relative one rather than printing the same moment twice.
+			String subtitle=item.hideTimestamp ? "@"+item.user.acct : time+" · @"+item.user.acct;
 			boolean showPronouns=item.callbacks instanceof ThreadFragment
 					? GlobalUserPreferences.displayPronounsInThreads
 					: GlobalUserPreferences.displayPronounsInTimelines;

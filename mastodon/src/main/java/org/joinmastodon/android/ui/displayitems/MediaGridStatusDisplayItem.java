@@ -138,7 +138,9 @@ public class MediaGridStatusDisplayItem extends StatusDisplayItem{
 			content.addView(gridContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
 			layout=new MediaGridLayout(activity);
-			gridContainer.addView(layout);
+			// A tiled layout narrower than the available width must sit in the middle of
+			// the card, not against its left edge.
+			gridContainer.addView(layout, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL));
 
 			overlays=new MaxWidthFrameLayout(activity);
 			overlays.setMaxWidth(V.dp(MediaGridLayout.MAX_WIDTH));

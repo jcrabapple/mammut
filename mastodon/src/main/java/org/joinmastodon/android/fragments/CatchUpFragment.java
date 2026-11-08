@@ -373,6 +373,12 @@ public class CatchUpFragment extends StatusListFragment{
 							// attribution line plus the original post (spec §5).
 							List<StatusDisplayItem> postItems=buildDisplayItems(s);
 							populateNestedQuotes(postItems);
+							// The exact time is printed above each post, so the relative
+							// "9 min" in these rows would say the same thing twice.
+							for(StatusDisplayItem di2:postItems){
+								if(di2 instanceof org.joinmastodon.android.ui.displayitems.HeaderStatusDisplayItem h)
+									h.hideTimestamp=true;
+							}
 							for(int i=0; i<postItems.size(); i++)
 								cardOf.add(groupIndex);
 							displayItems.addAll(postItems);
