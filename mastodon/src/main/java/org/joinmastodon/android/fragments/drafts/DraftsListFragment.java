@@ -48,7 +48,11 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 	private Fragment visiblePage;
 
 	public DraftsListFragment(){
-		super(R.layout.fragment_drafts);
+		// MAMMUT: not R.layout.fragment_drafts. Appkit's ToolbarFragment inflates the layout
+		// given to super() and adds onCreateContentView()'s view into that layout's
+		// R.id.appkit_content, so this must be a toolbar frame. Passing the content layout
+		// here made the appkit_content lookup return null and crashed on addView.
+		super();
 	}
 
 	@Override
