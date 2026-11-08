@@ -11,6 +11,7 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -25,6 +26,7 @@ import android.widget.TextView;
 
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.model.Attachment;
+import org.joinmastodon.android.model.Poll;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.ui.text.CustomEmojiSpan;
 
@@ -51,9 +53,10 @@ import me.grishka.appkit.imageloader.requests.UrlImageLoaderRequest;
 
 /**
  * Renders one status into a 1080 px wide PNG card in {@code cacheDir/share/}, off
- * the UI thread. Geometry per the post-as-image spec §4–§6; the pure decisions
- * live in {@link MediaGridSolver}, {@link TruncationChooser} and
- * {@link SensitiveMedia}.
+ * the UI thread. Geometry per the post-as-image spec §4–§6 (slice A) and §11
+ * (slice B: quote block, poll block); the pure decisions live in
+ * {@link MediaGridSolver}, {@link TruncationChooser}, {@link SensitiveMedia},
+ * {@link QuoteBlock} and {@link PollBlock}.
  *
  * The whole hierarchy is created, measured and drawn on the render thread only,
  * using the application context, so no Activity is held past fragment death.
@@ -91,6 +94,17 @@ public class ShareImageRenderer{
 	private static final int FOOTER_RULE_GAP=40;
 	private static final int FOOTER_SIZE=24;
 	private static final int LABEL_SIZE=32;
+
+	// §11 geometry (slice B): gaps between content blocks, poll and quote registers
+	private static final int BLOCK_GAP=40;
+	private static final int POLL_QUESTION_SIZE=34;
+	private static final int POLL_OPTION_SIZE=32;
+	private static final int POLL_FOOTER_SIZE=26;
+	private static final int POLL_QUESTION_GAP=24;
+	private static final int POLL_OPTION_GAP=20;
+	private static final int POLL_FOOTER_GAP=20;
+	private static final int POLL_PCT_MARGIN=24;
+	private static final int QUOTE_TILE_LABEL_SIZE=24;
 
 	private static final int TILE_BLUR_RADIUS=32;
 	private static final int BADGE_INSET=16;
@@ -133,6 +147,15 @@ public class ShareImageRenderer{
 	 * thread yourself.
 	 */
 	public static synchronized void enqueue(Context appContext, Status status, SpannableStringBuilder parsedText, Palette palette, Callback callback){
+		enqueue(appContext, status, parsedText, null, palette, callback);
+	}
+
+	/**
+	 * Slice B overload: also takes the quoted status's text, already parsed with a
+	 * themed context on the UI thread (same contract as {@code parsedText}). May
+	 * be null when the status has no rendered quote.
+	 */
+	public static synchronized void enqueue(Context appContext, Status status, SpannableStringBuilder parsedText, SpannableStringBuilder parsedQuoteText, Palette palette, Callback callback){
 		generation.incrementAndGet();
 		if(pendingFuture!=null)
 			pendingFuture.cancel(false);
@@ -141,7 +164,7 @@ public class ShareImageRenderer{
 			if(gen!=generation.get())
 				return; // superseded before we started
 			try{
-				File file=new ShareImageRenderer(appContext, status, parsedText, palette).render();
+				File file=new ShareImageRenderer(appContext, status, parsedText, parsedQuoteText, palette).render();
 				if(gen==generation.get())
 					callback.onSuccess(file);
 			}catch(Throwable t){
@@ -151,9 +174,22 @@ public class ShareImageRenderer{
 		});
 	}
 
+	/**
+	 * §11 gate, shared with callers that must parse the quoted text on the UI
+	 * thread: the quote block renders only for an accepted quote with the quoted
+	 * status attached (the timeline's gate in StatusDisplayItem). Never recurses:
+	 * a quoted status that itself quotes renders its own text only.
+	 */
+	public static Status quotedStatus(Status status){
+		if(status==null || !QuoteBlock.shouldRender(status.quote))
+			return null;
+		return status.quote.quotedStatus;
+	}
+
 	private final Context appContext;
 	private final Status status;
 	private final SpannableStringBuilder parsedText;
+	private final SpannableStringBuilder parsedQuoteText;
 	private final Palette palette;
 
 	private LinearLayout card;
@@ -161,10 +197,28 @@ public class ShareImageRenderer{
 	private boolean bodyPresent, mediaPresent, cwPresent;
 	private int mediaTopInCard;
 
-	private ShareImageRenderer(Context appContext, Status status, SpannableStringBuilder parsedText, Palette palette){
+	// §11 state (slice B)
+	private Status quoted;
+	private boolean quotePresent, pollPresent;
+	private LinearLayout quoteContainer;
+	private Space quoteTileSpace;
+	private Drawable quoteTileDrawable;
+	private boolean quoteTileBlurred;
+	private Space pollSpace;
+	private int pollTopInCard;
+	private TextView pollQuestion;
+	private TextView[] pollOptionLabels;
+	private int[] pollOptionHeights;
+	private int pollOptionLabelWidth;
+	private TextView pollFooter;
+	private int[] pollPcts;
+	private boolean[] pollLeaders;
+
+	private ShareImageRenderer(Context appContext, Status status, SpannableStringBuilder parsedText, SpannableStringBuilder parsedQuoteText, Palette palette){
 		this.appContext=appContext.getApplicationContext();
 		this.status=status;
 		this.parsedText=parsedText;
+		this.parsedQuoteText=parsedQuoteText;
 		this.palette=palette;
 	}
 
@@ -174,6 +228,12 @@ public class ShareImageRenderer{
 		Drawable avatar=loadAvatar();
 		List<Attachment> attachments=status.mediaAttachments!=null ? status.mediaAttachments : List.of();
 		MediaPrep media=prepareMedia(attachments);
+		quoted=quotedStatus(status);
+		if(quoted!=null){
+			if(parsedQuoteText!=null)
+				loadEmojiDrawables(parsedQuoteText);
+			prepareQuoteTile();
+		}
 
 		int totalHeight=measureAndLayout(attachments, media);
 		if(totalHeight>MAX_HEIGHT)
@@ -185,6 +245,10 @@ public class ShareImageRenderer{
 		drawAvatar(canvas, avatar);
 		if(mediaPresent)
 			drawMedia(canvas, attachments, media);
+		if(quoteTileSpace!=null)
+			drawQuoteTile(canvas);
+		if(pollPresent)
+			drawPoll(canvas);
 
 		File out=new File(dir, "post-"+safeFileName(status.id)+"-"+System.currentTimeMillis()+".png");
 		try(FileOutputStream fos=new FileOutputStream(out)){
@@ -218,9 +282,17 @@ public class ShareImageRenderer{
 	 * render as a blank box.
 	 */
 	private void loadEmojiDrawables() throws Exception{
-		if(parsedText==null)
+		loadEmojiDrawables(parsedText);
+	}
+
+	/**
+	 * Shared emoji-resolution core for the body text (slice A) and the quoted
+	 * text (slice B) — identical rule, just a different Spanned.
+	 */
+	private void loadEmojiDrawables(SpannableStringBuilder text) throws Exception{
+		if(text==null)
 			return;
-		CustomEmojiSpan[] spans=parsedText.getSpans(0, parsedText.length(), CustomEmojiSpan.class);
+		CustomEmojiSpan[] spans=text.getSpans(0, text.length(), CustomEmojiSpan.class);
 		ArrayList<List<CustomEmojiSpan>> groups=new ArrayList<>();
 		ArrayList<ImageLoaderRequest> requests=new ArrayList<>();
 		for(CustomEmojiSpan span:spans){
@@ -288,6 +360,29 @@ public class ShareImageRenderer{
 			}
 		}
 		return new MediaPrep(drawables, blurred);
+	}
+
+	/**
+	 * §11: the quoted status's first media attachment becomes a 160 × 160 tile.
+	 * Blur decision is the §5 rule with the quoted status's sensitive flag. A
+	 * missing or failed image leaves the drawable null; the draw step then
+	 * paints a neutral placeholder, never a blank hole.
+	 */
+	private void prepareQuoteTile(){
+		List<Attachment> attachments=quoted.mediaAttachments!=null ? quoted.mediaAttachments : List.of();
+		if(!QuoteBlock.hasMediaTile(attachments.size()))
+			return;
+		Attachment att=attachments.get(0);
+		// This build's Attachment model has no per-attachment sensitive flag;
+		// the quoted status's flag applies, mirroring prepareMedia.
+		quoteTileBlurred=SensitiveMedia.isBlurred(quoted.sensitive, false);
+		if(att.type!=Attachment.Type.IMAGE || TextUtils.isEmpty(att.previewUrl))
+			return; // placeholder tile at draw time
+		try{
+			quoteTileDrawable=load(new UrlImageLoaderRequest(att.previewUrl, QuoteBlock.MEDIA_TILE*2, QuoteBlock.MEDIA_TILE*2));
+		}catch(Exception x){
+			Log.w(TAG, "Failed to load quoted media "+att.previewUrl, x);
+		}
 	}
 
 	/**
@@ -361,10 +456,22 @@ public class ShareImageRenderer{
 			cw.setText("CW: "+status.spoilerText);
 			card.addView(cw, new LinearLayout.LayoutParams(CONTENT_WIDTH, ViewGroup.LayoutParams.WRAP_CONTENT));
 		}
-		if(bodyPresent){
+		quotePresent=quoted!=null;
+		pollPresent=status.poll!=null && status.poll.options!=null && !status.poll.options.isEmpty();
+		if(bodyPresent && !pollPresent){
 			body=newBodyTextView();
 			body.setText(bodyText);
 			card.addView(body, new LinearLayout.LayoutParams(CONTENT_WIDTH, ViewGroup.LayoutParams.WRAP_CONTENT));
+		}
+		// §11 ordering: quote block above poll block, both above media.
+		if(quotePresent){
+			card.addView(vspace(blockGapAbove(bodyPresent || cwPresent)));
+			buildQuoteBlock();
+		}
+		if(pollPresent){
+			card.addView(vspace(blockGapAbove(bodyPresent || cwPresent || quotePresent)));
+			pollSpace=vspace(measurePollBlock(status.poll, bodyPresent ? bodyText : null));
+			card.addView(pollSpace);
 		}
 		if(mediaPresent){
 			card.addView(vspace(BODY_MEDIA_GAP));
@@ -390,7 +497,15 @@ public class ShareImageRenderer{
 			// so SIDE_PADDING is already included. Adding it again here
 			// would double-count and push the grid past the footer rule.
 			mediaTopInCard=mediaSpace.getTop();
+		if(pollSpace!=null)
+			// Same parent-relative coordinate as mediaSpace above.
+			pollTopInCard=pollSpace.getTop();
 		return card.getMeasuredHeight();
+	}
+
+	/** Gap above a content block: the standard 56 px header gap when nothing is above it yet. */
+	private static int blockGapAbove(boolean anythingAbove){
+		return anythingAbove ? BLOCK_GAP : HEADER_BODY_GAP;
 	}
 
 	/**
@@ -491,6 +606,132 @@ public class ShareImageRenderer{
 		footer.addView(wordmark);
 
 		card.addView(footer, new LinearLayout.LayoutParams(CONTENT_WIDTH, ViewGroup.LayoutParams.WRAP_CONTENT));
+	}
+
+	/**
+	 * §11 quote block: 1 px outline rounded 20 px, background
+	 * {@code darken(colorM3SurfaceVariant, 0.06f)}, inner padding 32 px, author
+	 * name + handle at 28 sp, text clamped to 4 lines at 32 sp, and the quoted
+	 * status's first media thumbnail as a 160 × 160 tile on the right (drawn
+	 * manually like the main media grid). The author lines and text are real
+	 * TextViews, so they measure and draw with the same machinery as the body.
+	 */
+	private void buildQuoteBlock(){
+		quoteContainer=new LinearLayout(appContext);
+		quoteContainer.setOrientation(LinearLayout.HORIZONTAL);
+		GradientDrawable background=new GradientDrawable();
+		background.setColor(darken(palette.surfaceVariant, 0.06f));
+		background.setStroke(QuoteBlock.OUTLINE_WIDTH, palette.outlineVariant);
+		background.setCornerRadius(QuoteBlock.CORNER_RADIUS);
+		quoteContainer.setBackground(background);
+		quoteContainer.setPadding(QuoteBlock.INNER_PADDING, QuoteBlock.INNER_PADDING, QuoteBlock.INNER_PADDING, QuoteBlock.INNER_PADDING);
+
+		List<Attachment> attachments=quoted.mediaAttachments!=null ? quoted.mediaAttachments : List.of();
+		boolean tile=QuoteBlock.hasMediaTile(attachments.size());
+
+		LinearLayout textColumn=new LinearLayout(appContext);
+		textColumn.setOrientation(LinearLayout.VERTICAL);
+		Account account=quoted.account;
+		String displayName=TextUtils.isEmpty(account.displayName) ? account.username : account.displayName;
+
+		TextView name=newTextView(QuoteBlock.AUTHOR_SIZE, palette.onSurface, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+		name.setText(displayName);
+		textColumn.addView(name, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+		TextView handle=newTextView(QuoteBlock.AUTHOR_SIZE, palette.onSurfaceVariant, Typeface.DEFAULT);
+		handle.setText(fullHandle(account));
+		textColumn.addView(handle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+		Spanned quoteText=stripTrailingNewlines(parsedQuoteText);
+		if(quoteText.length()>0){
+			TextView text=newTextView(QuoteBlock.TEXT_SIZE, palette.onSurface, Typeface.DEFAULT);
+			text.setLineSpacing(0, BODY_LINE_SPACING);
+			text.setLinkTextColor(palette.primary);
+			text.setMaxLines(QuoteBlock.MAX_TEXT_LINES);
+			text.setEllipsize(TextUtils.TruncateAt.END);
+			text.setText(quoteText);
+			LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			lp.topMargin=12;
+			textColumn.addView(text, lp);
+		}
+
+		quoteContainer.addView(textColumn, new LinearLayout.LayoutParams(QuoteBlock.textColumnWidth(CONTENT_WIDTH, tile), ViewGroup.LayoutParams.WRAP_CONTENT));
+		if(tile){
+			quoteTileSpace=vspace(QuoteBlock.MEDIA_TILE, QuoteBlock.MEDIA_TILE);
+			LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(QuoteBlock.MEDIA_TILE, QuoteBlock.MEDIA_TILE);
+			lp.leftMargin=QuoteBlock.MEDIA_GAP;
+			quoteContainer.addView(quoteTileSpace, lp);
+		}
+		card.addView(quoteContainer, new LinearLayout.LayoutParams(CONTENT_WIDTH, ViewGroup.LayoutParams.WRAP_CONTENT));
+	}
+
+	/**
+	 * §11 poll block: the Mastodon API has no poll question field — the status's
+	 * own text is the question, so a poll post's body is drawn here at 34 sp
+	 * semibold instead of as the regular body block. Options are 32 sp labels
+	 * with the rounded percentage right-aligned and a 12 px bar behind the row;
+	 * the footer carries votes and the closed/ends-in state.
+	 *
+	 * All text is measured here with real TextViews (kept for the draw step);
+	 * only the bars and percentages are drawn by hand, so they can sit behind
+	 * the labels.
+	 *
+	 * @return the block's total height for the Space in the card layout
+	 */
+	private int measurePollBlock(Poll poll, Spanned questionText){
+		int[] votes=new int[poll.options.size()];
+		for(int i=0;i<votes.length;i++)
+			votes[i]=poll.options.get(i).votesCount!=null ? poll.options.get(i).votesCount : 0;
+		int total=PollBlock.totalVotes(poll.votersCount, poll.votesCount);
+		pollPcts=PollBlock.percentages(votes, total);
+		pollLeaders=new boolean[votes.length];
+		for(int i=0;i<votes.length;i++)
+			pollLeaders[i]=PollBlock.isLeader(i, votes);
+
+		// The percentage column reserves room for the widest printable label.
+		Paint probe=new Paint(Paint.ANTI_ALIAS_FLAG);
+		probe.setTextSize(POLL_OPTION_SIZE);
+		int pctWidth=(int)Math.ceil(probe.measureText("100%"));
+		pollOptionLabelWidth=CONTENT_WIDTH-pctWidth-POLL_PCT_MARGIN;
+
+		int widthSpec=View.MeasureSpec.makeMeasureSpec(CONTENT_WIDTH, View.MeasureSpec.EXACTLY);
+		int height=0;
+		if(questionText!=null && questionText.length()>0){
+			pollQuestion=newTextView(POLL_QUESTION_SIZE, palette.onSurface, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+			pollQuestion.setText(questionText);
+			int questionHeight=measureView(pollQuestion, widthSpec);
+			pollQuestion.layout(0, 0, CONTENT_WIDTH, questionHeight);
+			height+=questionHeight+POLL_QUESTION_GAP;
+		}
+		pollOptionLabels=new TextView[votes.length];
+		pollOptionHeights=new int[votes.length];
+		int optionWidthSpec=View.MeasureSpec.makeMeasureSpec(pollOptionLabelWidth, View.MeasureSpec.EXACTLY);
+		for(int i=0;i<votes.length;i++){
+			TextView label=newTextView(POLL_OPTION_SIZE, palette.onSurface, Typeface.DEFAULT);
+			String title=poll.options.get(i).title;
+			label.setText(title!=null ? title : "");
+			int labelHeight=measureView(label, optionWidthSpec);
+			label.layout(0, 0, pollOptionLabelWidth, labelHeight);
+			pollOptionLabels[i]=label;
+			pollOptionHeights[i]=labelHeight;
+			height+=Math.max(labelHeight, PollBlock.BAR_HEIGHT);
+			if(i<votes.length-1)
+				height+=POLL_OPTION_GAP;
+		}
+		pollFooter=newTextView(POLL_FOOTER_SIZE, palette.onSurfaceVariant, Typeface.DEFAULT);
+		Long expiresAt=poll.expiresAt!=null ? poll.expiresAt.toEpochMilli() : null;
+		pollFooter.setText(PollBlock.footer(poll.votesCount, poll.isExpired(), expiresAt, System.currentTimeMillis()));
+		int footerHeight=measureView(pollFooter, widthSpec);
+		pollFooter.layout(0, 0, CONTENT_WIDTH, footerHeight);
+		height+=POLL_FOOTER_GAP+footerHeight;
+		return height;
+	}
+
+	/** §11: background = {@code darken(colorM3SurfaceVariant, 0.06f)}. */
+	private static int darken(int color, float amount){
+		float f=1f-amount;
+		int a=color>>>24, r=(color>>>16)&0xFF, g=(color>>>8)&0xFF, b=color&0xFF;
+		return a<<24 | Math.round(r*f)<<16 | Math.round(g*f)<<8 | Math.round(b*f);
 	}
 
 	private TextView newBodyTextView(){
@@ -641,6 +882,111 @@ public class ShareImageRenderer{
 			case GIFV -> "GIF";
 			default -> "Media";
 		};
+	}
+
+	/**
+	 * §11: draw the quoted status's first media attachment into its 160 × 160
+	 * tile space. Sensitive quoted media is blurred with the same §5 machinery
+	 * as the main grid; the unblurred bitmap never enters the PNG.
+	 */
+	private void drawQuoteTile(Canvas canvas){
+		// The tile Space lives inside the quote container, so both offsets are
+		// parent-relative and must be composed (same coordinate class as M1).
+		int left=quoteContainer.getLeft()+quoteTileSpace.getLeft();
+		int top=quoteContainer.getTop()+quoteTileSpace.getTop();
+		RectF tileRect=new RectF(left, top, left+QuoteBlock.MEDIA_TILE, top+QuoteBlock.MEDIA_TILE);
+
+		Path clip=new Path();
+		clip.addRoundRect(tileRect, MEDIA_RADIUS, MEDIA_RADIUS, Path.Direction.CW);
+		canvas.save();
+		canvas.clipPath(clip);
+
+		Drawable d=quoteTileDrawable;
+		if(d!=null){
+			Bitmap tileBmp=drawableToBitmap(d, QuoteBlock.MEDIA_TILE, QuoteBlock.MEDIA_TILE);
+			if(quoteTileBlurred){
+				Bitmap blurredBmp=boxBlur(tileBmp, blurRadiusFor(QuoteBlock.MEDIA_TILE));
+				canvas.drawBitmap(blurredBmp, null, tileRect, null);
+			}else{
+				canvas.drawBitmap(tileBmp, null, tileRect, null);
+			}
+		}else{
+			canvas.drawColor(palette.surfaceVariant);
+		}
+		canvas.restore();
+
+		Paint labelPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+		if(d==null){
+			// Neutral placeholder with a type label (the description would not
+			// fit legibly on a 160 px tile).
+			drawCenteredLabel(canvas, tileRect, quotePlaceholderLabel(), QUOTE_TILE_LABEL_SIZE, palette.onSurfaceVariant, 0, labelPaint);
+		}else if(quoteTileBlurred){
+			drawCenteredLabel(canvas, tileRect, "Sensitive media", QUOTE_TILE_LABEL_SIZE, 0xFFFFFFFF, 0x8C000000, labelPaint);
+		}
+	}
+
+	private String quotePlaceholderLabel(){
+		Attachment att=quoted.mediaAttachments.get(0);
+		return switch(att.type){
+			case VIDEO -> "Video";
+			case AUDIO -> "Audio";
+			case GIFV -> "GIF";
+			default -> "Media";
+		};
+	}
+
+	/**
+	 * §11: draw the poll block into its Space. Bars go down first so they sit
+	 * behind the option labels; the percentage text is drawn from the same
+	 * rounded value that sizes the bar, per the spec. The leader bar is
+	 * colorM3Primary at 35% alpha; every other bar is colorM3SurfaceVariant.
+	 */
+	private void drawPoll(Canvas canvas){
+		canvas.save();
+		canvas.translate(pollSpace.getLeft(), pollTopInCard);
+		int y=0;
+		if(pollQuestion!=null){
+			canvas.save();
+			canvas.translate(0, y);
+			pollQuestion.draw(canvas);
+			canvas.restore();
+			y+=pollQuestion.getHeight()+POLL_QUESTION_GAP;
+		}
+
+		Paint trackPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+		trackPaint.setColor(palette.surfaceVariant);
+		Paint fillPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+		Paint pctPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+		pctPaint.setTextSize(POLL_OPTION_SIZE);
+		pctPaint.setColor(palette.onSurfaceVariant);
+		pctPaint.setTextAlign(Paint.Align.RIGHT);
+		int barRadius=PollBlock.BAR_HEIGHT/2;
+		for(int i=0;i<pollOptionLabels.length;i++){
+			int rowHeight=Math.max(pollOptionHeights[i], PollBlock.BAR_HEIGHT);
+			int barTop=y+(rowHeight-PollBlock.BAR_HEIGHT)/2;
+			canvas.drawRoundRect(new RectF(0, barTop, CONTENT_WIDTH, barTop+PollBlock.BAR_HEIGHT), barRadius, barRadius, trackPaint);
+			int width=PollBlock.barWidth(pollPcts[i], CONTENT_WIDTH);
+			if(width>0){
+				fillPaint.setColor(pollLeaders[i] ? (palette.primary&0xFFFFFF)|0x59000000 : palette.surfaceVariant);
+				canvas.drawRoundRect(new RectF(0, barTop, width, barTop+PollBlock.BAR_HEIGHT), barRadius, barRadius, fillPaint);
+			}
+			// Same rounded percentage as the bar, right-aligned in its column.
+			canvas.drawText(pollPcts[i]+"%", CONTENT_WIDTH, y+pollOptionLabels[i].getBaseline(), pctPaint);
+			canvas.save();
+			canvas.translate(0, y);
+			pollOptionLabels[i].draw(canvas);
+			canvas.restore();
+			y+=rowHeight;
+			if(i<pollOptionLabels.length-1)
+				y+=POLL_OPTION_GAP;
+		}
+
+		y+=POLL_FOOTER_GAP;
+		canvas.save();
+		canvas.translate(0, y);
+		pollFooter.draw(canvas);
+		canvas.restore();
+		canvas.restore();
 	}
 
 	private void drawCenteredLabel(Canvas canvas, RectF tileRect, String text, int sizePx, int textColor, int pillColor, Paint paint){
