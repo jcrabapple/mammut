@@ -261,6 +261,11 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 							adapter.notifyItemRangeInserted(prevCount, count-prevCount);
 						prependItems(result.ancestors, !refreshing);
 						dataLoaded();
+						// Reading Room: the chain can only be computed once the context is in
+						// memory, and it is what decides whether the Unroll action exists and
+						// what the subtitle counts. Without this the action stayed hidden until
+						// some later event (a refresh, a new reply) happened to recount.
+						onConversationChanged();
 						if(refreshing){
 							refreshDone();
 							DiffUtil.DiffResult diff=DiffUtil.calculateDiff(new DiffUtil.Callback(){

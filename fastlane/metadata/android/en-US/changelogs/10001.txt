@@ -1,0 +1,1 @@
+Fixed: the Unroll action and the post/people count in a conversation now appear as soon as the thread loads, instead of only after a refresh.
