@@ -58,9 +58,9 @@ public class CatchUpFragment extends StatusListFragment{
 	public static final int CATCH_UP_MAX_POSTS=200;
 	private org.joinmastodon.android.ui.views.CatchUpCardDecoration cardDecoration;
 	private static final int PAGE_SIZE=40;
-	private static final int REQUEST_CEILING=5;
+	private static final int REQUEST_CEILING=5; // 5 x 40 = 200 = CATCH_UP_MAX_POSTS by construction
 	private static final java.time.format.DateTimeFormatter SINCE_FORMATTER=
-			java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT); // 5 x 40 = 200 = CATCH_UP_MAX_POSTS by construction
+			java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT);
 
 	private enum EndReason{NONE, WINDOW_END, CAP, SERVER_END}
 
@@ -470,7 +470,10 @@ public class CatchUpFragment extends StatusListFragment{
 		}else if(capTruncated){
 			scopeLine.setText(getString(R.string.catch_up_scope_cap, shownCount));
 		}else if(hasPreviousCatchUp){
-			scopeLine.setText(getString(R.string.catch_up_scope_since, SINCE_FORMATTER.format(Instant.ofEpochMilli(windowStart))));
+			// An Instant carries no calendar fields, so the localized formatter needs a zone
+			// before it can name a month. Without it this threw on the second open.
+			scopeLine.setText(getString(R.string.catch_up_scope_since,
+					SINCE_FORMATTER.withZone(java.time.ZoneId.systemDefault()).format(Instant.ofEpochMilli(windowStart))));
 		}else{
 			scopeLine.setText(R.string.catch_up_scope);
 		}
