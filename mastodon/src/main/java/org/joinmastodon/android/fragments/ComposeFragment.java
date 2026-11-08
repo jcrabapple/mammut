@@ -268,7 +268,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private View addSegmentBtn;
 	private View segmentOneHeader;
 	private TextView segmentOneNumber;
-	private ImageButton segmentOneOverflow;
+	private ImageButton segmentOneOverflow, segmentOneMoveUp, segmentOneMoveDown;
 	/** "Posting 2 of 4" — lives on the sending overlay */
 	private TextView postingProgressText;
 	/** The segment the bottom-bar buttons act on; 0 is the main surface */
@@ -549,6 +549,10 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				imm.showSoftInput(ts.text, 0);
 		});
 		segmentOneOverflow.setOnClickListener(v->showSegmentOverflow(segmentOneOverflow, 0));
+		segmentOneMoveUp=view.findViewById(R.id.segment_move_up_one);
+		segmentOneMoveDown=view.findViewById(R.id.segment_move_down_one);
+		segmentOneMoveUp.setOnClickListener(v->moveSegment(0, -1));
+		segmentOneMoveDown.setOnClickListener(v->moveSegment(0, 1));
 		View.OnFocusChangeListener mainFocusListener=(v, hasFocus)->{
 			if(hasFocus)
 				setActiveSegment(0);
@@ -591,6 +595,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				updateThreadSegmentCounter(ts);
 			}
 		}
+		// Single-post compose has no thread chrome: this is the path that hides
+		// the first segment's header when there is nothing to move.
+		updateThreadChrome();
 
 		creatingView=false;
 
@@ -2502,6 +2509,10 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		ts.number=card.findViewById(R.id.segment_number);
 		ts.counter=card.findViewById(R.id.segment_counter);
 		ts.overflowBtn=card.findViewById(R.id.segment_overflow);
+		ts.moveUpBtn=card.findViewById(R.id.segment_move_up);
+		ts.moveDownBtn=card.findViewById(R.id.segment_move_down);
+		ts.moveUpBtn.setOnClickListener(v->moveSegment(extraSegments.indexOf(ts)+1, -1));
+		ts.moveDownBtn.setOnClickListener(v->moveSegment(extraSegments.indexOf(ts)+1, 1));
 		ts.cwBtn=card.findViewById(R.id.segment_cw);
 		ts.text=card.findViewById(R.id.segment_text);
 		ts.spoilerWrap=card.findViewById(R.id.segment_spoiler_wrap);
@@ -2585,7 +2596,40 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		updateDraftState();
 	}
 
+	/**
+	 * MAMMUT: Composer 2.0 — thread chrome only exists while there is a thread.
+	 * The first segment's header carries the number and the move arrows; on a
+	 * single-post compose there is nothing to move and nowhere to move it, so
+	 * the header is gone rather than left as 40dp of empty chrome above the
+	 * text. Arrows that cannot move anything are dimmed and disabled instead
+	 * of disappearing, so the header never changes height mid-thread.
+	 */
+	private void updateThreadChrome(){
+		if(segmentOneHeader==null || segmentOneMoveUp==null || segmentOneMoveDown==null)
+			return;
+		if(editingStatus!=null){
+			segmentOneHeader.setVisibility(View.GONE);
+			return;
+		}
+		boolean thread=!extraSegments.isEmpty();
+		segmentOneHeader.setVisibility(thread ? View.VISIBLE : View.GONE);
+		segmentOneMoveUp.setEnabled(false);
+		segmentOneMoveUp.setAlpha(0.38f);
+		segmentOneMoveDown.setEnabled(thread);
+		segmentOneMoveDown.setAlpha(thread ? 1f : 0.38f);
+		int count=extraSegments.size()+1;
+		for(int i=0;i<extraSegments.size();i++){
+			ThreadSegment ts=extraSegments.get(i);
+			boolean canMoveDown=i+1<count-1;
+			ts.moveUpBtn.setEnabled(true);
+			ts.moveUpBtn.setAlpha(1f);
+			ts.moveDownBtn.setEnabled(canMoveDown);
+			ts.moveDownBtn.setAlpha(canMoveDown ? 1f : 0.38f);
+		}
+	}
+
 	private void renumberSegments(){
+		updateThreadChrome();
 		segmentOneNumber.setText("1");
 		segmentOneNumber.setContentDescription(getString(R.string.thread_post_number, 1));
 		for(int i=0;i<extraSegments.size();i++){
@@ -2598,17 +2642,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private void showSegmentOverflow(View anchor, int index){
 		PopupMenu popup=new PopupMenu(getActivity(), anchor);
 		popup.inflate(R.menu.compose_segment_overflow);
-		int count=extraSegments.size()+1;
-		popup.getMenu().findItem(R.id.move_up).setEnabled(index>0);
-		popup.getMenu().findItem(R.id.move_down).setEnabled(index<count-1);
-		popup.getMenu().findItem(R.id.delete).setVisible(count>1);
+		popup.getMenu().findItem(R.id.delete).setVisible(extraSegments.size()+1>1);
 		popup.setOnMenuItemClickListener(item->{
-			int id=item.getItemId();
-			if(id==R.id.move_up)
-				moveSegment(index, -1);
-			else if(id==R.id.move_down)
-				moveSegment(index, 1);
-			else if(id==R.id.delete)
+			if(item.getItemId()==R.id.delete)
 				deleteSegment(index);
 			return true;
 		});
@@ -2707,7 +2743,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private class ThreadSegment{
 		View card;
 		TextView number, counter;
-		ImageButton overflowBtn, cwBtn;
+		ImageButton overflowBtn, cwBtn, moveUpBtn, moveDownBtn;
 		ComposeEditText text;
 		View spoilerWrap;
 		EditText spoilerEdit;

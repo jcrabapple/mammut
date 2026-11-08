@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MAMMUT: Composer 2.0 (§4) — the per-segment overflow on every thread card -->
+<!-- MAMMUT: Composer 2.0 (§4) — the per-segment overflow on every thread card.
+     Moving is done with the two arrow buttons in the card header, not from here. -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
-	<item android:id="@+id/move_up" android:title="@string/move_up"/>
-	<item android:id="@+id/move_down" android:title="@string/move_down"/>
 	<item android:id="@+id/delete" android:title="@string/delete"/>
 </menu>

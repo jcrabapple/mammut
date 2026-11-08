@@ -37,6 +37,32 @@
 			android:layout_height="1dp"
 			android:layout_weight="1"/>
 
+			<ImageButton
+				android:id="@+id/segment_move_up"
+				android:layout_width="32dp"
+				android:layout_height="32dp"
+				android:layout_marginEnd="4dp"
+				android:background="@drawable/bg_compose_button"
+				android:contentDescription="@string/move_up"
+				android:tooltipText="@string/move_up"
+				android:padding="6dp"
+				android:tint="@color/compose_button"
+				android:tintMode="src_in"
+				android:src="@drawable/ic_arrow_upward_20px"/>
+
+			<ImageButton
+				android:id="@+id/segment_move_down"
+				android:layout_width="32dp"
+				android:layout_height="32dp"
+				android:layout_marginEnd="8dp"
+				android:background="@drawable/bg_compose_button"
+				android:contentDescription="@string/move_down"
+				android:tooltipText="@string/move_down"
+				android:padding="6dp"
+				android:tint="@color/compose_button"
+				android:tintMode="src_in"
+				android:src="@drawable/ic_arrow_downward_20px"/>
+
 		<ImageButton
 			android:id="@+id/segment_cw"
 			android:layout_width="32dp"
