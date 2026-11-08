@@ -124,6 +124,7 @@ import org.joinmastodon.android.events.StatusMuteChangedEvent;
 import org.joinmastodon.android.model.Notification;
 import org.joinmastodon.android.model.AccountField;
 import org.joinmastodon.android.ui.text.HtmlParser;
+import org.joinmastodon.android.ui.share.ShareImageRenderer;
 import org.parceler.Parcels;
 
 import java.io.File;
@@ -168,6 +169,7 @@ import me.grishka.appkit.utils.V;
 import okhttp3.MediaType;
 
 public class UiUtils{
+	private static final String TAG="UiUtils";
 	private static Handler mainHandler=new Handler(Looper.getMainLooper());
 	private static final String DATE_PATTERN_SHORT_WITH_YEAR="d MMM uuuu", DATE_PATTERN_SHORT="d MMM";
 	private static DateTimeFormatter dateFormatterShortWithYear, dateFormatterShort;
@@ -1297,6 +1299,58 @@ public class UiUtils{
 			}
 		}catch(IOException ignore){}
 		context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_toot_title)));
+	}
+
+	/**
+	 * Share a status as a rendered PNG card (post-as-image). Sibling of
+	 * {@link #openSystemShareSheet(Context, Object)} — the link share above is left
+	 * untouched. For a boost, the inner status is rendered.
+	 */
+	public static void shareImage(Activity activity, String accountID, Status status){
+		final Status target=status.getContentStatus();
+		final Context appContext=activity.getApplicationContext();
+		// Parse with the themed activity context: HtmlParser spans read theme colours.
+		final SpannableStringBuilder text=TextUtils.isEmpty(target.content)
+				? null
+				: HtmlParser.parse(target.content, target.emojis, target.mentions, target.tags, accountID, target, activity);
+		final ShareImageRenderer.Palette palette=new ShareImageRenderer.Palette(
+				getThemeColor(activity, R.attr.colorM3Surface),
+				getThemeColor(activity, R.attr.colorM3OnSurface),
+				getThemeColor(activity, R.attr.colorM3OnSurfaceVariant),
+				getThemeColor(activity, R.attr.colorM3Primary),
+				getThemeColor(activity, R.attr.colorM3OutlineVariant),
+				getThemeColor(activity, R.attr.colorM3SurfaceVariant));
+		new Snackbar.Builder(activity).setText(R.string.preparing_share_image).show();
+		ShareImageRenderer.enqueue(appContext, target, text, palette, new ShareImageRenderer.Callback(){
+			@Override
+			public void onSuccess(File file){
+				activity.runOnUiThread(()->{
+					if(!isActivityAlive(activity))
+						return;
+					Uri uri=getFileProviderUri(activity, file);
+					Intent intent=new Intent(Intent.ACTION_SEND);
+					intent.setType("image/png");
+					intent.putExtra(Intent.EXTRA_STREAM, uri);
+					intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+					intent.putExtra(Intent.EXTRA_TEXT, target.url);
+					activity.startActivity(Intent.createChooser(intent, activity.getString(R.string.share_toot_title)));
+				});
+			}
+
+			@Override
+			public void onError(Throwable error){
+				Log.e(TAG, "shareImage: render failed", error);
+				activity.runOnUiThread(()->{
+					if(!isActivityAlive(activity))
+						return;
+					new Snackbar.Builder(activity).setText(R.string.share_image_failed).show();
+				});
+			}
+		});
+	}
+
+	private static boolean isActivityAlive(Activity activity){
+		return !activity.isFinishing() && !activity.isDestroyed();
 	}
 
 	public static void maybeShowTextCopiedToast(Context context){
