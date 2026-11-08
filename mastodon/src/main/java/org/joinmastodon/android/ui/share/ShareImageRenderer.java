@@ -3,6 +3,7 @@ package org.joinmastodon.android.ui.share;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.os.Build;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -1080,12 +1081,27 @@ public class ShareImageRenderer{
 		if(drawable instanceof BitmapDrawable bd)
 			src=bd.getBitmap();
 		if(src!=null)
-			return centerCrop(src, width, height);
+			return centerCrop(toSoftware(src), width, height);
 		Bitmap bmp=Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
 		Canvas canvas=new Canvas(bmp);
 		drawable.setBounds(0, 0, width, height);
 		drawable.draw(canvas);
 		return bmp;
+	}
+
+	/**
+	 * The image loader hands back {@link Bitmap.Config#HARDWARE} bitmaps on Android 9+, which
+	 * is correct for on-screen drawing and illegal on the software canvas this class renders
+	 * into ({@code Software rendering doesn't support hardware bitmaps}). Every bitmap that
+	 * reaches a canvas here has to be a software bitmap first.
+	 */
+	private static Bitmap toSoftware(Bitmap src){
+		if(Build.VERSION.SDK_INT<Build.VERSION_CODES.O)
+			return src; // hardware bitmaps do not exist before API 26
+		if(src.getConfig()!=Bitmap.Config.HARDWARE)
+			return src;
+		Bitmap copy=src.copy(Bitmap.Config.ARGB_8888, false);
+		return copy!=null ? copy : src;
 	}
 
 	private static Bitmap centerCrop(Bitmap src, int width, int height){
@@ -1104,6 +1120,7 @@ public class ShareImageRenderer{
 	 * bitmap (which may back a cache drawable) is never mutated.
 	 */
 	private static Bitmap boxBlur(Bitmap src, int radius){
+		src=toSoftware(src);
 		if(radius<1 || src.getWidth()==0 || src.getHeight()==0)
 			return src;
 		Bitmap work=src.copy(Bitmap.Config.ARGB_8888, true);

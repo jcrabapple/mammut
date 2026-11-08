@@ -1,0 +1,1 @@
+Fixes "Share as image" failing on Android 9 and newer: the card is drawn on a software canvas, and the image loader's hardware bitmaps cannot be drawn there. Avatars and photos now appear in the card.
