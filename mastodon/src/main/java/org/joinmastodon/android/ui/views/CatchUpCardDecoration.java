@@ -47,12 +47,7 @@ public class CatchUpCardDecoration extends RecyclerView.ItemDecoration{
 		// A shade below the theme's surface variant: the card should sit on the page, not
 		// merely tint it. Blending toward black works in both themes, where a fixed colour
 		// would only work in one.
-		int base=UiUtils.getThemeColor(context, R.attr.colorM3SurfaceVariant);
-		fillPaint.setColor(Color.rgb(
-				(int)(Color.red(base)*0.93f),
-				(int)(Color.green(base)*0.93f),
-				(int)(Color.blue(base)*0.93f)
-		));
+		fillPaint.setColor(darken(UiUtils.getThemeColor(context, R.attr.colorM3SurfaceVariant), 0.16f));
 		outlinePaint.setStyle(Paint.Style.STROKE);
 		outlinePaint.setStrokeWidth(V.dp(1));
 		outlinePaint.setColor(Color.argb(0x66,

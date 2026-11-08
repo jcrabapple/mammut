@@ -108,11 +108,11 @@ public class CatchUpFragment extends StatusListFragment{
 	public void onViewCreated(View view, Bundle savedInstanceState){
 		super.onViewCreated(view, savedInstanceState);
 		// Cards replace divider lines here: each group is its own surface, and a divider
-		// drawn at a card boundary would float in the gap between them.
-		for(int i=list.getItemDecorationCount()-1; i>=0; i--){
-			if(list.getItemDecorationAt(i).getClass().getSimpleName().contains("StatusListItemDecoration"))
-				list.removeItemDecorationAt(i);
-		}
+		// drawn at a card boundary floats in the gap between them. Clear every decoration
+		// the base fragment installed rather than matching one by class name — a divider
+		// that survives this call is drawn between cards with nothing to explain it.
+		while(list.getItemDecorationCount()>0)
+			list.removeItemDecorationAt(0);
 		cardDecoration=new org.joinmastodon.android.ui.views.CatchUpCardDecoration(view.getContext());
 		list.addItemDecoration(cardDecoration);
 		scopeLine=view.findViewById(R.id.catch_up_scope);
