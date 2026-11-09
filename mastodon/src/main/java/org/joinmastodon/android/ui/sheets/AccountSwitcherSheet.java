@@ -28,6 +28,7 @@ import org.joinmastodon.android.fragments.onboarding.CustomWelcomeFragment;
 import org.joinmastodon.android.ui.ClickableSingleViewRecyclerAdapter;
 import org.joinmastodon.android.ui.M3AlertDialogBuilder;
 import org.joinmastodon.android.ui.OutlineProviders;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.views.CheckableRelativeLayout;
 
@@ -138,6 +139,7 @@ public class AccountSwitcherSheet extends BottomSheet{
 		content.setBackgroundResource(R.drawable.bg_bottom_sheet);
 		content.addView(list);
 		setContentView(content);
+		MammutTypeface.applyRecursively(content); // M2: the sheet's themed context inflates outside the activity's factory
 		setNavigationBarBackground(new ColorDrawable(UiUtils.alphaBlendColors(UiUtils.getThemeColor(activity, R.attr.colorM3Surface),
 				UiUtils.getThemeColor(activity, R.attr.colorM3Primary), 0.05f)), !UiUtils.isDarkTheme());
 	}

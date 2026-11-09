@@ -13,6 +13,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 
 import org.joinmastodon.android.R;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
 import androidx.annotation.StringRes;
@@ -107,6 +108,13 @@ public class M3AlertDialogBuilder extends AlertDialog.Builder{
 				}
 			}
 		}
+		// M2: the dialog's PhoneWindow inflated with its own themed context,
+		// outside the activity inflater's factory — remap the constructed
+		// hierarchy (title, message, buttons, the checkbox above) to the
+		// active family. The onShow pass covers anything attached between
+		// create() and show().
+		MammutTypeface.applyRecursively(alert.getWindow().getDecorView());
+		alert.setOnShowListener(d -> MammutTypeface.applyRecursively(alert.getWindow().getDecorView()));
 		return alert;
 	}
 

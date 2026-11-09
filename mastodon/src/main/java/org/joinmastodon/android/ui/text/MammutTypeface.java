@@ -3,6 +3,7 @@ package org.joinmastodon.android.ui.text;
 import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
@@ -12,6 +13,7 @@ import android.util.SparseArray;
 import android.view.InflateException;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.core.content.res.ResourcesCompat;
@@ -42,8 +44,12 @@ public class MammutTypeface{
 	// own fonts.
 	private static final int SLOT_REGULAR=0, SLOT_MEDIUM=1, SLOT_BOLD=2, SLOT_ITALIC=3;
 
-	/** (family.ordinal()<<2)|slot — faces are built once, never per bind. */
-	private static final SparseArray<Typeface> cache=new SparseArray<>();
+	/** (family.ordinal()<<2)|slot — faces are built once, never per bind.
+	 * Lazily created: the class must stay pure-Java-initializable so
+	 * resourceFor() is callable from JVM unit tests (§7), where the mockable
+	 * android.jar constructors throw. */
+	private static final Object CACHE_LOCK=new Object();
+	private static SparseArray<Typeface> cache;
 
 	private MammutTypeface(){}
 
@@ -56,12 +62,27 @@ public class MammutTypeface{
 	 * picks the 400-italic file. A load failure logs W and returns base.
 	 */
 	public static Typeface apply(Typeface base){
-		return apply(GlobalUserPreferences.fontFamily, base);
+		return apply(GlobalUserPreferences.fontFamily, base, 0);
 	}
 
 	// Split from the public overload so the mapping is testable without the
 	// global preference state.
 	static Typeface apply(GlobalUserPreferences.FontFamily family, Typeface base){
+		return apply(family, base, 0);
+	}
+
+	// Preference-reading overload carrying a pre-P weight hint (M3).
+	static Typeface apply(Typeface base, int weightHint){
+		return apply(GlobalUserPreferences.fontFamily, base, weightHint);
+	}
+
+	/**
+	 * §4/M3: weightHint supplies a style-declared 500 for platforms without
+	 * Typeface.getWeight() (API < 28) — see InflaterFactory.weightHint().
+	 * A hint never overrides a bold flag or a getWeight() read; it only
+	 * stands in for the medium weight the view was constructed with.
+	 */
+	static Typeface apply(GlobalUserPreferences.FontFamily family, Typeface base, int weightHint){
 		if(family==GlobalUserPreferences.FontFamily.SYSTEM)
 			return base;
 		int style=base!=null ? base.getStyle() : Typeface.NORMAL;
@@ -72,11 +93,36 @@ public class MammutTypeface{
 			weight=700;
 		}else if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P && base!=null && base.getWeight()>=500){
 			weight=500;
+		}else if(weightHint>=500){
+			weight=500;
 		}else{
 			weight=400;
 		}
 		Typeface loaded=get(family, weight, italic);
 		return loaded!=null ? loaded : base;
+	}
+
+	/**
+	 * §4.1/M2: dialogs and bottom sheets inflate with their own themed
+	 * contexts, so the per-Activity InflaterFactory never sees their views,
+	 * and programmatic ones (new CheckBox, new EditText, custom views)
+	 * bypass any factory. Walk an existing hierarchy and remap every
+	 * TextView the same way the factory would — the pre-P weight hint rides
+	 * along so a sans-serif-medium dialog title keeps its 500 file.
+	 */
+	public static void applyRecursively(View root){
+		if(root==null || GlobalUserPreferences.fontFamily==GlobalUserPreferences.FontFamily.SYSTEM)
+			return;
+		if(root instanceof TextView text && !InflaterFactory.isMonospace(text, null)){
+			Typeface base=text.getTypeface();
+			Typeface font=apply(base, InflaterFactory.weightHint(base));
+			if(font!=base)
+				text.setTypeface(font);
+		}
+		if(root instanceof ViewGroup group){
+			for(int i=0;i<group.getChildCount();i++)
+				applyRecursively(group.getChildAt(i));
+		}
 	}
 
 	/**
@@ -95,7 +141,9 @@ public class MammutTypeface{
 		if(italic && slot==SLOT_REGULAR)
 			slot=SLOT_ITALIC;
 		int key=(family.ordinal()<<2)|slot;
-		synchronized(cache){
+		synchronized(CACHE_LOCK){
+			if(cache==null)
+				cache=new SparseArray<>();
 			Typeface cached=cache.get(key);
 			if(cached!=null)
 				return cached;
@@ -187,7 +235,7 @@ public class MammutTypeface{
 			View view=createView(name, attrs);
 			if(view instanceof TextView text && !isMonospace(text, attrs)){
 				Typeface base=text.getTypeface();
-				Typeface font=apply(base);
+				Typeface font=MammutTypeface.apply(base, weightHint(context, attrs, base));
 				if(font!=base)
 					text.setTypeface(font);
 			}
@@ -221,14 +269,61 @@ public class MammutTypeface{
 		/**
 		 * §4.1: leave anything carrying monospace alone. Catches the declared
 		 * cases (android:fontFamily="monospace", android:typeface="monospace",
-		 * the latter being 3 = TYPEFACE_MONOSPACE). Nothing in the app's
-		 * styles or layouts sets monospace at view level — code spans are
-		 * spans, which this hook never rewrites.
+		 * the latter being 3 = TYPEFACE_MONOSPACE). applyRecursively passes no
+		 * AttributeSet; on API < 28 the framework resolved a view-level
+		 * family through the Typeface.create cache, so an identity match
+		 * against the cached monospace instance for the same style detects
+		 * it there. Nothing in the app's styles or layouts sets monospace at
+		 * view level — code spans are spans, which this hook never rewrites.
 		 */
 		private static boolean isMonospace(TextView view, AttributeSet attrs){
-			if("monospace".equals(attrs.getAttributeValue(ANDROID_NS, "fontFamily")))
-				return true;
-			return attrs.getAttributeIntValue(ANDROID_NS, "typeface", -1)==3;
+			if(attrs!=null){
+				if("monospace".equals(attrs.getAttributeValue(ANDROID_NS, "fontFamily")))
+					return true;
+				if(attrs.getAttributeIntValue(ANDROID_NS, "typeface", -1)==3)
+					return true;
+			}
+			if(Build.VERSION.SDK_INT<Build.VERSION_CODES.P && view.getTypeface()!=null)
+				return Typeface.create("monospace", view.getTypeface().getStyle())==view.getTypeface();
+			return false;
+		}
+
+		/**
+		 * M3: API < 28 has no Typeface.getWeight(), so a style-declared
+		 * "sans-serif-medium" can't be read back from the constructed view's
+		 * typeface. Reconstruct the 500 from the same sources the framework
+		 * read it at construction: the explicit attribute, the
+		 * textAppearance that carries it (m3_title/label styles), and — for
+		 * theme/style-declared families such as android:buttonStyle, which
+		 * styles.xml sets to sans-serif-medium — the pre-P Typeface.create
+		 * cache, which returns the identical instance for the same
+		 * name+style the framework built the view with. A platform that
+		 * doesn't share that cache simply reports no hint and the view
+		 * keeps its 400 file.
+		 */
+		private static int weightHint(Context context, AttributeSet attrs, Typeface base){
+			if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P)
+				return 0; // apply() reads getWeight() directly
+			String ff=attrs.getAttributeValue(ANDROID_NS, "fontFamily");
+			if(ff==null){
+				TypedArray ta=context.obtainStyledAttributes(attrs, new int[]{android.R.attr.fontFamily}, android.R.attr.textAppearance, 0);
+				try{
+					ff=ta.getString(0);
+				}finally{
+					ta.recycle();
+				}
+			}
+			if("sans-serif-medium".equals(ff))
+				return 500;
+			return weightHint(base);
+		}
+
+		// Attribute-free half of the hint, shared with applyRecursively()
+		// (dialogs and sheets carry textAppearance styles too).
+		private static int weightHint(Typeface base){
+			if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P || base==null)
+				return 0;
+			return Typeface.create("sans-serif-medium", base.getStyle())==base ? 500 : 0;
 		}
 	}
 

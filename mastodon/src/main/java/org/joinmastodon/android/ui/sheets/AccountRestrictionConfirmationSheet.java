@@ -18,6 +18,7 @@ import org.joinmastodon.android.R;
 import org.joinmastodon.android.ui.M3AlertDialogBuilder;
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.ui.drawables.EmptyDrawable;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.views.ProgressBarButton;
 
@@ -44,6 +45,7 @@ public abstract class AccountRestrictionConfirmationSheet extends BottomSheet{
 		super(context);
 		View content=context.getSystemService(LayoutInflater.class).inflate(R.layout.sheet_restrict_account, null);
 		setContentView(content);
+		MammutTypeface.applyRecursively(content); // M2: the sheet's themed context inflates outside the activity's factory
 		setNavigationBarBackground(new ColorDrawable(UiUtils.alphaBlendColors(UiUtils.getThemeColor(context, R.attr.colorM3Surface),
 				UiUtils.getThemeColor(context, R.attr.colorM3Primary), 0.05f)), !UiUtils.isDarkTheme());
 

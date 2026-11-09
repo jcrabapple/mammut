@@ -22,6 +22,7 @@ import org.joinmastodon.android.fragments.DonationWebViewFragment;
 import org.joinmastodon.android.model.donations.DonationCampaign;
 import org.joinmastodon.android.ui.M3AlertDialogBuilder;
 import org.joinmastodon.android.ui.OutlineProviders;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.views.CurrencyAmountInput;
 
@@ -62,6 +63,7 @@ public class DonationSheet extends BottomSheet{
 
 		View content=context.getSystemService(LayoutInflater.class).inflate(R.layout.sheet_donation, null);
 		setContentView(content);
+		MammutTypeface.applyRecursively(content); // M2: the sheet's themed context inflates outside the activity's factory
 		setNavigationBarBackground(new ColorDrawable(UiUtils.alphaBlendColors(UiUtils.getThemeColor(context, R.attr.colorM3Surface),
 				UiUtils.getThemeColor(context, R.attr.colorM3Primary), 0.05f)), !UiUtils.isDarkTheme());
 

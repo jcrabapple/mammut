@@ -21,6 +21,7 @@ import org.joinmastodon.android.model.viewmodel.ListItem;
 import org.joinmastodon.android.ui.HintTextAccessibilityDelegate;
 import org.joinmastodon.android.ui.adapters.GenericListItemsAdapter;
 import org.joinmastodon.android.ui.adapters.SpinnerListItemsAdapter;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.views.FloatingHintEditTextLayout;
 
@@ -44,6 +45,7 @@ public class ComposerVisibilitySheet extends BottomSheet{
 		super(context);
 		View content=context.getSystemService(LayoutInflater.class).inflate(R.layout.sheet_compose_visibility, null);
 		setContentView(content);
+		MammutTypeface.applyRecursively(content); // M2: the sheet's themed context inflates outside the activity's factory
 		setNavigationBarBackground(new ColorDrawable(UiUtils.alphaBlendColors(UiUtils.getThemeColor(context, R.attr.colorM3Surface),
 				UiUtils.getThemeColor(context, R.attr.colorM3Primary), 0.05f)), !UiUtils.isDarkTheme());
 
