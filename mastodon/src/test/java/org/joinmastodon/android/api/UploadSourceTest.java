@@ -6,6 +6,8 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
+import java.util.Locale;
+
 /**
  * The upload decision matrix, with no Android types under it. This is the test that would have
  * caught the HEIC bug: a content URI whose provider size is NULL must never be read as "zero
@@ -74,5 +76,24 @@ public class UploadSourceTest{
 		UploadSource src=new UploadSource(UploadSource.Kind.CONTENT, UploadSource.SIZE_UNKNOWN, null, null);
 		assertFalse(src.isHeic());
 		assertEquals(UploadSource.Format.SEND_AS_IS, src.format());
+	}
+
+	@Test
+	public void heicDetectionIsLocaleSafe(){
+		// t_8ab12a49 M3: Turkish/Azerbaijani lowercasing maps I→ı, so a default-locale
+		// toLowerCase() turns "IMG_0001.HEIC" into "ımg_0001.heıc" and silently disables
+		// HEIC detection — the exact 500 this branch fixes. Detection must use Locale.ROOT.
+		Locale previous=Locale.getDefault();
+		Locale.setDefault(new Locale("tr", "TR"));
+		try{
+			UploadSource byName=new UploadSource(UploadSource.Kind.CONTENT, UploadSource.SIZE_UNKNOWN, null, "IMG_0001.HEIC");
+			assertTrue(byName.isHeic());
+			assertEquals(UploadSource.Format.TRANSCODE_TO_JPEG, byName.format());
+			assertTrue(UploadSource.isHeicMime("IMAGE/HEIC"));
+			assertEquals(UploadSource.Format.TRANSCODE_TO_JPEG,
+					new UploadSource(UploadSource.Kind.CONTENT, 12, "IMAGE/HEIF", "x.bin").format());
+		}finally{
+			Locale.setDefault(previous);
+		}
 	}
 }

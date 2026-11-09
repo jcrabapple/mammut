@@ -3,7 +3,6 @@ package org.joinmastodon.android.api.requests.accounts;
 import android.net.Uri;
 
 import org.joinmastodon.android.api.AvatarResizedImageRequestBody;
-import org.joinmastodon.android.api.ContentUriRequestBody;
 import org.joinmastodon.android.api.MastodonAPIRequest;
 import org.joinmastodon.android.api.ResizedImageRequestBody;
 import org.joinmastodon.android.model.Account;

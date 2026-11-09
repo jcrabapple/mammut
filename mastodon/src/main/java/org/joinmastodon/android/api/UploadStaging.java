@@ -16,6 +16,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Locale;
 
 import okhttp3.MediaType;
 
@@ -59,13 +60,20 @@ public class UploadStaging{
 
 	/** Builds the decision object for a URI. The provider size column is intentionally not consulted. */
 	public static UploadSource sourceFor(Uri uri, String mime){
-		String name=UiUtils.getFileName(uri);
+		return sourceFor(uri, mime, UiUtils.getFileName(uri));
+	}
+
+	/**
+	 * Same as {@link #sourceFor(Uri, String)} but reuses a display name the caller already
+	 * resolved, so the staging thread does not run a second {@code OpenableColumns} query.
+	 */
+	public static UploadSource sourceFor(Uri uri, String mime, String name){
 		if("file".equals(uri.getScheme()))
 			return new UploadSource(UploadSource.Kind.FILE, new File(uri.getPath()).length(), mime, name);
 		return new UploadSource(UploadSource.Kind.CONTENT, UploadSource.SIZE_UNKNOWN, mime, name);
 	}
 
-	public static StagedUpload stage(Context context, Uri uri, UploadSource source) throws IOException{
+	public static StagedUpload stage(Context context, Uri uri, UploadSource source, int maxImageSize) throws IOException{
 		File file;
 		boolean ours;
 		if(source.stage()==UploadSource.Stage.COPY_TO_CACHE){
@@ -79,10 +87,16 @@ public class UploadStaging{
 		}
 		verifyNonEmpty(file);
 		if(source.format()==UploadSource.Format.TRANSCODE_TO_JPEG){
-			File jpg=transcodeHeicToJpeg(context, file);
+			File jpg;
+			try{
+				jpg=transcodeHeicToJpeg(context, file, maxImageSize);
+			}finally{
+				// The JPEG replaces the cache copy — including when the transcode throws,
+				// otherwise a failed HEIC would leave its full-size duplicate behind.
+				if(ours)
+					file.delete();
+			}
 			verifyNonEmpty(jpg);
-			if(ours)
-				file.delete();
 			return new StagedUpload(jpg, MediaType.parse("image/jpeg"), true, true);
 		}
 		return new StagedUpload(file, resolveMediaType(context, uri, source, file), false, ours);
@@ -120,7 +134,7 @@ public class UploadStaging{
 		if(name!=null){
 			int dot=name.lastIndexOf('.');
 			if(dot>=0 && dot<name.length()-1){
-				String ext=name.substring(dot).toLowerCase().replaceAll("[^a-z0-9.]", "");
+				String ext=name.substring(dot).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9.]", "");
 				if(ext.length()>=2 && ext.length()<=8)
 					return ext;
 			}
@@ -134,16 +148,32 @@ public class UploadStaging{
 		return ".bin";
 	}
 
-	private static File transcodeHeicToJpeg(Context context, File src) throws IOException{
+	private static File transcodeHeicToJpeg(Context context, File src, int maxImageSize) throws IOException{
 		Bitmap bitmap;
 		if(Build.VERSION.SDK_INT>=28){
 			// ImageDecoder applies EXIF orientation itself — the P+ path of
-			// ResizedImageRequestBody relies on the same behavior.
-			bitmap=ImageDecoder.decodeBitmap(ImageDecoder.createSource(src), (decoder, info, _source)->decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE));
+			// ResizedImageRequestBody relies on the same behavior. The decode is
+			// capped at the instance's image matrix limit (t_8ab12a49 S3): a
+			// 24 Mpx HEIC would otherwise decode to a ~98 MB software bitmap here
+			// and then be decoded AGAIN by ResizedImageRequestBody.
+			bitmap=ImageDecoder.decodeBitmap(ImageDecoder.createSource(src), (decoder, info, _source)->{
+				decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+				int[] target=targetSize(info.getSize().getWidth(), info.getSize().getHeight(), maxImageSize);
+				if(target!=null)
+					decoder.setTargetSize(target[0], target[1]);
+			});
 		}else{
 			// HEIF decoding is only guaranteed from API 28; try the platform
 			// decoder and fail locally if it cannot handle the file.
-			bitmap=BitmapFactory.decodeFile(src.getPath());
+			BitmapFactory.Options opts=new BitmapFactory.Options();
+			if(maxImageSize>0){
+				opts.inJustDecodeBounds=true;
+				BitmapFactory.decodeFile(src.getPath(), opts);
+				if(opts.outWidth>0 && opts.outHeight>0 && (long)opts.outWidth*opts.outHeight>maxImageSize)
+					opts.inSampleSize=(int)Math.sqrt((double)opts.outWidth*opts.outHeight/maxImageSize);
+				opts.inJustDecodeBounds=false;
+			}
+			bitmap=BitmapFactory.decodeFile(src.getPath(), opts);
 			if(bitmap!=null)
 				bitmap=applyExifRotation(bitmap, src);
 		}
@@ -160,6 +190,19 @@ public class UploadStaging{
 				jpg.delete();
 		}
 		return jpg;
+	}
+
+	/**
+	 * Area-preserving shrink to the instance's image matrix limit, mirroring
+	 * {@link ResizedImageRequestBody#getTargetSize}. Null when the source already
+	 * fits (or no limit was configured) — callers then skip {@code setTargetSize}.
+	 */
+	private static int[] targetSize(int srcWidth, int srcHeight, int maxImageSize){
+		if(maxImageSize<=0 || (long)srcWidth*srcHeight<=maxImageSize)
+			return null;
+		int targetWidth=Math.max(1, Math.round((float)Math.sqrt(maxImageSize*((float)srcWidth/srcHeight))));
+		int targetHeight=Math.max(1, Math.round((float)Math.sqrt(maxImageSize*((float)srcHeight/srcWidth))));
+		return new int[]{targetWidth, targetHeight};
 	}
 
 	private static Bitmap applyExifRotation(Bitmap bitmap, File src) throws IOException{

@@ -465,6 +465,9 @@ public class ComposeMediaViewController{
 			throw new IllegalStateException("Unexpected state "+attachment.state);
 		attachment.uploadRequest=null;
 		attachment.state=AttachmentUploadState.DONE;
+		// t_8ab12a49 S1: the media lives on the server now — keeping the staged copy
+		// would leave a full-size duplicate in cache until Android purges it.
+		releaseStagedUpload(attachment);
 		attachment.editButton.setImageResource(R.drawable.ic_edit_24px);
 		attachment.removeButton.setImageResource(R.drawable.ic_delete_24px);
 		if(isImage(attachment)){
@@ -724,6 +727,9 @@ public class ComposeMediaViewController{
 		for(DraftMediaAttachment att:attachments){
 			if(att.isUploadingOrProcessing())
 				att.cancelUpload();
+			// t_8ab12a49 S1: every call site (fragment destroy, thread-segment removal)
+			// discards these attachments, so the staged copies die with them.
+			releaseStagedUpload(att);
 		}
 	}
 	
@@ -888,6 +894,7 @@ public class ComposeMediaViewController{
 		for(DraftMediaAttachment att:new ArrayList<>(attachments)){
 			if(att.isUploadingOrProcessing())
 				att.cancelUpload();
+			releaseStagedUpload(att);
 		}
 		attachments.clear();
 		if(attachmentsView!=null)
@@ -984,8 +991,11 @@ public class ComposeMediaViewController{
 		/** MAMMUT: Composer 2.0 — path of this file's private copy in the draft directory, once saved */
 		public transient String draftFilePath;
 		/** t_54414ac0: the verified local copy + transcode, kept so a retry reuses it instead of
-		 *  re-opening a picker URI whose read grant may already have expired. */
-		public transient UploadStaging.StagedUpload stagedUpload;
+		 *  re-opening a picker URI whose read grant may already have expired. Written on the
+		 *  staging thread and read on the UI thread; the runOnUiThread post gives a
+		 *  happens-before edge to every UI-thread reader, and volatile keeps the intent
+		 *  explicit. */
+		public transient volatile UploadStaging.StagedUpload stagedUpload;
 
 		public transient View view;
 		public transient ProgressBar progressBar;
@@ -1192,17 +1202,36 @@ public class ComposeMediaViewController{
 			performUpload(attachment, attachment.stagedUpload, maxSize, fileName);
 			return;
 		}
-		new Thread(()->{
+		MastodonAPIController.runInBackground(()->{
 			UploadStaging.StagedUpload staged;
 			try{
-				staged=UploadStaging.stage(MastodonApp.context, attachment.uri, UploadStaging.sourceFor(attachment.uri, mime));
+				staged=UploadStaging.stage(MastodonApp.context, attachment.uri, UploadStaging.sourceFor(attachment.uri, mime, fileName), maxSize);
 			}catch(Throwable t){
-				UiUtils.runOnUiThread(()->onLocalUploadError(attachment, t));
+				UiUtils.runOnUiThread(()->{
+					// t_8ab12a49 M2: dropped while staging — nothing to error out on.
+					if(!attachments.contains(attachment))
+						return;
+					onLocalUploadError(attachment, t);
+				});
 				return;
 			}
 			attachment.stagedUpload=staged;
-			UiUtils.runOnUiThread(()->performUpload(attachment, staged, maxSize, fileName));
-		}, "mammut-upload-stage").start();
+			UiUtils.runOnUiThread(()->{
+				// t_8ab12a49 M2: removing the attachment during staging must cancel it. The
+				// attachment is no longer in the list, so uploading it would orphan media on
+				// the server and leave the staged file on disk — drop the stage and stop.
+				// This check runs on the UI thread, same as removal and as the queue walker,
+				// so a remove either lands before it (bail here; areThereAnyUploadingAttachments()
+				// already sees the list without this attachment and can start the next upload)
+				// or after performUpload (cancelled via uploadRequest.cancel()) — never between.
+				if(!attachments.contains(attachment)){
+					releaseStaged(staged);
+					attachment.stagedUpload=null;
+					return;
+				}
+				performUpload(attachment, staged, maxSize, fileName);
+			});
+		});
 	}
 
 	private void performUpload(DraftMediaAttachment attachment, UploadStaging.StagedUpload staged, int maxSize, String fileName){
@@ -1294,9 +1323,13 @@ public class ComposeMediaViewController{
 	}
 
 	private static void releaseStagedUpload(DraftMediaAttachment att){
-		if(att.stagedUpload!=null && att.stagedUpload.deleteOnRelease && att.stagedUpload.file!=null)
-			att.stagedUpload.file.delete();
+		releaseStaged(att.stagedUpload);
 		att.stagedUpload=null;
+	}
+
+	private static void releaseStaged(UploadStaging.StagedUpload staged){
+		if(staged!=null && staged.deleteOnRelease && staged.file!=null)
+			staged.file.delete();
 	}
 
 	private static String withJpegExtension(String name){

@@ -1,5 +1,7 @@
 package org.joinmastodon.android.api;
 
+import java.util.Locale;
+
 /**
  * Pure decision object for the media-upload pipeline (t_54414ac0).
  *
@@ -43,7 +45,7 @@ public class UploadSource{
 	public UploadSource(Kind kind, long size, String mime, String name){
 		this.kind=kind;
 		this.size=size;
-		this.mime=mime==null ? null : mime.toLowerCase();
+		this.mime=mime==null ? null : mime.toLowerCase(Locale.ROOT);
 		this.name=name;
 	}
 
@@ -70,7 +72,7 @@ public class UploadSource{
 	public static boolean isHeicMime(String mime){
 		if(mime==null)
 			return false;
-		String lower=mime.toLowerCase();
+		String lower=mime.toLowerCase(Locale.ROOT);
 		return lower.equals("image/heic") || lower.equals("image/heif");
 	}
 
@@ -80,7 +82,7 @@ public class UploadSource{
 			return true;
 		if(name==null)
 			return false;
-		String lower=name.toLowerCase();
+		String lower=name.toLowerCase(Locale.ROOT);
 		return lower.endsWith(".heic") || lower.endsWith(".heif");
 	}
 
