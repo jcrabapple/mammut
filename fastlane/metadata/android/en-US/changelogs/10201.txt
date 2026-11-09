@@ -1,0 +1,1 @@
+Unroll follows the full-width setting: with it on, the reading mode no longer reserves a left column for its line and numbering, and the position marker sits in the post itself. With it off, nothing changes.
