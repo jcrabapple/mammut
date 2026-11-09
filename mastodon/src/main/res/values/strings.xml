@@ -305,6 +305,8 @@
 	<string name="edit_multiple_changed">Post edited</string>
 	<string name="edit">Edit</string>
 	<string name="discard_changes">Discard changes?</string>
+	<string name="upload_error_unreadable">Mammut couldn’t read that file</string>
+	<string name="upload_error_server">The server couldn’t process this file</string>
 	<string name="upload_failed">Upload failed</string>
 	<string name="file_size_bytes">%d bytes</string>
 	<string name="file_size_kb">%.2f KB</string>
