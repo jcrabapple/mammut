@@ -70,6 +70,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.joinmastodon.android.BuildConfig;
 import org.joinmastodon.android.E;
 import org.joinmastodon.android.FileProvider;
 import org.joinmastodon.android.GlobalUserPreferences;
@@ -1362,13 +1363,17 @@ public class UiUtils{
 			@Override
 			public void onError(Throwable error){
 				Log.e(TAG, "shareImage: render failed", error);
-				// TEMPORARY (1.1.1): the reason is on screen as well as in logcat. A share
-				// that fails silently on a device no cable can reach is undiagnosable.
-				final String detail=error.getClass().getSimpleName()+(error.getMessage()!=null ? ": "+error.getMessage() : "");
+				// The exception class and message go to logcat on every build; they reach the
+				// snackbar only in debug. A user who hits a render failure needs to know the
+				// share did not happen, not the name of a Java class.
+				final String detail=BuildConfig.DEBUG ? error.getClass().getSimpleName()+(error.getMessage()!=null ? ": "+error.getMessage() : "") : null;
 				activity.runOnUiThread(()->{
 					if(!isActivityAlive(activity))
 						return;
-					new Snackbar.Builder(activity).setText(activity.getString(R.string.share_image_failed)+" ("+(detail.length()>140 ? detail.substring(0,140) : detail)+")").show();
+					String message=activity.getString(R.string.share_image_failed);
+					if(detail!=null)
+						message+=" ("+(detail.length()>140 ? detail.substring(0,140) : detail)+")";
+					new Snackbar.Builder(activity).setText(message).show();
 				});
 			}
 		});

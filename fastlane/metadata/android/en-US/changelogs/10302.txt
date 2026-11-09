@@ -1,0 +1,1 @@
+A failed share no longer shows a Java error string: the message says what happened, and the details stay in the log.

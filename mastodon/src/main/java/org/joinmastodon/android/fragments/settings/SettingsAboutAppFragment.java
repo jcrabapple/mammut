@@ -253,7 +253,9 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 					os.write(buffer, 0, length);
 				}
 			}catch(IOException e){
-				Toast.makeText(getContext(), e.getMessage(), Toast.LENGTH_SHORT);
+				Log.e(TAG, "Could not export settings", e);
+				// The stack trace is in logcat; the user gets the fact, not a Java message.
+				Toast.makeText(getContext(), R.string.error_saving_file, Toast.LENGTH_SHORT).show();
 			}
 		}
 	}
