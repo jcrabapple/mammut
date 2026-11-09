@@ -8,6 +8,7 @@ import android.widget.TextView;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.accounts.GetDomainBlockPreview;
 import org.joinmastodon.android.model.Account;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
 import androidx.annotation.NonNull;
@@ -43,7 +44,7 @@ public class BlockDomainConfirmationSheet extends AccountRestrictionConfirmation
 		});
 
 		relationsRow.setVisibility(View.GONE);
-		relationsRow.setTypeface(Typeface.DEFAULT_BOLD);
+		relationsRow.setTypeface(MammutTypeface.apply(Typeface.DEFAULT_BOLD)); // route the bold row through the active family; SYSTEM keeps DEFAULT_BOLD
 		currentRequest=new GetDomainBlockPreview(user.getDomain())
 				.setCallback(new Callback<>(){
 					@Override

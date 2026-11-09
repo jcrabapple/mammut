@@ -139,7 +139,7 @@ public class AccountSwitcherSheet extends BottomSheet{
 		content.setBackgroundResource(R.drawable.bg_bottom_sheet);
 		content.addView(list);
 		setContentView(content);
-		MammutTypeface.applyRecursively(content); // M2: the sheet's themed context inflates outside the activity's factory
+		MammutTypeface.applyRecursively(content); // M2: safety net for XML inflated with a context that never saw the factory (themed contexts DO inherit it — see MammutTypeface.applyRecursively's javadoc); programmatic rows are covered separately (M2-b)
 		setNavigationBarBackground(new ColorDrawable(UiUtils.alphaBlendColors(UiUtils.getThemeColor(activity, R.attr.colorM3Surface),
 				UiUtils.getThemeColor(activity, R.attr.colorM3Primary), 0.05f)), !UiUtils.isDarkTheme());
 	}

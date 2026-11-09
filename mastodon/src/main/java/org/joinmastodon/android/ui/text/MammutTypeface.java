@@ -3,7 +3,6 @@ package org.joinmastodon.android.ui.text;
 import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
-import android.content.res.TypedArray;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
@@ -85,6 +84,13 @@ public class MammutTypeface{
 	static Typeface apply(GlobalUserPreferences.FontFamily family, Typeface base, int weightHint){
 		if(family==GlobalUserPreferences.FontFamily.SYSTEM)
 			return base;
+		// M2-a: idempotency. A view already carrying one of the cached
+		// bundled faces (the factory mapped it, a sheet pass re-runs, the
+		// picker hand-set it) keeps it — below API 28 the weight resolution
+		// can't read the bundled face back, so without this guard the
+		// recursive pass would downgrade an already-medium view to 400.
+		if(isBundled(base))
+			return base;
 		int style=base!=null ? base.getStyle() : Typeface.NORMAL;
 		boolean bold=(style & Typeface.BOLD)!=0;
 		boolean italic=(style & Typeface.ITALIC)!=0;
@@ -103,16 +109,46 @@ public class MammutTypeface{
 	}
 
 	/**
-	 * §4.1/M2: dialogs and bottom sheets inflate with their own themed
-	 * contexts, so the per-Activity InflaterFactory never sees their views,
-	 * and programmatic ones (new CheckBox, new EditText, custom views)
-	 * bypass any factory. Walk an existing hierarchy and remap every
-	 * TextView the same way the factory would — the pre-P weight hint rides
-	 * along so a sans-serif-medium dialog title keeps its 500 file.
+	 * M2-a: identity scan over the lazily created face cache. Pure cache
+	 * reads — never creates the cache, never loads a face — so the
+	 * system-free path stays one preference read plus this scan per view.
+	 */
+	static boolean isBundled(Typeface base){
+		if(base==null)
+			return false;
+		synchronized(CACHE_LOCK){
+			if(cache==null)
+				return false;
+			for(int i=0;i<cache.size();i++)
+				if(cache.valueAt(i)==base)
+					return true;
+			return false;
+		}
+	}
+
+	/**
+	 * §4.1/M2: walk an existing hierarchy and remap every TextView the way
+	 * the factory would. The per-Activity InflaterFactory DOES see
+	 * themed-context inflation — ContextThemeWrapper.cloneInContext's
+	 * inflater copy carries mFactory2 (AOSP 8.0.0_r1 ContextThemeWrapper:167,
+	 * LayoutInflater:216-222; same shape in 15.0.0_r1) — so XML content in
+	 * dialogs and sheets was already covered at inflate time. This pass
+	 * exists for views built programmatically after the factory ran
+	 * (new CheckBox, new EditText, custom sheet rows — M2-b) and for the
+	 * one BottomSheet without a constructor hook: AltTextSheet
+	 * (ui/photoviewer), harmless today because its content is all XML.
+	 * Safe to re-run over already-mapped content: apply() returns a
+	 * bundled face unchanged (M2-a). The pre-P weight hint rides along so
+	 * a sans-serif-medium dialog title keeps its 500 file.
 	 */
 	public static void applyRecursively(View root){
 		if(root==null || GlobalUserPreferences.fontFamily==GlobalUserPreferences.FontFamily.SYSTEM)
 			return;
+		// The monospace guard's view-level branch is a no-op on API ≥ 28
+		// (isMonospace(text, null) has no AttributeSet and the identity
+		// check is pre-P only); the invariant there is held by nothing in
+		// the app setting monospace at view level — code spans are spans,
+		// which this hook never rewrites.
 		if(root instanceof TextView text && !InflaterFactory.isMonospace(text, null)){
 			Typeface base=text.getTypeface();
 			Typeface font=apply(base, InflaterFactory.weightHint(base));
@@ -220,11 +256,7 @@ public class MammutTypeface{
 		private static final String ANDROID_NS="http://schemas.android.com/apk/res/android";
 		private static final String[] PREFIXES={"android.widget.", "android.webkit.", "android.app."};
 
-		private final LayoutInflater inflater;
-
-		public InflaterFactory(LayoutInflater inflater){
-			this.inflater=inflater;
-		}
+		public InflaterFactory(){}
 
 		@Override
 		public View onCreateView(View parent, String name, Context context, AttributeSet attrs){
@@ -232,10 +264,10 @@ public class MammutTypeface{
 			// inflated tag, then the framework does exactly what it did before.
 			if(GlobalUserPreferences.fontFamily==GlobalUserPreferences.FontFamily.SYSTEM)
 				return null;
-			View view=createView(name, attrs);
+			View view=createView(context, name, attrs);
 			if(view instanceof TextView text && !isMonospace(text, attrs)){
 				Typeface base=text.getTypeface();
-				Typeface font=MammutTypeface.apply(base, weightHint(context, attrs, base));
+				Typeface font=MammutTypeface.apply(base, weightHint(attrs, base));
 				if(font!=base)
 					text.setTypeface(font);
 			}
@@ -247,10 +279,17 @@ public class MammutTypeface{
 			return onCreateView(null, name, context, attrs);
 		}
 
-		private View createView(String name, AttributeSet attrs){
+		private View createView(Context context, String name, AttributeSet attrs){
+			// M4: construct with the context the framework hands this
+			// Factory2 — for themed wrappers (dialogs, sheets) that is the
+			// clone currently inflating, so its constructor args already
+			// hold the wrapper's theme overlay. Using the field inflater
+			// (the Activity's) would drop the overlay: dialog button bars
+			// fell back to the platform all-caps style.
+			LayoutInflater themedInflater=LayoutInflater.from(context);
 			try{
 				if(name.indexOf('.')>=0)
-					return inflater.createView(name, null, attrs);
+					return themedInflater.createView(name, null, attrs);
 			}catch(ClassNotFoundException ignored){
 				return null; // not a real class — the framework reports it the same way
 			}catch(InflateException e){
@@ -260,7 +299,7 @@ public class MammutTypeface{
 			}
 			for(String prefix:PREFIXES){
 				try{
-					return inflater.createView(name, prefix, attrs);
+					return themedInflater.createView(name, prefix, attrs);
 				}catch(ClassNotFoundException ignored){}
 			}
 			return null;
@@ -291,28 +330,25 @@ public class MammutTypeface{
 		/**
 		 * M3: API < 28 has no Typeface.getWeight(), so a style-declared
 		 * "sans-serif-medium" can't be read back from the constructed view's
-		 * typeface. Reconstruct the 500 from the same sources the framework
-		 * read it at construction: the explicit attribute, the
-		 * textAppearance that carries it (m3_title/label styles), and — for
-		 * theme/style-declared families such as android:buttonStyle, which
-		 * styles.xml sets to sans-serif-medium — the pre-P Typeface.create
-		 * cache, which returns the identical instance for the same
-		 * name+style the framework built the view with. A platform that
-		 * doesn't share that cache simply reports no hint and the view
+		 * typeface. The mechanism is the pre-P Typeface.create cache: AOSP
+		 * TextView.setTypefaceFromAttrs builds view typefaces through
+		 * Typeface.create(name, style) (6.0.1_r1 TextView:1492,
+		 * 8.0.0_r1 TextView:2101), which returns the identical cached
+		 * instance for the same name+style — so an identity check against
+		 * Typeface.create("sans-serif-medium", style) recovers a style- or
+		 * theme-declared medium face (m3_title/label styles, android:buttonStyle,
+		 * which styles.xml sets to sans-serif-medium) exactly. The explicit
+		 * android:fontFamily attribute is checked first; an
+		 * obtainStyledAttributes(..., defStyleAttr=textAppearance, ...) branch
+		 * used to live here but resolved the THEME's textAppearance, never
+		 * the view's, so it could never fire and was removed. A platform
+		 * that doesn't share that cache simply reports no hint and the view
 		 * keeps its 400 file.
 		 */
-		private static int weightHint(Context context, AttributeSet attrs, Typeface base){
+		private static int weightHint(AttributeSet attrs, Typeface base){
 			if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P)
 				return 0; // apply() reads getWeight() directly
 			String ff=attrs.getAttributeValue(ANDROID_NS, "fontFamily");
-			if(ff==null){
-				TypedArray ta=context.obtainStyledAttributes(attrs, new int[]{android.R.attr.fontFamily}, android.R.attr.textAppearance, 0);
-				try{
-					ff=ta.getString(0);
-				}finally{
-					ta.recycle();
-				}
-			}
 			if("sans-serif-medium".equals(ff))
 				return 500;
 			return weightHint(base);
@@ -338,7 +374,7 @@ public class MammutTypeface{
 		public void onActivityCreated(Activity activity, Bundle savedInstanceState){
 			try{
 				LayoutInflater inflater=activity.getLayoutInflater();
-				inflater.setFactory2(new InflaterFactory(inflater));
+				inflater.setFactory2(new InflaterFactory());
 			}catch(Throwable t){
 				Log.w(TAG, "Could not install typeface factory in "+activity.getClass().getSimpleName()+" — carrying on with the system face", t);
 			}

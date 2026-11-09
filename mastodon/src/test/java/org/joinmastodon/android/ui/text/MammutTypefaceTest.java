@@ -5,6 +5,7 @@ import org.joinmastodon.android.R;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 
 /**
@@ -83,5 +84,15 @@ public class MammutTypefaceTest{
 	public void unknownSlotMapsToZero(){
 		assertEquals(0, MammutTypeface.resourceFor(FontFamily.INTER, 4));
 		assertEquals(0, MammutTypeface.resourceFor(FontFamily.INTER, -1));
+	}
+
+	@Test
+	public void nothingIsBundledBeforeAnyFaceLoads(){
+		// M2-a: apply()'s idempotency guard scans the lazily created face
+		// cache. On the JVM no face is ever loaded, so the cache stays
+		// null and nothing reads as bundled — this pins both the guard's
+		// null-base path and the cache-stays-lazy class-init property the
+		// resourceFor tests above rely on.
+		assertFalse(MammutTypeface.isBundled(null));
 	}
 }
