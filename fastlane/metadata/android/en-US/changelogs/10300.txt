@@ -1,0 +1,1 @@
+Four typefaces of its own, in Display settings: Inter, Source Sans 3, Literata and Atkinson Hyperlegible, each shown in its own face over a line of real post copy. System stays the default, and code spans stay monospace.

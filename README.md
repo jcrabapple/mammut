@@ -71,6 +71,9 @@ at all, and a donation matters more than a star on any fork:
 - **Full-width posts**, an optional layout in the display settings where post text, media and actions
   start at the edge of the timeline instead of lining up after the avatar.
 - Custom post-action icons and a launcher icon of its own.
+- **Four bundled typefaces**, in Display settings: Inter, Source Sans 3, Literata and Atkinson
+  Hyperlegible, each shown in its own face. System stays the default. Code spans keep monospace;
+  Atkinson Hyperlegible covers Latin only, so other scripts fall back to the system face per glyph.
 
 ### Under the hood
 
