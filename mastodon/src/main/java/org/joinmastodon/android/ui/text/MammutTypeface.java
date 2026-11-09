@@ -9,13 +9,16 @@ import android.os.Bundle;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.SparseArray;
-import android.view.InflateException;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.core.content.res.ResourcesCompat;
+
+import java.lang.reflect.Constructor;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.MastodonApp;
@@ -119,11 +122,32 @@ public class MammutTypeface{
 		synchronized(CACHE_LOCK){
 			if(cache==null)
 				return false;
-			for(int i=0;i<cache.size();i++)
-				if(cache.valueAt(i)==base)
-					return true;
-			return false;
+			// Snapshot under the lock: the scan itself lives in
+			// containsIdentity() so the JVM test can pin its semantics
+			// (M5 minor-1) without the mockable android.jar having to
+			// construct Typeface instances.
+			Typeface[] faces=new Typeface[cache.size()];
+			for(int i=0;i<faces.length;i++)
+				faces[i]=cache.valueAt(i);
+			return containsIdentity(base, faces);
 		}
+	}
+
+	/**
+	 * The identity scan of isBundled(), decoupled from the cache. Object-
+	 * typed (not Typeface) so the JVM test can exercise it with plain
+	 * objects — the mockable android.jar cannot construct Typeface, and
+	 * identity (==), not equals(), is the contract: get() returns the
+	 * cached instance itself, so only a reference match means "already
+	 * bundled".
+	 */
+	static boolean containsIdentity(Object base, Object[] faces){
+		if(base==null || faces==null)
+			return false;
+		for(Object face:faces)
+			if(face==base)
+				return true;
+		return false;
 	}
 
 	/**
@@ -251,10 +275,31 @@ public class MammutTypeface{
 	 * fontFamily; returning null hands the tag back to the framework, which
 	 * resolves it the same way. Span-level typefaces are never touched — this
 	 * sets the view's base face only, so code spans keep their monospace span.
+	 * <p>
+	 * M5: views are built through a private {@code Constructor(Context,
+	 * AttributeSet)} cache — the same mechanism PhoneLayoutInflater and
+	 * AppCompat's view inflater use — instantiated with the {@code context}
+	 * the framework passes to onCreateView. No inflater's
+	 * {@code mConstructorArgs} is trustworthy from inside a Factory2 (the
+	 * window inflater is idle, ViewStub clones carry the parent's args, and
+	 * view-level {@code android:theme} wrappers clone fresh with
+	 * {@code {null, null}}), and on API 23–25 the framework's createView has
+	 * no {@code mContext} fallback (6.0.1_r1 LayoutInflater:616-619,
+	 * 7.1.2_r36:642-645), so constructing through any picked inflater is a
+	 * guaranteed null-context InflateException on those platforms. Owning
+	 * the construction covers all three paths on every API level.
 	 */
 	public static class InflaterFactory implements LayoutInflater.Factory2{
 		private static final String ANDROID_NS="http://schemas.android.com/apk/res/android";
 		private static final String[] PREFIXES={"android.widget.", "android.webkit.", "android.app."};
+
+		/**
+		 * M5: resolved class name → the class's (Context, AttributeSet)
+		 * constructor. ConcurrentHashMap — inflation can in principle run
+		 * on multiple threads (ViewStub.inflate from a background thread is
+		 * legal), and a Constructor is immutable once looked up.
+		 */
+		private static final Map<String, Constructor<? extends View>> CONSTRUCTOR_CACHE=new ConcurrentHashMap<>();
 
 		public InflaterFactory(){}
 
@@ -280,29 +325,63 @@ public class MammutTypeface{
 		}
 
 		private View createView(Context context, String name, AttributeSet attrs){
-			// M4: construct with the context the framework hands this
-			// Factory2 — for themed wrappers (dialogs, sheets) that is the
-			// clone currently inflating, so its constructor args already
-			// hold the wrapper's theme overlay. Using the field inflater
-			// (the Activity's) would drop the overlay: dialog button bars
-			// fell back to the platform all-caps style.
-			LayoutInflater themedInflater=LayoutInflater.from(context);
-			try{
-				if(name.indexOf('.')>=0)
-					return themedInflater.createView(name, null, attrs);
-			}catch(ClassNotFoundException ignored){
-				return null; // not a real class — the framework reports it the same way
-			}catch(InflateException e){
-				// A constructor failure the framework would also hit — let it
-				// surface identically instead of swallowing the tag.
-				throw e;
-			}
+			// M5: build the view ourselves from the context the framework
+			// hands this Factory2 — see the class javadoc for why no
+			// inflater's constructor args can be trusted here. Fully
+			// qualified tags resolve as-is; bare tags take the same prefix
+			// walk PhoneLayoutInflater performs, and the first prefix with a
+			// matching class wins, exactly like the framework.
+			if(name.indexOf('.')>=0)
+				return construct(context, name, attrs);
 			for(String prefix:PREFIXES){
-				try{
-					return themedInflater.createView(name, prefix, attrs);
-				}catch(ClassNotFoundException ignored){}
+				View view=construct(context, prefix+name, attrs);
+				if(view!=null)
+					return view;
 			}
 			return null;
+		}
+
+		private static View construct(Context context, String className, AttributeSet attrs){
+			Constructor<? extends View> ctor=resolveConstructor(className, context.getClassLoader());
+			if(ctor==null)
+				return null;
+			try{
+				return ctor.newInstance(context, attrs);
+			}catch(Throwable t){
+				// M5 guard: a failed construction must never turn a working
+				// inflation into a crash. The framework's own path may still
+				// succeed, so fall through to it instead of rethrowing an
+				// InflateException it would not otherwise have produced — a
+				// view that misses the chosen font is a cosmetic miss; a
+				// crash on cold start is not.
+				return null;
+			}
+		}
+
+		/**
+		 * M5 seam for JVM tests: class resolution and the (Context,
+		 * AttributeSet) constructor cache, decoupled from instantiation —
+		 * the mockable android.jar can load classes and reflect constructors
+		 * but not run them (View's constructor throws Stub!). Returns null
+		 * for unknown names, classes that are not Views, and classes without
+		 * the two-arg XML constructor; the caller treats null as "let the
+		 * framework resolve it".
+		 */
+		static Constructor<? extends View> resolveConstructor(String className, ClassLoader loader){
+			Constructor<? extends View> cached=CONSTRUCTOR_CACHE.get(className);
+			if(cached!=null)
+				return cached;
+			try{
+				Class<? extends View> cls=Class.forName(className, false, loader).asSubclass(View.class);
+				Constructor<? extends View> ctor=cls.getConstructor(Context.class, AttributeSet.class);
+				ctor.setAccessible(true);
+				CONSTRUCTOR_CACHE.put(className, ctor);
+				return ctor;
+			}catch(Throwable t){
+				// Unknown class, not a View, or no two-arg constructor —
+				// the framework's fallback handles all three the same way.
+				return null;
+			}
 		}
 
 		/**

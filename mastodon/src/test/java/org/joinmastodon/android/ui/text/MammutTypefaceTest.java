@@ -1,12 +1,22 @@
 package org.joinmastodon.android.ui.text;
 
+import android.content.Context;
+import android.util.AttributeSet;
+import android.view.View;
+
 import org.joinmastodon.android.GlobalUserPreferences.FontFamily;
 import org.joinmastodon.android.R;
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 /**
  * FONT-SPEC §7 — the resource table is the one place a rename in
@@ -94,5 +104,85 @@ public class MammutTypefaceTest{
 		// null-base path and the cache-stays-lazy class-init property the
 		// resourceFor tests above rely on.
 		assertFalse(MammutTypeface.isBundled(null));
+	}
+
+	// --- M5 minor-1: the identity scan itself, decoupled from the cache ---
+
+	@Test
+	public void identityScanFindsContainedInstance(){
+		Object[] faces={new Object(), new Object(), new Object()};
+		assertTrue(MammutTypeface.containsIdentity(faces[1], faces));
+	}
+
+	@Test
+	public void identityScanRejectsAbsentAndNull(){
+		Object[] faces={new Object(), new Object()};
+		assertFalse(MammutTypeface.containsIdentity(new Object(), faces));
+		assertFalse(MammutTypeface.containsIdentity(null, faces));
+		assertFalse(MammutTypeface.containsIdentity(faces[0], null));
+		assertFalse(MammutTypeface.containsIdentity(faces[0], new Object[0]));
+	}
+
+	@Test
+	public void identityScanUsesReferenceNotEquality(){
+		// The contract is == (get() returns the cached instance itself),
+		// not equals(): two Strings with equal content are distinct
+		// identities. An equals-based scan would wrongly report a
+		// system face built from the same name as bundled.
+		String base=new String("sans-serif");
+		String[] faces={new String("sans-serif")};
+		assertFalse(MammutTypeface.containsIdentity(base, faces));
+	}
+
+	// --- M5: constructor-cache resolution (the pre-Q null-context fix) ---
+
+	@Test
+	public void resolvesTwoArgConstructorForViewSubclass() throws Exception{
+		// Statically pins the path InflaterFactory constructs views
+		// through: the framework-passed context goes straight into the
+		// class's own (Context, AttributeSet) constructor, so no
+		// inflater's mConstructorArgs — null on pre-Q ViewStub clones and
+		// android:theme wrappers — can poison construction. Reflection
+		// only: the mockable android.jar loads View and its constructors
+		// but throws Stub! if one actually ran.
+		String name="org.joinmastodon.android.ui.text.MammutTypefaceTest$FixtureView";
+		Constructor<? extends View> ctor=MammutTypeface.InflaterFactory.resolveConstructor(name, getClass().getClassLoader());
+		assertNotNull(ctor);
+		assertSame(FixtureView.class, ctor.getDeclaringClass());
+		// The cached Constructor is reused, not re-resolved.
+		assertSame(ctor, MammutTypeface.InflaterFactory.resolveConstructor(name, getClass().getClassLoader()));
+	}
+
+	@Test
+	public void resolveReturnsNullForNonViewClass(){
+		assertNull(MammutTypeface.InflaterFactory.resolveConstructor(String.class.getName(), getClass().getClassLoader()));
+	}
+
+	@Test
+	public void resolveReturnsNullForUnknownClass(){
+		assertNull(MammutTypeface.InflaterFactory.resolveConstructor("does.not.Exist", getClass().getClassLoader()));
+	}
+
+	@Test
+	public void resolveReturnsNullWithoutTwoArgConstructor(){
+		// A View subclass lacking the (Context, AttributeSet) XML
+		// constructor cannot come from a layout — resolution must fail
+		// quietly so the framework's own fallback decides.
+		String name="org.joinmastodon.android.ui.text.MammutTypefaceTest$OneArgView";
+		assertNull(MammutTypeface.InflaterFactory.resolveConstructor(name, getClass().getClassLoader()));
+	}
+
+	/** Fixture for resolveConstructor: a plain View subclass with the XML constructor. */
+	public static class FixtureView extends View{
+		public FixtureView(Context context, AttributeSet attrs){
+			super(context, attrs);
+		}
+	}
+
+	/** Fixture for resolveConstructor: View subclass without the two-arg constructor. */
+	public static class OneArgView extends View{
+		public OneArgView(Context context){
+			super(context);
+		}
 	}
 }
