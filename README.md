@@ -108,6 +108,17 @@ Release builds are signed when `SIGNING_STORE_FILE`, `SIGNING_STORE_PASSWORD`, `
 `SIGNING_KEY_PASSWORD` are set. CI does this from the `KEYSTORE_BASE64` secret. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## Translations
+
+The app ships 79 locales inherited from Moshidon and the projects it came from. Mammut's own
+strings — Catch up, the Reading Room, typefaces, the upload messages — exist only in English, and
+show in English inside an otherwise translated app.
+
+There is no translation service connected, and the inherited `crowdin.yml` was removed so nobody
+syncs into Moshidon's project by accident. Strings are plain Android resources in
+`mastodon/src/main/res/values/strings.xml`; a pull request is a perfectly good way to translate
+them.
+
 ## Credits
 
 Mammut would not exist without these projects:

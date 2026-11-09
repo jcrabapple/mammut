@@ -42,5 +42,15 @@ without configuration.
 
 ## Translations
 
-`crowdin.yml` came from Moshidon and points at its translation setup. Until Mammut has its own
-translation project, do not advertise translation; the file is harmless if left alone.
+Strings are Android resources: `mastodon/src/main/res/values/strings.xml` is the source of truth,
+and each `values-<locale>/strings.xml` holds a translation. The app ships 79 locales inherited from
+Moshidon and the projects before it; Mammut's own strings are English-only and fall back inside an
+otherwise translated app.
+
+There is no translation service connected. The inherited `crowdin.yml` pointed at Moshidon's
+project setup and was removed rather than left as an invitation to sync into someone else's
+project. Do not advertise translation in release notes until a pipeline exists that is Mammut's
+own.
+
+If one is set up later: create the project under Mammut's account, add `project_id` to a fresh
+`crowdin.yml`, and keep the API token in CI secrets.
