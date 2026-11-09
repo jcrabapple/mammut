@@ -207,12 +207,28 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 
 	// Reading Room §5.1-§5.3: the first chain post keeps its author header; later
 	// posts render with FLAG_NO_HEADER, full width, reading typography — their author
-	// context is carried by the gutter line and numbering instead of repeated avatars.
+	// context is carried by the numbering row instead of repeated avatars.
+	// ADDRESS-LINE-SPEC §6: in full-width Unroll there is no gutter, so the n/N
+	// marker is a bound row at the layout's own 16 dp inset — never a decoration,
+	// never a left outRect (§7). The reading line and gutter numbering survive
+	// only in the indented layout, where the gutter genuinely exists.
 	private List<StatusDisplayItem> buildUnrolledPostItems(Status s, int chainIndex){
 		int flags=StatusDisplayItem.FLAG_NO_IN_REPLY_TO;
 		if(chainIndex>0)
 			flags|=StatusDisplayItem.FLAG_NO_HEADER;
 		List<StatusDisplayItem> items=StatusDisplayItem.buildItems(this, getActivity(), s, accountID, s, knownAccounts, flags);
+		int total=chain.chain.size();
+		String number=(chainIndex+1)+"/"+total;
+		// §5.3: unobtrusive — the old drawn marker was 11 dp in OnSurfaceVariant;
+		// the bound row keeps exactly that register (quieter than body text,
+		// never a second timeline column).
+		ReblogOrReplyLineCustomStatusDisplayItem numberRow=new ReblogOrReplyLineCustomStatusDisplayItem(s.id, this, getActivity(),
+				number, null, 0, null, null, getString(R.string.thread_unroll_position, chainIndex+1, total), null);
+		numberRow.fullWidth=true;
+		numberRow.leadingInsetPx=V.dp(16);
+		numberRow.textColorAttr=R.attr.colorM3OnSurfaceVariant;
+		numberRow.textSizePx=V.dp(11);
+		items.add(0, numberRow);
 		boolean focused=s.id.equals(mainStatus.id);
 		for(StatusDisplayItem item:items){
 			item.fullWidth=true;
@@ -1023,6 +1039,13 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		}
 	}
 
+	/**
+	 * Reading Room §5.2/§5.3 — the gutter reading line and quiet numbering, for the
+	 * indented layout only. ADDRESS-LINE-SPEC §6: full-width Unroll has no gutter;
+	 * every full-width row is skipped in both {@link #getItemOffsets} and
+	 * {@link #onDrawOver}, and its n/N marker is the bound row built with the
+	 * display items.
+	 */
 	private class UnrollReadingLineDecoration extends RecyclerView.ItemDecoration{
 		private final Paint linePaint=new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final Paint numberPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1039,10 +1062,16 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		public void getItemOffsets(@NonNull Rect outRect, @NonNull View view, @NonNull RecyclerView parent, @NonNull RecyclerView.State state){
 			// Reading Room §5.2/§5.3: chain posts (and their side-branch markers) give
 			// up a strip of the left edge for the reading line and the quiet numbering.
+			// ADDRESS-LINE-SPEC §6: only when the gutter genuinely exists — full-width
+			// rows reserve nothing; their n/N marker is the bound row built with the
+			// items.
 			if(!unrollMode || chain==null || !chain.eligible)
 				return;
-			if(parent.getChildViewHolder(view) instanceof StatusDisplayItem.Holder<?> holder && chain.indexOf(holder.getItemID())>=0)
-				outRect.left=V.dp(44);
+			if(!(parent.getChildViewHolder(view) instanceof StatusDisplayItem.Holder<?> holder) || chain.indexOf(holder.getItemID())<0)
+				return;
+			if(holder.isFullWidth())
+				return;
+			outRect.left=V.dp(44);
 		}
 
 		@Override
@@ -1062,6 +1091,11 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 					continue;
 				int chainIndex=chain.indexOf(holder.getItemID());
 				if(chainIndex<0)
+					continue;
+				// ADDRESS-LINE-SPEC §6: full-width rows have no gutter — no line, and
+				// no drawText numbering (theirs is the bound row, prepared with the
+				// items; nothing is formatted or drawn per frame).
+				if(holder.isFullWidth())
 					continue;
 				parent.getDecoratedBoundsWithMargins(child, tmpRect);
 				// The line runs through every row of the chain posts; because the rows

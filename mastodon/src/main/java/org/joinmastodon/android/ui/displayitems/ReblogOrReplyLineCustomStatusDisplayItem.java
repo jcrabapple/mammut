@@ -61,6 +61,8 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 	public int leadingInsetPx=-1;
 	/** Theme attr for the text colour, resolved at bind time; 0 keeps the layout's ?colorM3OnSurface. */
 	public int textColorAttr;
+	/** Text size in px, 0 keeps the layout's text appearance (timeline/address rows). */
+	public int textSizePx;
 
 	public ReblogOrReplyLineCustomStatusDisplayItem(String parentID, Callbacks callbacks, Context context, CharSequence text, List<Emoji> emojis, @DrawableRes int icon) {
 		this(parentID, callbacks, context, text, emojis, icon, null, null, text, null);
@@ -146,16 +148,23 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 	public static class Holder extends StatusDisplayItem.Holder<ReblogOrReplyLineCustomStatusDisplayItem> implements ImageLoaderViewHolder{
 		private final TextView text, extraText;
 		private final View separator;
+		// Layout-appearance default, captured once: textSizePx overrides it per item
+		// (the Unroll n/N row is 11 dp like the old drawn marker) and recycling must
+		// restore it deterministically for every other row flavour.
+		private final float defaultTextSizePx, defaultExtraTextSizePx;
 
 		public Holder(Activity activity, ViewGroup parent){
 			super(activity, R.layout.display_item_reblog_or_reply_line_custom, parent);
 			text=findViewById(R.id.text);
 			extraText=findViewById(R.id.extra_text);
 			separator=findViewById(R.id.separator);
+			defaultTextSizePx=text.getTextSize();
+			defaultExtraTextSizePx=extraText.getTextSize();
 		}
 
-		private void bindLine(ReblogOrReplyLineCustomStatusDisplayItem item, TextView text) {
+		private void bindLine(ReblogOrReplyLineCustomStatusDisplayItem item, TextView text, float defaultTextSizePx) {
 			text.setText(item.text);
+			text.setTextSize(TypedValue.COMPLEX_UNIT_PX, item.textSizePx>0 ? item.textSizePx : defaultTextSizePx);
 			Context ctx = itemView.getContext();
 			// Fully deterministic under recycling: address rows carry an attr,
 			// everything else returns to the layout's ?colorM3OnSurface.
@@ -188,8 +197,8 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 			// never by insetting the body or reserving an outRect (§7). Other rows
 			// keep the layout's own 16 dp paddingHorizontal.
 			itemView.setPaddingRelative(item.leadingInsetPx>=0 ? item.leadingInsetPx : V.dp(16), itemView.getPaddingTop(), itemView.getPaddingEnd(), item.needBottomPadding ? V.dp(16) : 0);
-			bindLine(item, text);
-			if (item.extra != null) bindLine(item.extra, extraText);
+			bindLine(item, text, defaultTextSizePx);
+			if (item.extra != null) bindLine(item.extra, extraText, defaultExtraTextSizePx);
 			extraText.setVisibility(item.extra == null ? View.GONE : View.VISIBLE);
 			separator.setVisibility(item.extra == null ? View.GONE : View.VISIBLE);
 		}
