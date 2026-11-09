@@ -1,0 +1,1 @@
+Photos upload reliably again: media is prepared before it is sent, HEIC photos are converted to JPEG on the way out, and a file that cannot be read says so instead of failing at the server.
