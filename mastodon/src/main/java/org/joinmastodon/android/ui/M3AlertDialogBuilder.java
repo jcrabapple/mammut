@@ -13,6 +13,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 
 import org.joinmastodon.android.R;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
 import androidx.annotation.StringRes;
@@ -107,6 +108,19 @@ public class M3AlertDialogBuilder extends AlertDialog.Builder{
 				}
 			}
 		}
+		// M2: the dialog's XML content already passed through the per-Activity
+		// factory (themed contexts inherit mFactory2 — see MammutTypeface.
+		// applyRecursively's javadoc), but programmatic additions between
+		// create() and show() bypass it — remap the constructed hierarchy
+		// (title, message, buttons, the checkbox above) to the active
+		// family. The onShow pass covers anything attached late; apply() is
+		// idempotent (M2-a), so re-running costs nothing.
+		MammutTypeface.applyRecursively(alert.getWindow().getDecorView());
+		// Constraint: AlertDialog holds one OnShowListener, so a caller
+		// setting their own after create() replaces this pass (and loses
+		// the late-attach remap). Callers needing both must run their
+		// listener's work from a ViewTreeObserver/dismiss hook instead.
+		alert.setOnShowListener(d -> MammutTypeface.applyRecursively(alert.getWindow().getDecorView()));
 		return alert;
 	}
 

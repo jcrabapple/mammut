@@ -18,6 +18,7 @@ import org.joinmastodon.android.R;
 import org.joinmastodon.android.ui.M3AlertDialogBuilder;
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.ui.drawables.EmptyDrawable;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.views.ProgressBarButton;
 
@@ -44,6 +45,7 @@ public abstract class AccountRestrictionConfirmationSheet extends BottomSheet{
 		super(context);
 		View content=context.getSystemService(LayoutInflater.class).inflate(R.layout.sheet_restrict_account, null);
 		setContentView(content);
+		MammutTypeface.applyRecursively(content); // M2: safety net for XML inflated with a context that never saw the factory (themed contexts DO inherit it — see MammutTypeface.applyRecursively's javadoc); programmatic rows are covered separately (M2-b)
 		setNavigationBarBackground(new ColorDrawable(UiUtils.alphaBlendColors(UiUtils.getThemeColor(context, R.attr.colorM3Surface),
 				UiUtils.getThemeColor(context, R.attr.colorM3Primary), 0.05f)), !UiUtils.isDarkTheme());
 
@@ -85,6 +87,7 @@ public abstract class AccountRestrictionConfirmationSheet extends BottomSheet{
 		tv.setCompoundDrawablesRelative(drawable, null, null, null);
 		tv.setCompoundDrawablePadding(V.dp(16));
 		contentWrap.addView(tv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		MammutTypeface.applyRecursively(tv); // M2-b: built after the constructor's factory-covering pass
 		return tv;
 	}
 
@@ -107,6 +110,7 @@ public abstract class AccountRestrictionConfirmationSheet extends BottomSheet{
 
 		if(view==null){
 			contentWrap.addView(tv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+			MammutTypeface.applyRecursively(tv); // M2-b: built after the constructor's factory-covering pass
 			return;
 		}
 
@@ -120,6 +124,7 @@ public abstract class AccountRestrictionConfirmationSheet extends BottomSheet{
 		layout.addView(tv, lp);
 		layout.addView(view, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 		contentWrap.addView(layout, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		MammutTypeface.applyRecursively(layout); // M2-b: covers tv and the trailing widget (e.g. the duration Button from addDurationRow)
 	}
 
 	// MAMMUT: phase 2 port from upstream master

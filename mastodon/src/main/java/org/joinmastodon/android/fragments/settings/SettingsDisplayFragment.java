@@ -2,13 +2,23 @@ package org.joinmastodon.android.fragments.settings;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.TextUtils;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.ArrayAdapter;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ListAdapter;
+import android.widget.TextView;
 
 import org.joinmastodon.android.E;
 import org.joinmastodon.android.GlobalUserPreferences;
@@ -21,6 +31,7 @@ import org.joinmastodon.android.events.StatusDisplaySettingsChangedEvent;
 import org.joinmastodon.android.model.viewmodel.CheckableListItem;
 import org.joinmastodon.android.model.viewmodel.ListItem;
 import org.joinmastodon.android.ui.M3AlertDialogBuilder;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,6 +41,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import me.grishka.appkit.FragmentStackActivity;
+import me.grishka.appkit.utils.V;
 
 public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 	private ImageView themeTransitionWindowView;
@@ -38,6 +50,7 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 
 	// MOSHIDON:
 	private ListItem<Void> colorItem;
+	private ListItem<Void> typefaceItem;
 	private CheckableListItem<Void> trueBlackModeItem;
 	private AccountLocalPreferences lp;
 
@@ -76,6 +89,9 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		// MOSHIDON:
 		items.add(colorItem=new ListItem<>(getString(R.string.sk_settings_color_palette), getColorPaletteValue(), R.drawable.ic_fluent_color_24_regular, this::onColorClick));
 		items.add(trueBlackModeItem=new CheckableListItem<>(R.string.sk_settings_true_black, R.string.mo_setting_true_black_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.trueBlackTheme, R.drawable.ic_fluent_dark_theme_24_regular, i->onTrueBlackModeClick(), true));
+		// MAMMUT: FONT-SPEC §1 — typeface picker, directly under the display options
+		items.add(typefaceItem=new ListItem<>(R.string.settings_typeface, 0, R.drawable.ic_fluent_text_font_24_regular, this::onTypefaceClick));
+		typefaceItem.subtitle=getTypefaceValue();
 
 		// MAMMUT: phase 1 port from upstream master
 		items.add(enhanceTextSizeItem=new CheckableListItem<>(R.string.mo_settings_enhance_text_size, R.string.mo_settings_enhance_text_size_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.enhanceTextSize, R.drawable.ic_fluent_text_more_24_regular, i->onEnhanceTextSizeClick()));
@@ -165,6 +181,91 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		GlobalUserPreferences.enhanceTextSize=enhanceTextSizeItem.checked;
 		GlobalUserPreferences.save();
 		restartActivityToApplyNewTheme();
+	}
+
+	// MAMMUT: FONT-SPEC §1/§5 — the typeface picker. Each row shows the family
+	// name set in that family's own face above a one-line sample of real post
+	// copy; the current choice carries a check mark. A change needs an activity
+	// recreation to re-inflate every view, same as the theme row.
+	private void onTypefaceClick(ListItem<?> item_){
+		GlobalUserPreferences.FontFamily[] values=GlobalUserPreferences.FontFamily.values();
+		String sample=getString(R.string.settings_typeface_sample);
+		Context ctx=getActivity();
+		ListAdapter adapter=new ArrayAdapter<GlobalUserPreferences.FontFamily>(ctx, android.R.layout.simple_list_item_1, values){
+			@Override
+			public View getView(int position, View convertView, ViewGroup parent){
+				Context c=parent.getContext();
+				GlobalUserPreferences.FontFamily family=getItem(position);
+				LinearLayout row=new LinearLayout(c);
+				row.setOrientation(LinearLayout.HORIZONTAL);
+				int hPad=V.dp(24), vPad=V.dp(12);
+				row.setPadding(hPad, vPad, hPad, vPad);
+				LinearLayout texts=new LinearLayout(c);
+				texts.setOrientation(LinearLayout.VERTICAL);
+				Typeface face=MammutTypeface.get(family, 400, false);
+				TextView label=new TextView(c);
+				label.setText(typefaceLabel(family));
+				if(face!=null)
+					label.setTypeface(face);
+				label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+				texts.addView(label);
+				TextView sampleView=new TextView(c);
+				sampleView.setText(sample);
+				if(face!=null)
+					sampleView.setTypeface(face);
+				sampleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+				sampleView.setSingleLine(true);
+				sampleView.setEllipsize(TextUtils.TruncateAt.END);
+				sampleView.setTextColor(resolveColor(c, android.R.attr.textColorSecondary));
+				texts.addView(sampleView);
+				row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+				if(family==GlobalUserPreferences.fontFamily){
+					TextView check=new TextView(c);
+					check.setText("✓");
+					check.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+					check.setTextColor(resolveColor(c, R.attr.colorM3Primary));
+					LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+					lp.gravity=Gravity.CENTER_VERTICAL;
+					lp.leftMargin=V.dp(16);
+					row.addView(check, lp);
+				}
+				return row;
+			}
+		};
+		new M3AlertDialogBuilder(ctx)
+				.setTitle(R.string.settings_typeface)
+				.setAdapter(adapter, (dlg, which)->{
+					if(values[which]!=GlobalUserPreferences.fontFamily){
+						GlobalUserPreferences.fontFamily=values[which];
+						GlobalUserPreferences.save();
+						typefaceItem.subtitle=getTypefaceValue();
+						rebindItem(typefaceItem);
+						restartActivityToApplyNewTheme();
+					}
+					dlg.dismiss();
+				})
+				.setNegativeButton(R.string.cancel, null)
+				.show();
+	}
+
+	private String typefaceLabel(GlobalUserPreferences.FontFamily family){
+		return switch(family){
+			case SYSTEM -> getString(R.string.settings_typeface_system);
+			case INTER -> "Inter";
+			case SOURCE_SANS -> "Source Sans 3";
+			case LITERATA -> "Literata";
+			case ATKINSON -> "Atkinson Hyperlegible";
+		};
+	}
+
+	private String getTypefaceValue(){
+		return typefaceLabel(GlobalUserPreferences.fontFamily);
+	}
+
+	private static int resolveColor(Context ctx, int attr){
+		TypedValue tv=new TypedValue();
+		ctx.getTheme().resolveAttribute(attr, tv, true);
+		return tv.data;
 	}
 
 	private int getAppearanceValue(){

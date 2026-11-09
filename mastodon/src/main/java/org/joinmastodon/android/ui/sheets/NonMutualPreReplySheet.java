@@ -16,6 +16,7 @@ import org.joinmastodon.android.R;
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.text.HtmlParser;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
 import androidx.annotation.NonNull;
@@ -106,6 +107,7 @@ public class NonMutualPreReplySheet extends PreReplySheet{
 		}
 
 		contentWrap.addView(userInfo, UiUtils.makeLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 0, 0, 8));
+		MammutTypeface.applyRecursively(userInfo); // M2-b: name/bio/username TextViews are built programmatically after the constructor's factory-covering pass; the inflated rule items below already went through the factory
 
 		for(int i=0;i<3;i++){
 			View item=context.getSystemService(LayoutInflater.class).inflate(R.layout.item_other_numbered_rule, contentWrap, false);

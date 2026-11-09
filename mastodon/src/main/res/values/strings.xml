@@ -429,6 +429,10 @@
 	<string name="blocked_user">Blocked %s</string>
 	<string name="mark_all_notifications_read">Mark all as read</string>
 	<string name="settings_display">Display</string>
+	<!-- MAMMUT: FONT-SPEC §1/§5 — typeface picker -->
+	<string name="settings_typeface">Typeface</string>
+	<string name="settings_typeface_system">System</string>
+	<string name="settings_typeface_sample">just found out you can long-press the boost button to quote a post. anyway, happy friday</string>
 	<string name="settings_filters">Filters</string>
 	<string name="settings_hidden_domains">Blocked domains</string>
 	<string name="settings_hidden_domains_explanation">Review and unblock servers you’ve hidden</string>

@@ -71,6 +71,8 @@ public class GlobalUserPreferences{
 	public static boolean showMediaPreview;
 	public static boolean removeTrackingParams;
 	public static boolean enhanceTextSize;
+	// MAMMUT: FONT-SPEC §3 — typeface selection, stored by name like the theme preference
+	public static FontFamily fontFamily=FontFamily.SYSTEM;
 
 	// MOSHIDON: we changed this to public, because otherwise we can't export the settings
 	public static SharedPreferences getPrefs(){
@@ -143,6 +145,11 @@ public class GlobalUserPreferences{
 		showMediaPreview=prefs.getBoolean("showMediaPreview", true);
 		removeTrackingParams=prefs.getBoolean("removeTrackingParams", true);
 		enhanceTextSize=prefs.getBoolean("enhanceTextSize", false);
+		try{
+			fontFamily=FontFamily.valueOf(prefs.getString("fontFamily", FontFamily.SYSTEM.name()));
+		}catch(IllegalArgumentException e){
+			fontFamily=FontFamily.SYSTEM;
+		}
 
 
 		if(!prefs.getBoolean("perAccountMigrationDone", false)){
@@ -222,6 +229,7 @@ public class GlobalUserPreferences{
 				.putBoolean("showMediaPreview", showMediaPreview)
 				.putBoolean("removeTrackingParams", removeTrackingParams)
 				.putBoolean("enhanceTextSize", enhanceTextSize)
+				.putString("fontFamily", fontFamily.name())
 
 				.apply();
 	}
@@ -266,6 +274,16 @@ public class GlobalUserPreferences{
 		AUTO,
 		LIGHT,
 		DARK
+	}
+
+	// MAMMUT: FONT-SPEC §3 — bundled typeface families; stored by name so
+	// reordering the enum never reassigns anyone's choice
+	public enum FontFamily{
+		SYSTEM,
+		INTER,
+		SOURCE_SANS,
+		LITERATA,
+		ATKINSON
 	}
 
 	public enum PreReplySheetType{

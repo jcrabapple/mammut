@@ -141,6 +141,10 @@ android {
 
 dependencies {
 	api 'androidx.annotation:annotation:1.3.0'
+	// MAMMUT: FONT-SPEC §4 — ResourcesCompat.getFont (API 23-safe res/font loading; no litex clash, each litex module carries only its own package). The collection exclusion avoids duplicating me.grishka.litex:collection's classes, which are a superset of 1.0.0.
+	implementation('androidx.core:core:1.3.2'){
+		exclude group: 'androidx.collection'
+	}
 	// MAMMUT: The Caption Track — EXIF/XMP metadata prefill for image descriptions
 	implementation 'androidx.exifinterface:exifinterface:1.3.7'
 	implementation 'com.squareup.okhttp3:okhttp:3.14.9'

@@ -10,6 +10,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import org.joinmastodon.android.R;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
 import androidx.annotation.NonNull;
@@ -26,6 +27,7 @@ public abstract class PreReplySheet extends BottomSheet{
 
 		View content=context.getSystemService(LayoutInflater.class).inflate(R.layout.sheet_pre_reply, null);
 		setContentView(content);
+		MammutTypeface.applyRecursively(content); // M2: safety net for XML inflated with a context that never saw the factory (themed contexts DO inherit it — see MammutTypeface.applyRecursively's javadoc); programmatic rows are covered separately (M2-b)
 
 		setNavigationBarBackground(new ColorDrawable(UiUtils.alphaBlendColors(UiUtils.getThemeColor(context, R.attr.colorM3Surface),
 				UiUtils.getThemeColor(context, R.attr.colorM3Primary), 0.05f)), !UiUtils.isDarkTheme());
