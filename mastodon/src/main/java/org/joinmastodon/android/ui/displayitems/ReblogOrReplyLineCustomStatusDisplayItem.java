@@ -61,8 +61,8 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 	public int leadingInsetPx=-1;
 	/** Theme attr for the text colour, resolved at bind time; 0 keeps the layout's ?colorM3OnSurface. */
 	public int textColorAttr;
-	/** Text size in px, 0 keeps the layout's text appearance (timeline/address rows). */
-	public int textSizePx;
+	/** Text size in SP so the system font scale applies (§5.3); 0 keeps the layout's text appearance (timeline/address rows). */
+	public float textSizeSp;
 
 	public ReblogOrReplyLineCustomStatusDisplayItem(String parentID, Callbacks callbacks, Context context, CharSequence text, List<Emoji> emojis, @DrawableRes int icon) {
 		this(parentID, callbacks, context, text, emojis, icon, null, null, text, null);
@@ -148,9 +148,10 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 	public static class Holder extends StatusDisplayItem.Holder<ReblogOrReplyLineCustomStatusDisplayItem> implements ImageLoaderViewHolder{
 		private final TextView text, extraText;
 		private final View separator;
-		// Layout-appearance default, captured once: textSizePx overrides it per item
-		// (the Unroll n/N row is 11 dp like the old drawn marker) and recycling must
-		// restore it deterministically for every other row flavour.
+		// Layout-appearance default, captured once: textSizeSp overrides it per
+		// item in SP (the Unroll n/N row is 11 sp like the old drawn marker, so
+		// the system font scale applies) and recycling must restore it
+		// deterministically for every other row flavour.
 		private final float defaultTextSizePx, defaultExtraTextSizePx;
 
 		public Holder(Activity activity, ViewGroup parent){
@@ -164,7 +165,10 @@ public class ReblogOrReplyLineCustomStatusDisplayItem extends StatusDisplayItem{
 
 		private void bindLine(ReblogOrReplyLineCustomStatusDisplayItem item, TextView text, float defaultTextSizePx) {
 			text.setText(item.text);
-			text.setTextSize(TypedValue.COMPLEX_UNIT_PX, item.textSizePx>0 ? item.textSizePx : defaultTextSizePx);
+			if(item.textSizeSp>0)
+				text.setTextSize(TypedValue.COMPLEX_UNIT_SP, item.textSizeSp);
+			else
+				text.setTextSize(TypedValue.COMPLEX_UNIT_PX, defaultTextSizePx);
 			Context ctx = itemView.getContext();
 			// Fully deterministic under recycling: address rows carry an attr,
 			// everything else returns to the layout's ?colorM3OnSurface.
