@@ -620,6 +620,10 @@
 		<item quantity="other">%d people</item>
 	</plurals>
 	<string name="thread_unroll_action">Unroll</string>
+	<!-- ADDRESS-LINE-SPEC §6: the n/N marker's spoken form in full-width Unroll
+	     (the visible "n/N" is built with the display items; the label is the row's
+	     content description, in normal reading order before the post). -->
+	<string name="thread_unroll_position">Post %1$d of %2$d in this thread</string>
 	<plurals name="thread_all_posts">
 		<item quantity="one">All %d post</item>
 		<item quantity="other">All %d posts</item>

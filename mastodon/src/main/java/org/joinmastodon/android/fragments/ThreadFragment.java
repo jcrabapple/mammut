@@ -206,16 +206,38 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 	}
 
 	// Reading Room §5.1-§5.3: the first chain post keeps its author header; later
-	// posts render with FLAG_NO_HEADER, full width, reading typography — their author
-	// context is carried by the gutter line and numbering instead of repeated avatars.
+	// posts render with FLAG_NO_HEADER, full width, reading typography — their
+	// author context is carried by the numbering row instead of repeated avatars.
+	// ADDRESS-LINE-SPEC §6 — the two Unroll layouts share this builder:
+	// full-width (GlobalUserPreferences.fullWidthPosts): no gutter exists, so
+	// the n/N marker is a bound row at the layout's own 16 dp inset — never a
+	// decoration, never a left outRect (§7), and every row is fullWidth.
+	// Indented: the gutter genuinely exists, so no number row is prepended and
+	// UnrollReadingLineDecoration keeps the 44 dp inset, the reading line at
+	// 30 dp, and the drawn gutter numbering.
 	private List<StatusDisplayItem> buildUnrolledPostItems(Status s, int chainIndex){
 		int flags=StatusDisplayItem.FLAG_NO_IN_REPLY_TO;
 		if(chainIndex>0)
 			flags|=StatusDisplayItem.FLAG_NO_HEADER;
 		List<StatusDisplayItem> items=StatusDisplayItem.buildItems(this, getActivity(), s, accountID, s, knownAccounts, flags);
+		boolean fullWidth=GlobalUserPreferences.fullWidthPosts;
+		if(fullWidth){
+			int total=chain.chain.size();
+			String number=(chainIndex+1)+"/"+total;
+			// §5.3: unobtrusive — the old drawn marker was 11 sp in OnSurfaceVariant;
+			// the bound row keeps exactly that register in SP so the system font
+			// scale applies (quieter than body text, never a second timeline column).
+			ReblogOrReplyLineCustomStatusDisplayItem numberRow=new ReblogOrReplyLineCustomStatusDisplayItem(s.id, this, getActivity(),
+					number, null, 0, null, null, getString(R.string.thread_unroll_position, chainIndex+1, total), null);
+			numberRow.fullWidth=true;
+			numberRow.leadingInsetPx=V.dp(16);
+			numberRow.textColorAttr=R.attr.colorM3OnSurfaceVariant;
+			numberRow.textSizeSp=11f;
+			items.add(0, numberRow);
+		}
 		boolean focused=s.id.equals(mainStatus.id);
 		for(StatusDisplayItem item:items){
-			item.fullWidth=true;
+			item.fullWidth=fullWidth;
 			if(item instanceof TextStatusDisplayItem text){
 				text.textSelectable=!item.isQuote;
 				text.largerFont=true;
@@ -1023,6 +1045,15 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		}
 	}
 
+	/**
+	 * Reading Room §5.2/§5.3 — the gutter reading line and quiet numbering, for the
+	 * indented layout only. ADDRESS-LINE-SPEC §6: full-width Unroll has no gutter —
+	 * when {@link GlobalUserPreferences#fullWidthPosts} is on, every chain row is
+	 * skipped in both {@link #getItemOffsets} and {@link #onDrawOver}, and its n/N
+	 * marker is the bound row built with the display items. The guard reads the
+	 * preference directly rather than {@code holder.isFullWidth()} so suppressing
+	 * the avatar indent on a row never falsely skips the reading line.
+	 */
 	private class UnrollReadingLineDecoration extends RecyclerView.ItemDecoration{
 		private final Paint linePaint=new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final Paint numberPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1039,10 +1070,16 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		public void getItemOffsets(@NonNull Rect outRect, @NonNull View view, @NonNull RecyclerView parent, @NonNull RecyclerView.State state){
 			// Reading Room §5.2/§5.3: chain posts (and their side-branch markers) give
 			// up a strip of the left edge for the reading line and the quiet numbering.
+			// ADDRESS-LINE-SPEC §6: only when the gutter genuinely exists — with
+			// full-width posts on, chain rows reserve nothing; their n/N marker is
+			// the bound row built with the items.
 			if(!unrollMode || chain==null || !chain.eligible)
 				return;
-			if(parent.getChildViewHolder(view) instanceof StatusDisplayItem.Holder<?> holder && chain.indexOf(holder.getItemID())>=0)
-				outRect.left=V.dp(44);
+			if(!(parent.getChildViewHolder(view) instanceof StatusDisplayItem.Holder<?> holder) || chain.indexOf(holder.getItemID())<0)
+				return;
+			if(GlobalUserPreferences.fullWidthPosts)
+				return;
+			outRect.left=V.dp(44);
 		}
 
 		@Override
@@ -1062,6 +1099,13 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 					continue;
 				int chainIndex=chain.indexOf(holder.getItemID());
 				if(chainIndex<0)
+					continue;
+				// ADDRESS-LINE-SPEC §6: with full-width posts on there is no gutter —
+				// no line, and no drawText numbering (theirs is the bound row, prepared
+				// with the items; nothing is formatted or drawn per frame). The guard
+				// reads the preference directly so a row with a suppressed avatar
+				// indent still gets the reading line in the indented layout.
+				if(GlobalUserPreferences.fullWidthPosts)
 					continue;
 				parent.getDecoratedBoundsWithMargins(child, tmpRect);
 				// The line runs through every row of the chain posts; because the rows
