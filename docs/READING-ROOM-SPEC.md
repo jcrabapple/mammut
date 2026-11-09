@@ -57,8 +57,13 @@ destination: back returns to the Conversation.
 2. **Reading line**: a single vertical rule in the grape neutral colour, drawn in the left gutter,
    connecting consecutive chain posts. It stops at the last post. It must not imply a reply by
    someone else joined the chain.
+   *In the full-width post layout (display setting) there is no gutter: the line is not drawn, the
+   44 dp left inset is not reserved, and the numbering in §3 becomes a bound row inside the post at
+   the layout's own 16 dp inset. The two renderings are mutually exclusive and both say the same
+   thing; the setting decides which one the reader gets.*
 3. **Numbering**: unobtrusive, in the gutter or as a leading prefix — `1/4`, or a plain index. It
    must be smaller and quieter than post body text, and must not become a second timeline column.
+   It is sized in sp, so it follows the reader's system font size in either rendering.
 4. **Side branches**: after any chain post that has fetched off-chain replies, one inline marker:
    **"2 replies to this post · Show in full conversation."** Tapping it returns to the Conversation
    view scrolled to that post. If a post has one off-chain reply the marker says "1 reply".
