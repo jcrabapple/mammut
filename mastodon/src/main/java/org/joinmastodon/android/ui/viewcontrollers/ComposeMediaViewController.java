@@ -39,6 +39,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.joinmastodon.android.MastodonApp;
+import org.joinmastodon.android.api.MastodonErrorResponse;
+import org.joinmastodon.android.api.UploadStaging;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.MastodonAPIController;
 import org.joinmastodon.android.api.ProgressListener;
@@ -367,71 +369,7 @@ public class ComposeMediaViewController{
 		attachment.progressBar.setProgress(0);
 		attachment.speedTracker.reset();
 		attachment.speedTracker.addSample(0);
-		attachment.uploadRequest=(UploadAttachment) new UploadAttachment(attachment.uri, maxSize, attachment.description)
-				.setProgressListener(new ProgressListener(){
-					@Override
-					public void onProgress(long transferred, long total){
-						if(fragment.getActivity()==null)
-							return;
-						float progressFraction=transferred/(float)total;
-						int progress=Math.round(progressFraction*attachment.progressBar.getMax());
-						if(Build.VERSION.SDK_INT>=24)
-							attachment.progressBar.setProgress(progress, true);
-						else
-							attachment.progressBar.setProgress(progress);
-
-						attachment.titleView.setText(fragment.getString(R.string.attachment_x_percent_uploaded, Math.round(progressFraction*100f)));
-
-						attachment.speedTracker.setTotalBytes(total);
-//						attachment.uploadStateTitle.setText(fragment.getString(R.string.file_upload_progress, UiUtils.formatFileSize(fragment.getActivity(), transferred, true), UiUtils.formatFileSize(fragment.getActivity(), total, true)));
-						attachment.speedTracker.addSample(transferred);
-					}
-				})
-				.setCallback(new Callback<>(){
-					@Override
-					public void onSuccess(Attachment result){
-						attachment.serverAttachment=result;
-						if(TextUtils.isEmpty(result.url)){
-							attachment.state=AttachmentUploadState.PROCESSING;
-							attachment.processingPollingRunnable=()->pollForMediaAttachmentProcessing(attachment);
-							if(fragment.getActivity()==null)
-								return;
-							attachment.titleView.setText(R.string.upload_processing);
-							UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
-							if(!areThereAnyUploadingAttachments())
-								uploadNextQueuedAttachment();
-						}else{
-							finishMediaAttachmentUpload(attachment);
-						}
-					}
-
-					@Override
-					public void onError(ErrorResponse error){
-						attachment.uploadRequest=null;
-						attachment.state=AttachmentUploadState.ERROR;
-						attachment.titleView.setText(R.string.upload_failed);
-//						if(error instanceof MastodonErrorResponse er){
-//							if(er.underlyingException instanceof SocketException || er.underlyingException instanceof UnknownHostException || er.underlyingException instanceof InterruptedIOException)
-//								attachment.uploadStateText.setText(R.string.upload_error_connection_lost);
-//							else
-//								attachment.uploadStateText.setText(er.error);
-//						}else{
-//							attachment.uploadStateText.setText("");
-//						}
-//						attachment.retryButton.setImageResource(R.drawable.ic_fluent_arrow_clockwise_24_filled);
-//						attachment.retryButton.setContentDescription(fragment.getString(R.string.retry_upload));
-
-						V.setVisibilityAnimated(attachment.editButton, View.VISIBLE);
-						attachment.editButton.setImageResource(R.drawable.ic_restart_alt_24px);
-						attachment.editButton.setOnClickListener(ComposeMediaViewController.this::onRetryOrCancelMediaUploadClick);
-						attachment.setUseErrorColors(true);
-						V.setVisibilityAnimated(attachment.progressBar, View.GONE);
-
-						if(!areThereAnyUploadingAttachments())
-							uploadNextQueuedAttachment();
-					}
-				})
-				.exec(fragment.getAccountID());
+		stageAndUpload(attachment, maxSize, contentType);
 	}
 
 	private void onRemoveMediaAttachmentClick(View v){
@@ -439,6 +377,7 @@ public class ComposeMediaViewController{
 		if(att.isUploadingOrProcessing())
 			att.cancelUpload();
 		attachments.remove(att);
+		releaseStagedUpload(att);
 		if(!areThereAnyUploadingAttachments())
 			uploadNextQueuedAttachment();
 		if(!attachments.isEmpty())
@@ -1044,6 +983,9 @@ public class ComposeMediaViewController{
 		public boolean descriptionSaved=true;
 		/** MAMMUT: Composer 2.0 — path of this file's private copy in the draft directory, once saved */
 		public transient String draftFilePath;
+		/** t_54414ac0: the verified local copy + transcode, kept so a retry reuses it instead of
+		 *  re-opening a picker URI whose read grant may already have expired. */
+		public transient UploadStaging.StagedUpload stagedUpload;
 
 		public transient View view;
 		public transient ProgressBar progressBar;
@@ -1237,5 +1179,130 @@ public class ComposeMediaViewController{
 			currentAnimations.put(view, set);
 			set.start();
 		}
+	}
+
+	/**
+	 * t_54414ac0: stage the file once (verified local copy, HEIC→JPEG) off the main thread, then
+	 * upload from that copy. The provider's size column is never consulted and a retry reuses the
+	 * staged file, so an expired picker grant cannot turn into a second, different failure.
+	 */
+	private void stageAndUpload(DraftMediaAttachment attachment, int maxSize, String mime){
+		final String fileName=UiUtils.getFileName(attachment.uri);
+		if(attachment.stagedUpload!=null){
+			performUpload(attachment, attachment.stagedUpload, maxSize, fileName);
+			return;
+		}
+		new Thread(()->{
+			UploadStaging.StagedUpload staged;
+			try{
+				staged=UploadStaging.stage(MastodonApp.context, attachment.uri, UploadStaging.sourceFor(attachment.uri, mime));
+			}catch(Throwable t){
+				UiUtils.runOnUiThread(()->onLocalUploadError(attachment, t));
+				return;
+			}
+			attachment.stagedUpload=staged;
+			UiUtils.runOnUiThread(()->performUpload(attachment, staged, maxSize, fileName));
+		}, "mammut-upload-stage").start();
+	}
+
+	private void performUpload(DraftMediaAttachment attachment, UploadStaging.StagedUpload staged, int maxSize, String fileName){
+		attachment.uploadRequest=(UploadAttachment) new UploadAttachment(staged, maxSize, attachment.description, staged.transcodedFromHeic ? withJpegExtension(fileName) : fileName)
+				.setProgressListener(new ProgressListener(){
+					@Override
+					public void onProgress(long transferred, long total){
+						if(fragment.getActivity()==null)
+							return;
+						float progressFraction=transferred/(float)total;
+						int progress=Math.round(progressFraction*attachment.progressBar.getMax());
+						if(Build.VERSION.SDK_INT>=24)
+							attachment.progressBar.setProgress(progress, true);
+						else
+							attachment.progressBar.setProgress(progress);
+
+						attachment.titleView.setText(fragment.getString(R.string.attachment_x_percent_uploaded, Math.round(progressFraction*100f)));
+
+						attachment.speedTracker.setTotalBytes(total);
+//						attachment.uploadStateTitle.setText(fragment.getString(R.string.file_upload_progress, UiUtils.formatFileSize(fragment.getActivity(), transferred, true), UiUtils.formatFileSize(fragment.getActivity(), total, true)));
+						attachment.speedTracker.addSample(transferred);
+					}
+				})
+				.setCallback(new Callback<>(){
+					@Override
+					public void onSuccess(Attachment result){
+						attachment.serverAttachment=result;
+						if(TextUtils.isEmpty(result.url)){
+							attachment.state=AttachmentUploadState.PROCESSING;
+							attachment.processingPollingRunnable=()->pollForMediaAttachmentProcessing(attachment);
+							if(fragment.getActivity()==null)
+								return;
+							attachment.titleView.setText(R.string.upload_processing);
+							UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
+							if(!areThereAnyUploadingAttachments())
+								uploadNextQueuedAttachment();
+						}else{
+							finishMediaAttachmentUpload(attachment);
+						}
+					}
+
+					@Override
+					public void onError(ErrorResponse error){
+						attachment.uploadRequest=null;
+						attachment.state=AttachmentUploadState.ERROR;
+						// t_54414ac0 req 4: a 5xx from the media endpoint is the server failing on the bytes it
+						// got, not a network error and not a local read failure — say so instead of "upload failed".
+						if(error instanceof MastodonErrorResponse mer && mer.httpStatus>=500)
+							attachment.titleView.setText(R.string.upload_error_server);
+						else
+							attachment.titleView.setText(R.string.upload_failed);
+//						if(error instanceof MastodonErrorResponse er){
+//							if(er.underlyingException instanceof SocketException || er.underlyingException instanceof UnknownHostException || er.underlyingException instanceof InterruptedIOException)
+//								attachment.uploadStateText.setText(R.string.upload_error_connection_lost);
+//							else
+//								attachment.uploadStateText.setText(er.error);
+//						}else{
+//							attachment.uploadStateText.setText("");
+//						}
+//						attachment.retryButton.setImageResource(R.drawable.ic_fluent_arrow_clockwise_24_filled);
+//						attachment.retryButton.setContentDescription(fragment.getString(R.string.retry_upload));
+
+						V.setVisibilityAnimated(attachment.editButton, View.VISIBLE);
+						attachment.editButton.setImageResource(R.drawable.ic_restart_alt_24px);
+						attachment.editButton.setOnClickListener(ComposeMediaViewController.this::onRetryOrCancelMediaUploadClick);
+						attachment.setUseErrorColors(true);
+						V.setVisibilityAnimated(attachment.progressBar, View.GONE);
+
+						if(!areThereAnyUploadingAttachments())
+							uploadNextQueuedAttachment();
+					}
+				})
+				.exec(fragment.getAccountID());
+	}
+
+	/** A failure before the request existed: nothing was sent, so say what we could not read. */
+	private void onLocalUploadError(DraftMediaAttachment attachment, Throwable t){
+		Log.w("ComposeMediaViewController", "Could not stage media for upload", t);
+		attachment.uploadRequest=null;
+		attachment.state=AttachmentUploadState.ERROR;
+		attachment.titleView.setText(R.string.upload_error_unreadable);
+		V.setVisibilityAnimated(attachment.editButton, View.VISIBLE);
+		attachment.editButton.setImageResource(R.drawable.ic_restart_alt_24px);
+		attachment.editButton.setOnClickListener(ComposeMediaViewController.this::onRetryOrCancelMediaUploadClick);
+		attachment.setUseErrorColors(true);
+		V.setVisibilityAnimated(attachment.progressBar, View.GONE);
+		if(!areThereAnyUploadingAttachments())
+			uploadNextQueuedAttachment();
+	}
+
+	private static void releaseStagedUpload(DraftMediaAttachment att){
+		if(att.stagedUpload!=null && att.stagedUpload.deleteOnRelease && att.stagedUpload.file!=null)
+			att.stagedUpload.file.delete();
+		att.stagedUpload=null;
+	}
+
+	private static String withJpegExtension(String name){
+		if(name==null || name.isEmpty())
+			return "upload.jpg";
+		int dot=name.lastIndexOf('.');
+		return (dot>0 ? name.substring(0,dot) : name)+".jpg";
 	}
 }

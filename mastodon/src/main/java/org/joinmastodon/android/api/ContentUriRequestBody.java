@@ -1,11 +1,8 @@
 package org.joinmastodon.android.api;
 
-import android.database.Cursor;
 import android.net.Uri;
-import android.provider.OpenableColumns;
 
 import org.joinmastodon.android.MastodonApp;
-import org.joinmastodon.android.ui.utils.UiUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -14,37 +11,35 @@ import okhttp3.MediaType;
 import okio.Okio;
 import okio.Source;
 
+/**
+ * Request body for an avatar/cover-style upload straight from a URI (t_54414ac0).
+ * The URI is staged through {@link UploadStaging} once at construction: content
+ * sources are copied into a verified cache temp file whose length is a fact
+ * rather than an {@code OpenableColumns.SIZE} hint (NULL size columns once rode
+ * in as a declared length of zero and the server received an empty file part),
+ * and a zero-byte file fails locally with {@link EmptyUploadException} before
+ * any request is built.
+ */
 public class ContentUriRequestBody extends CountingRequestBody{
-	private final Uri uri;
+	private final File file;
+	private final MediaType mediaType;
 
-	public ContentUriRequestBody(Uri uri, ProgressListener progressListener){
+	public ContentUriRequestBody(Uri uri, ProgressListener progressListener) throws IOException{
 		super(progressListener);
-		this.uri=uri;
-		// MAMMUT: draft media restored from the store is a file:// URI into
-		// app-private storage (no FileProvider — see ComposeMediaViewController
-		// addRestoredAttachment); stat it directly instead of querying
-		// OpenableColumns, which only content:// URIs answer.
-		if("file".equals(uri.getScheme())){
-			length=(int)Math.min(new File(uri.getPath()).length(), Integer.MAX_VALUE);
-		}else{
-			try(Cursor cursor=MastodonApp.context.getContentResolver().query(uri, new String[]{OpenableColumns.SIZE}, null, null, null)){
-				cursor.moveToFirst();
-				length=cursor.getInt(0);
-			}
-		}
+		String mime="file".equals(uri.getScheme()) ? null : MastodonApp.context.getContentResolver().getType(uri);
+		UploadStaging.StagedUpload staged=UploadStaging.stage(MastodonApp.context, uri, UploadStaging.sourceFor(uri, mime));
+		this.file=staged.file;
+		this.mediaType=staged.mediaType;
+		length=file.length();
 	}
 
 	@Override
 	public MediaType contentType(){
-		if("file".equals(uri.getScheme())){
-			MediaType type=UiUtils.getFileMediaType(new File(uri.getPath()));
-			return type!=null ? type : MediaType.get("application/octet-stream");
-		}
-		return MediaType.get(MastodonApp.context.getContentResolver().getType(uri));
+		return mediaType;
 	}
 
 	@Override
 	protected Source openSource() throws IOException{
-		return Okio.source(MastodonApp.context.getContentResolver().openInputStream(uri));
+		return Okio.source(file);
 	}
 }
