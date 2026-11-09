@@ -32,6 +32,7 @@ import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.model.Poll;
 import org.joinmastodon.android.model.Status;
 import org.joinmastodon.android.ui.text.CustomEmojiSpan;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -510,7 +511,7 @@ public class ShareImageRenderer{
 			card.addView(vspace(entry.gapAbove));
 			switch(entry.kind){
 				case CW -> {
-					TextView cw=newTextView(CW_SIZE, palette.onSurface, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+					TextView cw=newTextView(CW_SIZE, palette.onSurface, familyTypeface(500, Typeface.create("sans-serif-medium", Typeface.NORMAL)));
 					cw.setText("CW: "+status.spoilerText);
 					card.addView(cw, new LinearLayout.LayoutParams(CONTENT_WIDTH, ViewGroup.LayoutParams.WRAP_CONTENT));
 				}
@@ -586,10 +587,10 @@ public class ShareImageRenderer{
 			return;
 
 		int bodyIndex=card.indexOfChild(body);
-		TextView ellipsis=newTextView(ELLIPSIS_SIZE, palette.onSurface, Typeface.DEFAULT);
+		TextView ellipsis=newTextView(ELLIPSIS_SIZE, palette.onSurface, familyTypeface(400, Typeface.DEFAULT));
 		ellipsis.setText("…");
 		card.addView(ellipsis, bodyIndex+1);
-		TextView continueLine=newTextView(CONTINUE_SIZE, palette.onSurfaceVariant, Typeface.DEFAULT);
+		TextView continueLine=newTextView(CONTINUE_SIZE, palette.onSurfaceVariant, familyTypeface(400, Typeface.DEFAULT));
 		continueLine.setText("Continue reading at "+status.url);
 		card.addView(continueLine, bodyIndex+2);
 	}
@@ -622,15 +623,15 @@ public class ShareImageRenderer{
 		String displayName=TextUtils.isEmpty(account.displayName) ? account.username : account.displayName;
 		int namesWidth=CONTENT_WIDTH-AVATAR_SIZE-AVATAR_GAP;
 
-		TextView name=newTextView(NAME_SIZE, palette.onSurface, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+		TextView name=newTextView(NAME_SIZE, palette.onSurface, familyTypeface(500, Typeface.create("sans-serif-medium", Typeface.NORMAL)));
 		name.setText(displayName);
 		names.addView(name, new LinearLayout.LayoutParams(namesWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-		TextView handle=newTextView(HANDLE_SIZE, palette.onSurfaceVariant, Typeface.DEFAULT);
+		TextView handle=newTextView(HANDLE_SIZE, palette.onSurfaceVariant, familyTypeface(400, Typeface.DEFAULT));
 		handle.setText(fullHandle(account));
 		names.addView(handle, new LinearLayout.LayoutParams(namesWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-		TextView timestamp=newTextView(TIMESTAMP_SIZE, palette.onSurfaceVariant, Typeface.DEFAULT);
+		TextView timestamp=newTextView(TIMESTAMP_SIZE, palette.onSurfaceVariant, familyTypeface(400, Typeface.DEFAULT));
 		timestamp.setText(status.createdAt.atZone(ZoneId.systemDefault()).format(TIMESTAMP_FORMAT));
 		names.addView(timestamp, new LinearLayout.LayoutParams(namesWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -642,13 +643,13 @@ public class ShareImageRenderer{
 		LinearLayout footer=new LinearLayout(appContext);
 		footer.setOrientation(LinearLayout.HORIZONTAL);
 
-		TextView url=newTextView(FOOTER_SIZE, palette.onSurfaceVariant, Typeface.DEFAULT);
+		TextView url=newTextView(FOOTER_SIZE, palette.onSurfaceVariant, familyTypeface(400, Typeface.DEFAULT));
 		url.setText(status.url);
 		url.setSingleLine(true);
 		url.setEllipsize(TextUtils.TruncateAt.END);
 		footer.addView(url, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
-		TextView wordmark=newTextView(FOOTER_SIZE, palette.onSurfaceVariant, Typeface.DEFAULT);
+		TextView wordmark=newTextView(FOOTER_SIZE, palette.onSurfaceVariant, familyTypeface(400, Typeface.DEFAULT));
 		wordmark.setText("Mammut");
 		footer.addView(wordmark);
 
@@ -681,17 +682,17 @@ public class ShareImageRenderer{
 		Account account=quoted.account;
 		String displayName=TextUtils.isEmpty(account.displayName) ? account.username : account.displayName;
 
-		TextView name=newTextView(QuoteBlock.AUTHOR_SIZE, palette.onSurface, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+		TextView name=newTextView(QuoteBlock.AUTHOR_SIZE, palette.onSurface, familyTypeface(500, Typeface.create("sans-serif-medium", Typeface.NORMAL)));
 		name.setText(displayName);
 		textColumn.addView(name, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-		TextView handle=newTextView(QuoteBlock.AUTHOR_SIZE, palette.onSurfaceVariant, Typeface.DEFAULT);
+		TextView handle=newTextView(QuoteBlock.AUTHOR_SIZE, palette.onSurfaceVariant, familyTypeface(400, Typeface.DEFAULT));
 		handle.setText(fullHandle(account));
 		textColumn.addView(handle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
 		Spanned quoteText=stripTrailingNewlines(parsedQuoteText);
 		if(quoteText.length()>0){
-			TextView text=newTextView(QuoteBlock.TEXT_SIZE, palette.onSurface, Typeface.DEFAULT);
+			TextView text=newTextView(QuoteBlock.TEXT_SIZE, palette.onSurface, familyTypeface(400, Typeface.DEFAULT));
 			text.setLineSpacing(0, BODY_LINE_SPACING);
 			text.setLinkTextColor(palette.primary);
 			text.setMaxLines(QuoteBlock.MAX_TEXT_LINES);
@@ -738,13 +739,14 @@ public class ShareImageRenderer{
 		// The percentage column reserves room for the widest printable label.
 		Paint probe=new Paint(Paint.ANTI_ALIAS_FLAG);
 		probe.setTextSize(POLL_OPTION_SIZE);
+		probe.setTypeface(familyTypeface(400, null));
 		int pctWidth=(int)Math.ceil(probe.measureText("100%"));
 		pollOptionLabelWidth=CONTENT_WIDTH-pctWidth-POLL_PCT_MARGIN;
 
 		int widthSpec=View.MeasureSpec.makeMeasureSpec(CONTENT_WIDTH, View.MeasureSpec.EXACTLY);
 		int height=0;
 		if(questionText!=null && questionText.length()>0){
-			pollQuestion=newTextView(POLL_QUESTION_SIZE, palette.onSurface, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+			pollQuestion=newTextView(POLL_QUESTION_SIZE, palette.onSurface, familyTypeface(500, Typeface.create("sans-serif-medium", Typeface.NORMAL)));
 			pollQuestion.setText(questionText);
 			int questionHeight=measureView(pollQuestion, widthSpec);
 			pollQuestion.layout(0, 0, CONTENT_WIDTH, questionHeight);
@@ -754,7 +756,7 @@ public class ShareImageRenderer{
 		pollOptionHeights=new int[votes.length];
 		int optionWidthSpec=View.MeasureSpec.makeMeasureSpec(pollOptionLabelWidth, View.MeasureSpec.EXACTLY);
 		for(int i=0;i<votes.length;i++){
-			TextView label=newTextView(POLL_OPTION_SIZE, palette.onSurface, Typeface.DEFAULT);
+			TextView label=newTextView(POLL_OPTION_SIZE, palette.onSurface, familyTypeface(400, Typeface.DEFAULT));
 			String title=poll.options.get(i).title;
 			label.setText(title!=null ? title : "");
 			int labelHeight=measureView(label, optionWidthSpec);
@@ -765,7 +767,7 @@ public class ShareImageRenderer{
 			if(i<votes.length-1)
 				height+=POLL_OPTION_GAP;
 		}
-		pollFooter=newTextView(POLL_FOOTER_SIZE, palette.onSurfaceVariant, Typeface.DEFAULT);
+		pollFooter=newTextView(POLL_FOOTER_SIZE, palette.onSurfaceVariant, familyTypeface(400, Typeface.DEFAULT));
 		Long expiresAt=poll.expiresAt!=null ? poll.expiresAt.toEpochMilli() : null;
 		pollFooter.setText(PollBlock.footer(poll.votesCount, poll.isExpired(), expiresAt, System.currentTimeMillis()));
 		int footerHeight=measureView(pollFooter, widthSpec);
@@ -782,10 +784,21 @@ public class ShareImageRenderer{
 	}
 
 	private TextView newBodyTextView(){
-		TextView tv=newTextView(BODY_SIZE, palette.onSurface, Typeface.DEFAULT);
+		TextView tv=newTextView(BODY_SIZE, palette.onSurface, familyTypeface(400, Typeface.DEFAULT));
 		tv.setLineSpacing(0, BODY_LINE_SPACING);
 		tv.setLinkTextColor(palette.primary);
 		return tv;
+	}
+
+	/**
+	 * §4.2: every face on the card comes from the reader's active family, so a
+	 * shared image matches the screen. The fallback is what the card rendered
+	 * before this feature — asking for a family face at SYSTEM returns null
+	 * and costs nothing, and the card keeps its old look byte-for-byte.
+	 */
+	private Typeface familyTypeface(int weight, Typeface fallback){
+		Typeface font=MammutTypeface.get(GlobalUserPreferences.fontFamily, weight, false);
+		return font!=null ? font : fallback;
 	}
 
 	private TextView newTextView(int sizePx, int color, Typeface typeface){
@@ -812,7 +825,7 @@ public class ShareImageRenderer{
 	}
 
 	private int lineHeight(int textSizePx){
-		TextView probe=newTextView(textSizePx, palette.onSurface, Typeface.DEFAULT);
+		TextView probe=newTextView(textSizePx, palette.onSurface, familyTypeface(400, Typeface.DEFAULT));
 		probe.setText("Mg");
 		return measureView(probe, View.MeasureSpec.makeMeasureSpec(CONTENT_WIDTH, View.MeasureSpec.EXACTLY));
 	}
@@ -873,6 +886,7 @@ public class ShareImageRenderer{
 	private void drawMedia(Canvas canvas, List<Attachment> attachments, MediaPrep media){
 		List<MediaGridSolver.Tile> tiles=MediaGridSolver.solve(attachments.size(), firstAspect(attachments));
 		Paint labelPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+		labelPaint.setTypeface(familyTypeface(400, null));
 		for(int i=0;i<tiles.size();i++){
 			MediaGridSolver.Tile tile=tiles.get(i);
 			int left=SIDE_PADDING+tile.x, top=mediaTopInCard+tile.y;
@@ -963,6 +977,7 @@ public class ShareImageRenderer{
 		canvas.restore();
 
 		Paint labelPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+		labelPaint.setTypeface(familyTypeface(400, null));
 		if(d==null){
 			// Neutral placeholder with a type label (the description would not
 			// fit legibly on a 160 px tile).
@@ -1010,6 +1025,7 @@ public class ShareImageRenderer{
 		Paint fillPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
 		Paint pctPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
 		pctPaint.setTextSize(POLL_OPTION_SIZE);
+		pctPaint.setTypeface(familyTypeface(400, null));
 		pctPaint.setColor(palette.onSurfaceVariant);
 		pctPaint.setTextAlign(Paint.Align.RIGHT);
 		int barRadius=PollBlock.BAR_HEIGHT/2;

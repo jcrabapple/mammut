@@ -7,6 +7,7 @@ import android.content.res.Configuration;
 import android.webkit.WebView;
 
 import org.joinmastodon.android.api.PushSubscriptionManager;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.utils.UnifiedPushHelper;
 
@@ -38,6 +39,8 @@ public class MastodonApp extends Application{
 			PushSubscriptionManager.tryRegisterFCM();
 		}
 		GlobalUserPreferences.load();
+		// MAMMUT: FONT-SPEC §4.1 — app-wide typeface application, one factory per Activity
+		registerActivityLifecycleCallbacks(new MammutTypeface.LifecycleCallbacks());
 		if(BuildConfig.DEBUG){
 			WebView.setWebContentsDebuggingEnabled(true);
 		}
