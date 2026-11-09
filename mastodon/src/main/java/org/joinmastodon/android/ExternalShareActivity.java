@@ -54,10 +54,16 @@ public class ExternalShareActivity extends FragmentStackActivity{
 		String text=intent.getStringExtra(Intent.EXTRA_TEXT);
 		String subject=intent.getStringExtra(Intent.EXTRA_SUBJECT);
 		if(!TextUtils.isEmpty(subject)){
-			if(!TextUtils.isEmpty(text))
-				text=subject+"\n"+text;
-			else
+			if(!TextUtils.isEmpty(text)){
+				// A shared page arrives as EXTRA_SUBJECT (the title) + EXTRA_TEXT (the link).
+				// They are two thoughts, not one line of prose: leave a blank line between them.
+				String body=text;
+				while(body.startsWith("\n"))
+					body=body.substring(1);
+				text=subject+"\n\n"+body;
+			}else{
 				text=subject;
+			}
 		}
 		List<Uri> mediaUris;
 		if(Intent.ACTION_SEND.equals(intent.getAction())){

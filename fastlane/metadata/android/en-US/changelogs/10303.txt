@@ -1,0 +1,1 @@
+Sharing a page from the browser now leaves a blank line between the page title and the link.
