@@ -1188,4 +1188,6 @@
 <string name="search_help_group_syntax">Syntax</string>
 <string name="search_help_syntax">\"exact phrase\"\n-word\n+word</string>
 <string name="search_help_keyword_rule">A filter without a word is rejected: cat has:media</string>
+	<string name="nav_notifications_marked_read">Notifications marked as read</string>
+	<string name="nav_notifications_mark_read_failed">Couldn’t mark notifications as read</string>
 </resources>

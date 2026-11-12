@@ -36,10 +36,18 @@ public class SwitchListItemViewHolder extends CheckableListItemViewHolder{
 		sw.setOnCheckedChangeListener((buttonView, isChecked)->{
 			if(ignoreListener)
 				return;
-			if(item.checkedChangeListener!=null)
+			if(item.checkedChangeListener!=null){
 				item.checkedChangeListener.accept(isChecked);
-			else
-				item.checked=isChecked;
+			}else{
+				// The ROW's click handler owns the preference: it toggles the item, saves
+				// and rebinds. Writing isChecked here and stopping meant a tap on the
+				// switch itself never saved anything, so the setting reverted the next
+				// time the screen opened (the enhance-text-size switch that would not
+				// stay off). Undo our own write and go through the same path as a row
+				// tap; rebind sets the switch with ignoreListener held.
+				item.checked=!isChecked;
+				item.performClick();
+			}
 		});
 		sw.setClickable(true);
 	}

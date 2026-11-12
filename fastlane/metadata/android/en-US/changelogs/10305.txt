@@ -1,0 +1,1 @@
+Settings switches now save when you tap the switch itself, and a long press on the notification bell marks everything read.

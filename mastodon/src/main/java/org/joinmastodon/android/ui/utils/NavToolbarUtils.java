@@ -130,6 +130,51 @@ public class NavToolbarUtils{
 			if(home!=null)
 				home.setDestination(NavDestination.NOTIFICATIONS);
 		});
+		button.setOnLongClickListener(v->{
+			markAllNotificationsRead(activity, accountID);
+			return true;
+		});
+	}
+
+	/**
+	 * Long-press on the bell: write the notifications marker at the newest
+	 * notification, then clear the shared unread store so every badge and chip
+	 * drops at once. Reading the marker back is not enough on its own — the
+	 * count is computed from it, so the store is only cleared once the server
+	 * has accepted the new position.
+	 */
+	private static void markAllNotificationsRead(Activity activity, String accountID){
+		new org.joinmastodon.android.api.requests.notifications.GetNotificationsV1(null, 1, java.util.EnumSet.allOf(org.joinmastodon.android.model.NotificationType.class))
+				.setCallback(new me.grishka.appkit.api.Callback<java.util.List<org.joinmastodon.android.model.Notification>>(){
+					@Override
+					public void onSuccess(java.util.List<org.joinmastodon.android.model.Notification> result){
+						if(result.isEmpty()){
+							UnreadNotificationStore.markRead();
+							android.widget.Toast.makeText(activity, R.string.nav_notifications_marked_read, android.widget.Toast.LENGTH_SHORT).show();
+							return;
+						}
+						new org.joinmastodon.android.api.requests.markers.SaveMarkers(null, result.get(0).id)
+								.setCallback(new me.grishka.appkit.api.Callback<org.joinmastodon.android.model.TimelineMarkers>(){
+									@Override
+									public void onSuccess(org.joinmastodon.android.model.TimelineMarkers r){
+										UnreadNotificationStore.markRead();
+										android.widget.Toast.makeText(activity, R.string.nav_notifications_marked_read, android.widget.Toast.LENGTH_SHORT).show();
+									}
+
+									@Override
+									public void onError(me.grishka.appkit.api.ErrorResponse error){
+										android.widget.Toast.makeText(activity, R.string.nav_notifications_mark_read_failed, android.widget.Toast.LENGTH_SHORT).show();
+									}
+								})
+								.exec(accountID);
+					}
+
+					@Override
+					public void onError(me.grishka.appkit.api.ErrorResponse error){
+						android.widget.Toast.makeText(activity, R.string.nav_notifications_mark_read_failed, android.widget.Toast.LENGTH_SHORT).show();
+					}
+				})
+				.exec(accountID);
 	}
 
 	public static void openSelfProfile(Activity activity, String accountID){
