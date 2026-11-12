@@ -1,0 +1,1 @@
+Reply text no longer runs off the right edge with a bundled typeface, and the favorite button lights up in notifications too.

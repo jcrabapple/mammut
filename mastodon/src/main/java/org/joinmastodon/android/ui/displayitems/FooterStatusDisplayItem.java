@@ -250,6 +250,11 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 
 		private void doBoost(){
 			AccountSessionManager.getInstance().getAccount(item.accountID).getStatusInteractionController().setReblogged(item.status, !item.status.reblogged, StatusPrivacy.PUBLIC, r->{});
+			// The label has duplicateParentState="true", so its drawable state is the PARENT
+			// button's. Selecting the label alone does nothing until something rebinds the
+			// row, which timelines do and notifications often do not: the heart stayed
+			// grey there after a successful favorite. Set the parent, as onBind does.
+			boostBtn.setSelected(item.status.reblogged);
 			boost.setSelected(item.status.reblogged);
 			bindButton(boost, item.status.reblogsCount);
 		}
@@ -258,6 +263,7 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 			// MAMMUT: phase 1 port from upstream master
 			vibrateForAction(favoriteBtn, !item.status.favourited);
 			AccountSessionManager.getInstance().getAccount(item.accountID).getStatusInteractionController().setFavorited(item.status, !item.status.favourited);
+			favoriteBtn.setSelected(item.status.favourited);
 			favorite.setSelected(item.status.favourited);
 			bindButton(favorite, item.status.favouritesCount);
 		}
@@ -347,6 +353,7 @@ public class FooterStatusDisplayItem extends StatusDisplayItem{
 				applyInteraction(v,status -> {
 					session.getStatusInteractionController()
 							.setReblogged(status, !status.reblogged, visibility, r->boostConsumer(v, r));
+					boostBtn.setSelected(status.reblogged);
 					boost.setSelected(status.reblogged);
 					dialog.dismiss();
 				});
