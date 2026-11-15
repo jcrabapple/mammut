@@ -1,6 +1,5 @@
 package org.joinmastodon.android.fragments.settings;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
@@ -64,11 +63,13 @@ public class SettingsServerAboutFragment extends LoaderFragment{
 		loadData();
 	}
 
-	@SuppressLint("SetJavaScriptEnabled")
 	@Override
 	public View onCreateContentView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState){
 		webView=new WebView(getActivity());
-		webView.getSettings().setJavaScriptEnabled(true);
+		// MAMMUT: audit S1.5 — instance extended descriptions are third-party HTML rendered
+		// in-process; JavaScript stays disabled and navigation is restricted to the scheme
+		// allowlist via ServerAboutPolicy.
+		webView.getSettings().setJavaScriptEnabled(false);
 		webView.setWebViewClient(new WebViewClient(){
 			@Override
 			public void onPageFinished(WebView view, String url){
@@ -78,15 +79,19 @@ public class SettingsServerAboutFragment extends LoaderFragment{
 			@Override
 			public boolean shouldOverrideUrlLoading(WebView view, String url){
 				Uri uri=Uri.parse(url);
-				if(uri.getScheme().equals("http") || uri.getScheme().equals("https")){
-					UiUtils.launchWebBrowser(getActivity(), url);
-				}else{
-					Intent intent=new Intent(Intent.ACTION_VIEW, uri);
-					intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-					try{
-						startActivity(intent);
-					}catch(ActivityNotFoundException x){
-						Toast.makeText(getActivity(), R.string.no_app_to_handle_action, Toast.LENGTH_SHORT).show();
+				switch(ServerAboutPolicy.actionFor(uri.getScheme())){
+					case OPEN_BROWSER -> UiUtils.launchWebBrowser(getActivity(), url);
+					case DISPATCH -> {
+						Intent intent=new Intent(Intent.ACTION_VIEW, uri);
+						intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+						try{
+							startActivity(intent);
+						}catch(ActivityNotFoundException x){
+							Toast.makeText(getActivity(), R.string.no_app_to_handle_action, Toast.LENGTH_SHORT).show();
+						}
+					}
+					case IGNORE -> {
+						// non-allowlisted scheme (javascript:, tel:, file:, intent:, ...) — never dispatched
 					}
 				}
 				return true;
@@ -185,7 +190,9 @@ public class SettingsServerAboutFragment extends LoaderFragment{
 							}
 
 							HashMap<String, String> templateParams=new HashMap<>();
-							templateParams.put("content", result.content);
+							// MAMMUT: audit S1.5 — the description is instance-controlled HTML; strip
+							// active content before it reaches the WebView
+							templateParams.put("content", ServerAboutPolicy.sanitizeHtml(result.content));
 							templateParams.put("colorSurface", getThemeColorAsCss(R.attr.colorM3Surface, 1));
 							templateParams.put("colorOnSurface", getThemeColorAsCss(R.attr.colorM3OnSurface, 1));
 							templateParams.put("colorPrimary", getThemeColorAsCss(R.attr.colorM3Primary, 1));
@@ -238,6 +245,41 @@ public class SettingsServerAboutFragment extends LoaderFragment{
 			int g=(color >> 8) & 0xFF;
 			int b=color & 0xFF;
 			return "rgba("+r+","+g+","+b+","+alpha+")";
+		}
+	}
+
+	// MAMMUT: audit S1.5 — pure navigation/sanitization policy for the server-about WebView,
+	// extracted for JVM tests.
+	public static class ServerAboutPolicy{
+		public enum NavAction{
+			OPEN_BROWSER, DISPATCH, IGNORE
+		}
+
+		// https/http go to the external browser, mailto may be handed to a viewer, anything
+		// else (javascript:, tel:, file:, intent:, ...) is never dispatched
+		public static NavAction actionFor(String scheme){
+			if(scheme==null)
+				return NavAction.IGNORE;
+			return switch(scheme.toLowerCase(Locale.US)){
+				case "https", "http" -> NavAction.OPEN_BROWSER;
+				case "mailto" -> NavAction.DISPATCH;
+				default -> NavAction.IGNORE;
+			};
+		}
+
+		// Instance extended descriptions are admin-controlled HTML from a third-party server.
+		// Strip active content (scriptable tags, inline event handlers, scriptable URL
+		// schemes) while leaving the formatting markup the renderer expects intact.
+		public static String sanitizeHtml(String html){
+			if(html==null)
+				return "";
+			String s=html;
+			s=s.replaceAll("(?is)<script[^>]*>.*?</script>", "");
+			s=s.replaceAll("(?is)<(script|iframe|object|embed|form|link|base|meta)\\b[^>]*>", "");
+			s=s.replaceAll("(?is)\\son[a-z]+\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", "");
+			s=s.replaceAll("(?i)javascript\\s*:", "");
+			s=s.replaceAll("(?i)data\\s*:\\s*text/html", "");
+			return s;
 		}
 	}
 }

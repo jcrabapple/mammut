@@ -48,7 +48,6 @@ public class GlobalUserPreferences{
 	public static boolean allowRemoteLoading;
 	public static AutoRevealMode autoRevealEqualSpoilers;
 	public static boolean disableM3PillActiveIndicator;
-	public static boolean showNavigationLabels;
 	public static boolean displayPronounsInTimelines, displayPronounsInThreads, displayPronounsInUserListings;
 	public static boolean overlayMedia;
 	public static boolean showSuicideHelp;
@@ -60,7 +59,6 @@ public class GlobalUserPreferences{
 	public static boolean fullWidthPosts;
 	public static boolean relocatePublishButton;
 	public static boolean defaultToUnlistedReplies;
-	public static boolean doubleTapToSearch;
 	public static boolean doubleTapToSwipe;
 	public static boolean confirmBeforeReblog;
 	public static boolean hapticFeedback;
@@ -91,7 +89,9 @@ public class GlobalUserPreferences{
 		confirmUnfollow=prefs.getBoolean("confirmUnfollow", false);
 		confirmBoost=prefs.getBoolean("confirmBoost", false);
 		confirmDeletePost=prefs.getBoolean("confirmDeletePost", true);
-		theme=ThemePreference.values()[prefs.getInt("theme", 0)];
+		// MAMMUT: audit R4 F2/S1.3 — a corrupt ordinal (e.g. from a malformed import) must
+		// fall back to AUTO, not throw ArrayIndexOutOfBoundsException on every startup
+		theme=ThemePreference.values()[ordinalOr(intOr(prefs, "theme", 0), ThemePreference.values().length)];
 		useDynamicColors=prefs.getBoolean("useDynamicColors", true);
 		showInteractionCounts=prefs.getBoolean("interactionCounts", true);
 		customEmojiInNames=prefs.getBoolean("emojiInNames", true);
@@ -113,28 +113,26 @@ public class GlobalUserPreferences{
 		// MAMMUT: G14 — inline image descriptions ("The Caption Track")
 		showInlineAltText=prefs.getBoolean("showInlineAltText", false);
 		enablePreReleases=prefs.getBoolean("enablePreReleases", false);
-		prefixReplies=PrefixRepliesMode.valueOf(prefs.getString("prefixReplies", PrefixRepliesMode.NEVER.name()));
+		prefixReplies=enumOr(PrefixRepliesMode.class, prefs.getString("prefixReplies", null), PrefixRepliesMode.NEVER);
 		collapseLongPosts=prefs.getBoolean("collapseLongPosts", true);
 		spectatorMode=prefs.getBoolean("spectatorMode", false);
 		autoHideFab=prefs.getBoolean("autoHideFab", true);
 		allowRemoteLoading=prefs.getBoolean("allowRemoteLoading", true);
-		autoRevealEqualSpoilers=AutoRevealMode.valueOf(prefs.getString("autoRevealEqualSpoilers", AutoRevealMode.THREADS.name()));
+		autoRevealEqualSpoilers=enumOr(AutoRevealMode.class, prefs.getString("autoRevealEqualSpoilers", null), AutoRevealMode.THREADS);
 		disableM3PillActiveIndicator=prefs.getBoolean("disableM3PillActiveIndicator", false);
-		showNavigationLabels=prefs.getBoolean("showNavigationLabels", true);
 		displayPronounsInTimelines=prefs.getBoolean("displayPronounsInTimelines", true);
 		displayPronounsInThreads=prefs.getBoolean("displayPronounsInThreads", true);
 		displayPronounsInUserListings=prefs.getBoolean("displayPronounsInUserListings", true);
 		overlayMedia=prefs.getBoolean("overlayMedia", false);
 		showSuicideHelp=prefs.getBoolean("showSuicideHelp", true);
 		underlinedLinks=prefs.getBoolean("underlinedLinks", true);
-		color=AccountLocalPreferences.ColorPreference.valueOf(prefs.getString("color", MAMMUT.name()));
+		color=enumOr(AccountLocalPreferences.ColorPreference.class, prefs.getString("color", null), MAMMUT);
 		likeIcon=prefs.getBoolean("likeIcon", false);
 		uniformNotificationIcon=prefs.getBoolean("uniformNotificationIcon", false);
 		showDividers =prefs.getBoolean("showDividers", false);
 		fullWidthPosts=prefs.getBoolean("fullWidthPosts", false);
 		relocatePublishButton=prefs.getBoolean("relocatePublishButton", true);
 		defaultToUnlistedReplies=prefs.getBoolean("defaultToUnlistedReplies", false);
-		doubleTapToSearch =prefs.getBoolean("doubleTapToSearch", true);
 		doubleTapToSwipe =prefs.getBoolean("doubleTapToSwipe", true);
 		replyLineAboveHeader=prefs.getBoolean("replyLineAboveHeader", true);
 		confirmBeforeReblog=prefs.getBoolean("confirmBeforeReblog", false);
@@ -146,7 +144,7 @@ public class GlobalUserPreferences{
 		removeTrackingParams=prefs.getBoolean("removeTrackingParams", true);
 		enhanceTextSize=prefs.getBoolean("enhanceTextSize", false);
 		try{
-			fontFamily=FontFamily.valueOf(prefs.getString("fontFamily", FontFamily.SYSTEM.name()));
+			fontFamily=enumOr(FontFamily.class, prefs.getString("fontFamily", null), FontFamily.SYSTEM);
 		}catch(IllegalArgumentException e){
 			fontFamily=FontFamily.SYSTEM;
 		}
@@ -204,7 +202,6 @@ public class GlobalUserPreferences{
 				.putBoolean("allowRemoteLoading", allowRemoteLoading)
 				.putString("autoRevealEqualSpoilers", autoRevealEqualSpoilers.name())
 				.putBoolean("disableM3PillActiveIndicator", disableM3PillActiveIndicator)
-				.putBoolean("showNavigationLabels", showNavigationLabels)
 				.putBoolean("displayPronounsInTimelines", displayPronounsInTimelines)
 				.putBoolean("displayPronounsInThreads", displayPronounsInThreads)
 				.putBoolean("displayPronounsInUserListings", displayPronounsInUserListings)
@@ -214,7 +211,6 @@ public class GlobalUserPreferences{
 				.putString("color", color.name())
 				.putBoolean("likeIcon", likeIcon)
 				.putBoolean("defaultToUnlistedReplies", defaultToUnlistedReplies)
-				.putBoolean("doubleTapToSearch", doubleTapToSearch)
 				.putBoolean("doubleTapToSwipe", doubleTapToSwipe)
 				.putBoolean("replyLineAboveHeader", replyLineAboveHeader)
 				.putBoolean("confirmBeforeReblog", confirmBeforeReblog)
@@ -319,6 +315,41 @@ public class GlobalUserPreferences{
 	// MOSHIDON: enums too!
 	public static <T extends Enum<T>> T enumValue(Class<T> enumType, String name) {
 		try { return Enum.valueOf(enumType, name); }
-		catch (NullPointerException npe) { return null; }
+		// MAMMUT: audit R4 F2/S1.3 — valueOf throws IllegalArgumentException for an unknown
+		// name; a corrupt stored value must resolve to null, not crash the load path
+		catch (IllegalArgumentException | NullPointerException e) { return null; }
+	}
+
+	// MAMMUT: audit R4 F2/S1.3 — safe fallback reads for enum-valued preferences
+	public static <T extends Enum<T>> T enumOr(Class<T> enumType, String name, T orElse){
+		if(name==null) return orElse;
+		T value=enumValue(enumType, name);
+		return value==null ? orElse : value;
+	}
+
+	// MAMMUT: audit R4 F2/S1.3 — clamp a stored enum ordinal into range, defaulting to 0
+	public static int ordinalOr(int stored, int enumSize){
+		if(enumSize<=0) return 0;
+		if(stored<0 || stored>=enumSize) return 0;
+		return stored;
+	}
+
+	// MAMMUT: audit R4 F2/S1.3 — SharedPreferences.getInt/getLong throw ClassCastException
+	// when the stored type disagrees (the pre-fix importer wrote longs as truncated ints);
+	// these fall back to the default so one corrupt value can't loop-crash startup
+	public static int intOr(SharedPreferences prefs, String key, int def){
+		try{
+			return prefs.getInt(key, def);
+		}catch(ClassCastException e){
+			return def;
+		}
+	}
+
+	public static long longOr(SharedPreferences prefs, String key, long def){
+		try{
+			return prefs.getLong(key, def);
+		}catch(ClassCastException e){
+			return def;
+		}
 	}
 }

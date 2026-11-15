@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: audit S1.6 — cloud/device backup must not include credential stores.
+     accounts.db holds session tokens and OAuth client secrets; account_manager.xml is the
+     account registry. Everything else (settings, drafts, caches) stays backupable. -->
+<full-backup-content>
+	<exclude domain="database" path="accounts.db"/>
+	<exclude domain="sharedpref" path="account_manager.xml"/>
+</full-backup-content>

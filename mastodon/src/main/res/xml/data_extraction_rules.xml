@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: audit S1.6 — API 31+ backup/transfer rules (see backup_rules.xml for the
+     full rationale). Credentials in accounts.db and the account registry must never leave
+     the device through backup or device-to-device transfer. -->
+<data-extraction-rules>
+	<cloud-backup>
+		<exclude domain="database" path="accounts.db"/>
+		<exclude domain="sharedpref" path="account_manager.xml"/>
+	</cloud-backup>
+	<device-transfer>
+		<exclude domain="database" path="accounts.db"/>
+		<exclude domain="sharedpref" path="account_manager.xml"/>
+	</device-transfer>
+</data-extraction-rules>

@@ -1,7 +1,9 @@
 package org.joinmastodon.android.api.session;
 
+import static org.joinmastodon.android.GlobalUserPreferences.enumOr;
 import static org.joinmastodon.android.GlobalUserPreferences.enumValue;
 import static org.joinmastodon.android.GlobalUserPreferences.fromJson;
+import static org.joinmastodon.android.GlobalUserPreferences.longOr;
 import static org.joinmastodon.android.api.MastodonAPIController.gson;
 
 import android.content.SharedPreferences;
@@ -73,16 +75,18 @@ public class AccountLocalPreferences{
 		timelineReplyVisibility=prefs.getString("timelineReplyVisibility", null);
 		keepOnlyLatestNotification=prefs.getBoolean("keepOnlyLatestNotification", false);
 		emojiReactionsEnabled=prefs.getBoolean("emojiReactionsEnabled", session.getInstance().isPresent() && session.getInstance().get().isAkkoma());
-		showEmojiReactions=ShowEmojiReactions.valueOf(prefs.getString("showEmojiReactions", ShowEmojiReactions.HIDE_EMPTY.name()));
-		color=prefs.contains("color") ? ColorPreference.valueOf(prefs.getString("color", null)) : null;
+		showEmojiReactions=enumOr(ShowEmojiReactions.class, prefs.getString("showEmojiReactions", null), ShowEmojiReactions.HIDE_EMPTY);
+		// MAMMUT: audit R4 F2/S1.3 — a corrupt stored color falls back to unset (the
+		// getCurrentColor() chain then resolves global palette → MAMMUT), not a crash
+		color=prefs.contains("color") ? enumOr(ColorPreference.class, prefs.getString("color", null), null) : null;
 		recentCustomEmoji=fromJson(prefs.getString("recentCustomEmoji", null), recentCustomEmojiType, new ArrayList<>());
 		notificationFilters=fromJson(prefs.getString("notificationFilters", gson.toJson(PushSubscription.Alerts.ofAll())), notificationFiltersType, PushSubscription.Alerts.ofAll());
-		catchUpLastAt=prefs.getLong("catchUpLastAt", 0);
+		catchUpLastAt=longOr(prefs, "catchUpLastAt", 0);
 
 	}
 
 	public long getNotificationsPauseEndTime(){
-		return prefs.getLong("notificationsPauseTime", 0L);
+		return longOr(prefs, "notificationsPauseTime", 0L);
 	}
 
 	public void setNotificationsPauseEndTime(long time){

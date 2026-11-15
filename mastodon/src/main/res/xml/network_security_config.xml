@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- MAMMUT: audit S1.4 — release builds trust system CAs only. User-installed CAs are a
+     MitM vector for credential-bearing API traffic, so they are moved to debug-overrides
+     (debuggable builds only) where proxy debugging still works. -->
 <network-security-config>
 	<base-config>
 		<trust-anchors>
-
 			<certificates src="system" />
-			<certificates src="user" />
 		</trust-anchors>
 	</base-config>
+	<debug-overrides>
+		<trust-anchors>
+			<certificates src="user" />
+		</trust-anchors>
+	</debug-overrides>
 </network-security-config>

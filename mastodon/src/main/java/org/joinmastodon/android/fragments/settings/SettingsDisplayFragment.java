@@ -61,7 +61,7 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 	// MAMMUT: G14 — inline image descriptions ("The Caption Track")
 	private CheckableListItem<Void> inlineAltTextItem;
 	// MAMMUT: parity port from upstream master
-	private CheckableListItem<Void> showDividersItem, showNavLabelsItem, doubleTapSearchItem, translateOpenedItem, fullWidthPostsItem;
+	private CheckableListItem<Void> showDividersItem, translateOpenedItem, fullWidthPostsItem;
 	// MAMMUT: port from upstream master
 	private CheckableListItem<Void> pronounsTimelinesItem, pronounsThreadsItem, pronounsUserListingsItem, showMediaPreviewItem;
 
@@ -108,8 +108,6 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		items.add(collapsePostsItem=new CheckableListItem<>(R.string.sk_settings_collapse_long_posts, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.collapseLongPosts, R.drawable.ic_fluent_chevron_down_24_regular, this::toggleCheckableItem));
 		items.add(showDividersItem=new CheckableListItem<>(R.string.mo_enable_dividers, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showDividers, R.drawable.ic_fluent_timeline_24_regular, this::toggleCheckableItem));
 		items.add(fullWidthPostsItem=new CheckableListItem<>(R.string.mo_full_width_posts, R.string.mo_full_width_posts_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.fullWidthPosts, R.drawable.ic_fluent_arrow_maximize_24_regular, this::toggleCheckableItem));
-		items.add(showNavLabelsItem=new CheckableListItem<>(R.string.sk_settings_show_labels_in_navigation_bar, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showNavigationLabels, R.drawable.ic_fluent_tag_24_regular, this::toggleCheckableItem));
-		items.add(doubleTapSearchItem=new CheckableListItem<>(R.string.mo_double_tap_to_search, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.doubleTapToSearch, R.drawable.ic_fluent_search_24_regular, this::toggleCheckableItem));
 		items.add(translateOpenedItem=new CheckableListItem<>(R.string.sk_settings_translate_only_opened, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.translateButtonOpenedOnly, R.drawable.ic_fluent_translate_24_regular, this::toggleCheckableItem));
 		// MAMMUT: port from upstream master — pronouns
 		items.add(showMediaPreviewItem=new CheckableListItem<>(R.string.mo_show_media_preview, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showMediaPreview, R.drawable.ic_fluent_image_24_regular, this::toggleCheckableItem));
@@ -157,13 +155,12 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		GlobalUserPreferences.showInlineAltText=inlineAltTextItem.checked;
 		GlobalUserPreferences.collapseLongPosts=collapsePostsItem.checked;
 		// MAMMUT: parity port from upstream master — divider colour is baked into the item decoration
-		boolean restartPlease=GlobalUserPreferences.showDividers!=showDividersItem.checked
-				|| GlobalUserPreferences.showNavigationLabels!=showNavLabelsItem.checked;
+		// MAMMUT: audit R4 F13 — showNavigationLabels / doubleTapToSearch had no consumer
+		// anywhere in the app; the dead switches are removed rather than left to rot
+		boolean restartPlease=GlobalUserPreferences.showDividers!=showDividersItem.checked;
 		GlobalUserPreferences.showDividers=showDividersItem.checked;
 		// MAMMUT: post layout — full width vs indented after the avatar column
 		GlobalUserPreferences.fullWidthPosts=fullWidthPostsItem.checked;
-		GlobalUserPreferences.showNavigationLabels=showNavLabelsItem.checked;
-		GlobalUserPreferences.doubleTapToSearch=doubleTapSearchItem.checked;
 		GlobalUserPreferences.translateButtonOpenedOnly=translateOpenedItem.checked;
 		GlobalUserPreferences.displayPronounsInTimelines=pronounsTimelinesItem.checked;
 		GlobalUserPreferences.displayPronounsInThreads=pronounsThreadsItem.checked;
