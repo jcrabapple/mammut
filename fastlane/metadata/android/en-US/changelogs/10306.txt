@@ -1,0 +1,13 @@
+A full-app audit fixed 21 bugs and hardened security.
+
+Crashes fixed: Home after process death, importing a settings export, an over-limit content warning, uploads finishing while the composer is rotated, and account-less system notifications.
+
+Uploads: profile photos and headers no longer fail on a null size or expired permission; transparent PNGs keep their transparency; retries no longer send a deleted file; multi-image shares keep every attachment.
+
+Composer: drafts keep their reply/thread context and will not repost stale text after an edit; character counting matches the server for emoji and links.
+
+Notifications: the unread badge is now per-account, push handles all Mastodon 4.x notification types, failed favorites/boosts roll back, and long-pressing the bell marks everything read safely.
+
+Catch up no longer skips posts at the 200-post cap or repeats a page, and its footer no longer overclaims.
+
+Security: the share sheet rejects file:// URIs, the panic responder only trusts verified panic apps, release builds no longer trust user-installed CAs, settings import is fully validated, and credentials are excluded from backup.
