@@ -1,0 +1,5 @@
+New: option to move the navigation button to the left side of the screen (Display settings).
+
+New: universal translation. Configure a LibreTranslate endpoint in Display settings to translate posts even on servers that have no built-in translation. Your server's own translator is still preferred when it works.
+
+Fixed: marking notifications read from the notifications screen now clears the indicator on the bell icon.
