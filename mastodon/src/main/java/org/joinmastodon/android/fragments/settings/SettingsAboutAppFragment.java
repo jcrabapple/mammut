@@ -439,6 +439,9 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 			m.put("removeTrackingParams", PrefRule.bool());
 			m.put("enhanceTextSize", PrefRule.bool());
 			m.put("fontFamily", PrefRule.enumValue(GlobalUserPreferences.FontFamily.class));
+			m.put("fabOnLeft", PrefRule.bool());
+			m.put("libreTranslateUrl", PrefRule.string());
+			m.put("libreTranslateApiKey", PrefRule.string());
 			m.put("perAccountMigrationDone", PrefRule.bool());
 			return java.util.Collections.unmodifiableMap(m);
 		}

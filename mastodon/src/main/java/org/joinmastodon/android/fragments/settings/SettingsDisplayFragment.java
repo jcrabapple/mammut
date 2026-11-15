@@ -9,12 +9,14 @@ import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListAdapter;
@@ -24,6 +26,7 @@ import org.joinmastodon.android.E;
 import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.MastodonApp;
 import org.joinmastodon.android.R;
+import org.joinmastodon.android.api.LibreTranslateClient;
 import org.joinmastodon.android.api.session.AccountLocalPreferences;
 import org.joinmastodon.android.api.session.AccountSession;
 import org.joinmastodon.android.api.session.AccountSessionManager;
@@ -64,6 +67,9 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 	private CheckableListItem<Void> showDividersItem, translateOpenedItem, fullWidthPostsItem;
 	// MAMMUT: port from upstream master
 	private CheckableListItem<Void> pronounsTimelinesItem, pronounsThreadsItem, pronounsUserListingsItem, showMediaPreviewItem;
+	// MAMMUT: opt-in left FAB placement + configurable LibreTranslate translation fallback
+	private CheckableListItem<Void> fabLeftItem;
+	private ListItem<Void> translationServiceItem;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState){
@@ -100,6 +106,7 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		items.add(likeIconItem=new CheckableListItem<>(R.string.sk_settings_like_icon, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.likeIcon, R.drawable.ic_fluent_heart_24_regular, this::toggleCheckableItem));
 		items.add(spectatorModeItem=new CheckableListItem<>(R.string.sk_settings_hide_interaction, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.spectatorMode, R.drawable.ic_fluent_star_off_24_regular, this::toggleCheckableItem));
 		items.add(hideFabItem=new CheckableListItem<>(R.string.sk_settings_hide_fab, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.autoHideFab, R.drawable.ic_fluent_edit_24_regular, this::toggleCheckableItem));
+		items.add(fabLeftItem=new CheckableListItem<>(R.string.mo_fab_on_left, R.string.mo_fab_on_left_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.fabOnLeft, R.drawable.ic_fluent_arrow_bidirectional_left_right_24_regular, this::toggleCheckableItem));
 		// MAMMUT: phase 2 port from upstream master
 		items.add(altIndicatorItem=new CheckableListItem<>(R.string.sk_settings_show_alt_indicator, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showAltIndicator, R.drawable.ic_fluent_scan_text_24_regular, this::toggleCheckableItem));
 		items.add(noAltIndicatorItem=new CheckableListItem<>(R.string.sk_settings_show_no_alt_indicator, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showNoAltIndicator, R.drawable.ic_fluent_important_24_regular, this::toggleCheckableItem));
@@ -109,6 +116,7 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		items.add(showDividersItem=new CheckableListItem<>(R.string.mo_enable_dividers, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showDividers, R.drawable.ic_fluent_timeline_24_regular, this::toggleCheckableItem));
 		items.add(fullWidthPostsItem=new CheckableListItem<>(R.string.mo_full_width_posts, R.string.mo_full_width_posts_summary, CheckableListItem.Style.SWITCH, GlobalUserPreferences.fullWidthPosts, R.drawable.ic_fluent_arrow_maximize_24_regular, this::toggleCheckableItem));
 		items.add(translateOpenedItem=new CheckableListItem<>(R.string.sk_settings_translate_only_opened, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.translateButtonOpenedOnly, R.drawable.ic_fluent_translate_24_regular, this::toggleCheckableItem));
+		items.add(translationServiceItem=new ListItem<>(getString(R.string.mo_translation_service), getTranslationServiceValue(), R.drawable.ic_fluent_translate_24_regular, this::onTranslationServiceClick));
 		// MAMMUT: port from upstream master — pronouns
 		items.add(showMediaPreviewItem=new CheckableListItem<>(R.string.mo_show_media_preview, 0, CheckableListItem.Style.SWITCH, GlobalUserPreferences.showMediaPreview, R.drawable.ic_fluent_image_24_regular, this::toggleCheckableItem));
 		items.add(pronounsTimelinesItem=new CheckableListItem<>(R.string.sk_settings_display_pronouns_in_timelines, 0, CheckableListItem.Style.CHECKBOX, GlobalUserPreferences.displayPronounsInTimelines, 0, this::toggleCheckableItem));
@@ -159,6 +167,9 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		// anywhere in the app; the dead switches are removed rather than left to rot
 		boolean restartPlease=GlobalUserPreferences.showDividers!=showDividersItem.checked;
 		GlobalUserPreferences.showDividers=showDividersItem.checked;
+		// MAMMUT: the FAB side is baked into the nav overlay at inflation; a change needs a recreate
+		restartPlease|=GlobalUserPreferences.fabOnLeft!=fabLeftItem.checked;
+		GlobalUserPreferences.fabOnLeft=fabLeftItem.checked;
 		// MAMMUT: post layout — full width vs indented after the avatar column
 		GlobalUserPreferences.fullWidthPosts=fullWidthPostsItem.checked;
 		GlobalUserPreferences.translateButtonOpenedOnly=translateOpenedItem.checked;
@@ -353,6 +364,45 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		return color==null
 				? getString(R.string.sk_settings_color_palette_default, getString(GlobalUserPreferences.color.getName()))
 				: getString(color.getName());
+	}
+
+	// MAMMUT: universal translation — configure the LibreTranslate fallback endpoint. The
+	// instance's own translator is still preferred; this is only used when it is unavailable.
+	private String getTranslationServiceValue(){
+		return LibreTranslateClient.isConfigured(GlobalUserPreferences.libreTranslateUrl)
+				? getString(R.string.mo_translation_service_on)
+				: getString(R.string.mo_translation_service_off);
+	}
+
+	private void onTranslationServiceClick(ListItem<?> item_){
+		Context ctx=getActivity();
+		LinearLayout layout=new LinearLayout(ctx);
+		layout.setOrientation(LinearLayout.VERTICAL);
+		int pad=V.dp(24);
+		layout.setPadding(pad, V.dp(12), pad, 0);
+		EditText urlField=new EditText(ctx);
+		urlField.setHint(R.string.mo_translation_url_hint);
+		urlField.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+		urlField.setText(GlobalUserPreferences.libreTranslateUrl);
+		layout.addView(urlField);
+		EditText keyField=new EditText(ctx);
+		keyField.setHint(R.string.mo_translation_api_key_hint);
+		keyField.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+		keyField.setText(GlobalUserPreferences.libreTranslateApiKey);
+		layout.addView(keyField);
+		new M3AlertDialogBuilder(ctx)
+				.setTitle(R.string.mo_translation_service)
+				.setMessage(R.string.mo_translation_service_summary)
+				.setView(layout)
+				.setPositiveButton(R.string.save, (dlg, which)->{
+					GlobalUserPreferences.libreTranslateUrl=urlField.getText().toString().trim();
+					GlobalUserPreferences.libreTranslateApiKey=keyField.getText().toString().trim();
+					GlobalUserPreferences.save();
+					translationServiceItem.subtitle=getTranslationServiceValue();
+					rebindItem(translationServiceItem);
+				})
+				.setNegativeButton(R.string.cancel, null)
+				.show();
 	}
 
 	// MOSHIDON: may the overlords forgive my overloads

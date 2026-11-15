@@ -71,6 +71,12 @@ public class GlobalUserPreferences{
 	public static boolean enhanceTextSize;
 	// MAMMUT: FONT-SPEC §3 — typeface selection, stored by name like the theme preference
 	public static FontFamily fontFamily=FontFamily.SYSTEM;
+	// MAMMUT: opt-in left placement for the navigation FAB (default right)
+	public static boolean fabOnLeft;
+	// MAMMUT: universal translation — a configurable LibreTranslate endpoint used as a
+	// fallback when the instance has no built-in translator (empty = fallback disabled)
+	public static String libreTranslateUrl="";
+	public static String libreTranslateApiKey="";
 
 	// MOSHIDON: we changed this to public, because otherwise we can't export the settings
 	public static SharedPreferences getPrefs(){
@@ -148,6 +154,9 @@ public class GlobalUserPreferences{
 		}catch(IllegalArgumentException e){
 			fontFamily=FontFamily.SYSTEM;
 		}
+		fabOnLeft=prefs.getBoolean("fabOnLeft", false);
+		libreTranslateUrl=prefs.getString("libreTranslateUrl", "");
+		libreTranslateApiKey=prefs.getString("libreTranslateApiKey", "");
 
 
 		if(!prefs.getBoolean("perAccountMigrationDone", false)){
@@ -226,6 +235,9 @@ public class GlobalUserPreferences{
 				.putBoolean("removeTrackingParams", removeTrackingParams)
 				.putBoolean("enhanceTextSize", enhanceTextSize)
 				.putString("fontFamily", fontFamily.name())
+				.putBoolean("fabOnLeft", fabOnLeft)
+				.putString("libreTranslateUrl", libreTranslateUrl==null ? "" : libreTranslateUrl)
+				.putString("libreTranslateApiKey", libreTranslateApiKey==null ? "" : libreTranslateApiKey)
 
 				.apply();
 	}

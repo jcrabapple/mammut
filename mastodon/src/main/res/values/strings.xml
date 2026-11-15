@@ -728,6 +728,16 @@
 	<string name="post_translated">Translated from %1$s using %2$s</string>
 	<string name="translation_show_original">Show original</string>
 	<string name="translation_failed">Translation failed. Maybe the administrator has not enabled translations on this server or this server is running an older version of Mastodon where translations are not yet supported.</string>
+	<!-- MAMMUT: opt-in left FAB placement -->
+	<string name="mo_fab_on_left">Move menu button to the left</string>
+	<string name="mo_fab_on_left_summary">Place the navigation button on the left side of the screen</string>
+	<!-- MAMMUT: universal translation via a configurable LibreTranslate fallback -->
+	<string name="mo_translation_service">Translation service</string>
+	<string name="mo_translation_service_summary">Optional LibreTranslate endpoint used when your server has no built-in translation. Your server\'s own translator is still preferred. Leave empty to disable the fallback.</string>
+	<string name="mo_translation_service_off">Off</string>
+	<string name="mo_translation_service_on">On</string>
+	<string name="mo_translation_url_hint">LibreTranslate URL (https://…)</string>
+	<string name="mo_translation_api_key_hint">API key (optional)</string>
 	<string name="settings_privacy">Privacy and reach</string>
 	<string name="settings_discoverable">Feature profile and posts in discovery algorithms</string>
 	<string name="settings_indexable">Include public posts in search results</string>

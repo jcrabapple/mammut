@@ -27,6 +27,7 @@ import org.joinmastodon.android.ui.NavDestination;
 import org.joinmastodon.android.fragments.discover.DiscoverFragment;
 import org.joinmastodon.android.fragments.settings.SettingsMainFragment;
 import org.joinmastodon.android.ui.utils.NavToolbarUtils;
+import org.joinmastodon.android.ui.utils.FabPlacement;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
 import java.util.ArrayList;
@@ -106,6 +107,7 @@ public class NavMenuView extends FrameLayout{
 	private final Rect fabHitRect=new Rect();
 
 	private final boolean reducedMotion;
+	private final boolean fabLeft;
 	private String accountID;
 
 	public NavMenuView(@NonNull Context context){
@@ -123,6 +125,7 @@ public class NavMenuView extends FrameLayout{
 			animatorScale=Settings.Global.getFloat(context.getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE);
 		}catch(Settings.SettingNotFoundException ignored){}
 		reducedMotion=GlobalUserPreferences.reduceMotion || animatorScale==0f;
+		fabLeft=GlobalUserPreferences.fabOnLeft;
 
 		inflate(context, R.layout.nav_menu, this);
 		scrim=findViewById(R.id.scrim);
@@ -132,6 +135,20 @@ public class NavMenuView extends FrameLayout{
 		fab=findViewById(R.id.fab);
 		fabGlyphLines=findViewById(R.id.fab_glyph_lines);
 		fabGlyphClose=findViewById(R.id.fab_glyph_close);
+
+		// MAMMUT: opt-in left placement — flip the anchor (and the FAB within it) to the
+		// leading corner and swap the horizontal margin. NavMenuController.applyFabMargin
+		// only touches the bottom margin, so this gravity/horizontal placement survives
+		// inset updates. The FAB must share the anchor's side or it drifts to the far end
+		// of the 216dp panel once the menu opens.
+		FrameLayout.LayoutParams anchorLp=(FrameLayout.LayoutParams)anchor.getLayoutParams();
+		anchorLp.gravity=FabPlacement.cornerGravity(fabLeft);
+		anchorLp.setMarginStart(fabLeft ? V.dp(16) : 0);
+		anchorLp.setMarginEnd(fabLeft ? 0 : V.dp(16));
+		anchor.setLayoutParams(anchorLp);
+		FrameLayout.LayoutParams fabLp=(FrameLayout.LayoutParams)fab.getLayoutParams();
+		fabLp.gravity=FabPlacement.cornerGravity(fabLeft);
+		fab.setLayoutParams(fabLp);
 
 		fab.setOnClickListener(v->{
 			if(menuOpen)
@@ -173,8 +190,7 @@ public class NavMenuView extends FrameLayout{
 		menuPanel.addView(createDivider(context));
 		menuPanel.addView(createSettingsRow(inflater));
 
-		menuPanel.setPivotX(menuPanel.getWidth()); // set properly once laid out
-		menuPanel.setPivotX(V.dp(216));
+		menuPanel.setPivotX(FabPlacement.openPivotFraction(fabLeft)*V.dp(216));
 		menuPanel.setPivotY(menuPanel.getHeight());
 
 		updateBadge();
@@ -420,7 +436,7 @@ public class NavMenuView extends FrameLayout{
 			panelAnim.setDuration(REDUCED_MOTION_DURATION);
 			runAnims(panelAnim);
 		}else{
-			menuPanel.setPivotX(menuPanel.getWidth());
+			menuPanel.setPivotX(FabPlacement.openPivotFraction(fabLeft)*menuPanel.getWidth());
 			menuPanel.setPivotY(menuPanel.getHeight());
 			AnimatorSet panelAnim=new AnimatorSet();
 			panelAnim.playTogether(

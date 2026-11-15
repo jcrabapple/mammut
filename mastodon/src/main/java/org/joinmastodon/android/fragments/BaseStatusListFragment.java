@@ -26,6 +26,7 @@ import org.joinmastodon.android.api.requests.polls.SubmitPollVote;
 import org.joinmastodon.android.api.requests.statuses.GetStatusByID;
 import org.joinmastodon.android.api.requests.statuses.GetStatusesByIDs;
 import org.joinmastodon.android.api.requests.statuses.TranslateStatus;
+import org.joinmastodon.android.api.LibreTranslateClient;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.events.PollUpdatedEvent;
 import org.joinmastodon.android.model.Account;
@@ -1012,36 +1013,76 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 				if(status.translation!=null){
 					status.translationState=Status.TranslationState.SHOWN;
 				}else{
-					status.translationState=Status.TranslationState.LOADING;
-					new TranslateStatus(status.getContentStatus().id, Locale.getDefault().getLanguage())
-							.setCallback(new Callback<>(){
-								@Override
-								public void onSuccess(Translation result){
-									if(getActivity()==null)
-										return;
-									status.translation=result;
-									status.translationState=Status.TranslationState.SHOWN;
-									updateTranslation(itemID);
-								}
-
-								@Override
-								public void onError(ErrorResponse error){
-									if(getActivity()==null)
-										return;
-									status.translationState=Status.TranslationState.HIDDEN;
-									updateTranslation(itemID);
-									new M3AlertDialogBuilder(getActivity())
-											.setTitle(R.string.error)
-											.setMessage(R.string.translation_failed)
-											.setPositiveButton(R.string.ok, null)
-											.show();
-								}
-							})
-							.exec(accountID);
+					startTranslation(status, itemID);
 				}
 			}
 		}
 		updateTranslation(itemID);
+	}
+
+	// MAMMUT: universal translation — prefer the instance's own translator; when it fails
+	// and a LibreTranslate fallback is configured, retry through that endpoint so translation
+	// works even on instances with no built-in translator. With no fallback configured the
+	// behavior is identical to before (instance only).
+	private void startTranslation(Status status, String itemID){
+		status.translationState=Status.TranslationState.LOADING;
+		Status content=status.getContentStatus();
+		String target=Locale.getDefault().getLanguage();
+		boolean fallbackConfigured=LibreTranslateClient.isConfigured(GlobalUserPreferences.libreTranslateUrl);
+		new TranslateStatus(content.id, target)
+				.setCallback(new Callback<>(){
+					@Override
+					public void onSuccess(Translation result){
+						applyTranslation(status, itemID, result);
+					}
+
+					@Override
+					public void onError(ErrorResponse error){
+						if(getActivity()==null)
+							return;
+						if(fallbackConfigured){
+							translateViaLibreTranslate(status, itemID, content, target);
+						}else{
+							failTranslation(status, itemID);
+						}
+					}
+				})
+				.exec(accountID);
+	}
+
+	private void translateViaLibreTranslate(Status status, String itemID, Status content, String target){
+		LibreTranslateClient.translate(GlobalUserPreferences.libreTranslateUrl, GlobalUserPreferences.libreTranslateApiKey,
+				content.content, content.language, target, new Callback<>(){
+					@Override
+					public void onSuccess(Translation result){
+						applyTranslation(status, itemID, result);
+					}
+
+					@Override
+					public void onError(ErrorResponse error){
+						failTranslation(status, itemID);
+					}
+				});
+	}
+
+	private void applyTranslation(Status status, String itemID, Translation result){
+		if(getActivity()==null)
+			return;
+		status.translation=result;
+		status.translationState=Status.TranslationState.SHOWN;
+		updateTranslation(itemID);
+	}
+
+	private void failTranslation(Status status, String itemID){
+		if(getActivity()==null)
+			return;
+		status.translationState=Status.TranslationState.HIDDEN;
+		updateTranslation(itemID);
+		new M3AlertDialogBuilder(getActivity())
+				.setTitle(R.string.error)
+				.setMessage(R.string.translation_failed)
+				.setPositiveButton(R.string.ok, null)
+				.show();
 	}
 
 	private void updateTranslation(String itemID) {

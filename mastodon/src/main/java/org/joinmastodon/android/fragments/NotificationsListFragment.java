@@ -37,6 +37,7 @@ import org.joinmastodon.android.ui.OutlineProviders;
 import org.joinmastodon.android.ui.adapters.GenericListItemsAdapter;
 import org.joinmastodon.android.ui.displayitems.StatusDisplayItem;
 import org.joinmastodon.android.ui.utils.NavToolbarUtils;
+import org.joinmastodon.android.ui.utils.UnreadNotificationStore;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.viewcontrollers.GenericListItemsViewController;
 import org.joinmastodon.android.ui.views.NestedRecyclerScrollView;
@@ -354,7 +355,14 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 		if(force || ObjectIdComparator.INSTANCE.compare(id, realUnreadMarker)>0){
 			// MAMMUT: audit R3 F11 — server-success-only through the shared helper: a failed
 			// marker write leaves the local marker, the unread store, and the badge untouched
-			NavToolbarUtils.markAllNotificationsReadServerOnly(getActivity(), accountID, id, ()->realUnreadMarker=id);
+			NavToolbarUtils.markAllNotificationsReadServerOnly(getActivity(), accountID, id, ()->{
+				realUnreadMarker=id;
+				// MAMMUT: marking read from the notifications screen must also clear the bell
+				// chip. The shared helper only commits the server marker; the bell long-press
+				// path refreshes the store itself, but this path did not, so the chip lingered.
+				// Recompute (not force zero) so a push that landed after the save is kept.
+				UnreadNotificationStore.refresh(accountID);
+			});
 		}
 	}
 
