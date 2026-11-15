@@ -3,7 +3,6 @@ package org.joinmastodon.android.fragments;
 import android.animation.Animator;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
@@ -14,7 +13,6 @@ import android.graphics.Insets;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
-import android.icu.text.BreakIterator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -104,6 +102,8 @@ import org.joinmastodon.android.ui.sheets.ListItemsSheet;
 import org.joinmastodon.android.ui.text.ComposeAutocompleteSpan;
 import org.joinmastodon.android.ui.text.ComposeHashtagOrMentionSpan;
 import org.joinmastodon.android.ui.text.HtmlParser;
+import org.joinmastodon.android.ui.text.LengthLimitHighlighter;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.SimpleTextWatcher;
 import org.joinmastodon.android.ui.utils.UiUtils;
 import org.joinmastodon.android.ui.viewcontrollers.ComposeAutocompleteViewController;
@@ -130,6 +130,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -162,9 +163,6 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private static final Pattern AUTO_COMPLETE_PATTERN=Pattern.compile("(?<!\\w)(?:@([a-z0-9_]+)(@[a-z0-9_\\.\\-]*)?|#([^\\s.]+)|:([a-z0-9_]+))", Pattern.CASE_INSENSITIVE);
 	private static final Pattern HIGHLIGHT_PATTERN=Pattern.compile("(?<!\\w)(?:@([a-zA-Z0-9_]+)(@[a-zA-Z0-9_.-]+)?|#([^\\s.]+))");
 
-	@SuppressLint("NewApi") // this class actually exists on 6.0
-	private final BreakIterator breakIterator=BreakIterator.getCharacterInstance();
-
 	public TopBarsScrollAwayLinearLayout mainLayout;
 	private SizeListenerLinearLayout contentView;
 	private TextView selfName, selfUsername;
@@ -190,7 +188,6 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private Status replyTo;
 	private Status quotedStatus;
 	private String initialText;
-	private String uuid;
 	private EditText spoilerEdit;
 	private View spoilerWrap;
 	private boolean hasSpoiler;
@@ -217,6 +214,13 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 
 	private BackgroundColorSpan overLimitBG;
 	private ForegroundColorSpan overLimitFG;
+	/**
+	 * Audit R1 F3 — the main CW field's own over-limit spans. The body
+	 * field and the CW field are highlighted independently: the combined
+	 * count must never index into the body's character range.
+	 */
+	private BackgroundColorSpan cwOverLimitBG;
+	private ForegroundColorSpan cwOverLimitFG;
 
 	private Runnable emojiKeyboardHider;
 	private Runnable sendingBackButtonBlocker=()->{};
@@ -240,11 +244,14 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 */
 	private boolean restoredDraftVisibility;
 	/**
-	 * MAMMUT: Composer 2.0 (§4) — the persisted per-segment idempotency key.
-	 * Seeded from a resumed draft, generated on the first snapshot otherwise,
-	 * so a retry from the draft reuses the same CreateStatus key.
+	 * MAMMUT: Composer 2.0 (§4, audit R1 F1/F2) — the first segment's
+	 * idempotency key and the fingerprint of the payload it is bound to.
+	 * Seeded from a resumed draft, generated on the first snapshot
+	 * otherwise, and carried across process death through the saved state,
+	 * so a retry reuses the same CreateStatus key only while the payload is
+	 * unchanged (any edit mints a fresh key).
 	 */
-	private String draftIdempotencyKey;
+	private final PublishKeys.KeyState firstSegmentKey=new PublishKeys.KeyState();
 	/**
 	 * MAMMUT: Composer 2.0 (§1/§6) — reply/quote context ids carried by a
 	 * resumed draft. Slice 1 cannot rebuild the in-memory Status objects
@@ -316,6 +323,21 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		draftStore=new DraftStore(MastodonApp.context, accountID);
 		if(savedInstanceState!=null){
 			draftId=savedInstanceState.getString("draftId");
+			// Audit R1 F1/F2: process death must not detach the publish from
+			// its identity. The in-memory Status objects cannot be rebuilt
+			// from ids, but the reply/quote/thread-anchor ids, the first
+			// segment's idempotency key, and the payload fingerprint it is
+			// bound to all survive in the saved state — a resumed reply
+			// chains below its anchor and an identical retry keeps its key.
+			firstSegmentKey.seed(savedInstanceState.getString("draftIdem"), savedInstanceState.getString("draftIdemFp"));
+			restoredReplyToStatusId=savedInstanceState.getString("restoredReplyTo");
+			restoredQuotedStatusId=savedInstanceState.getString("restoredQuoted");
+			threadAnchorId=savedInstanceState.getString("threadAnchorId");
+			// R1 F6: the quote policy chosen for this composition, like the
+			// visibility block below, wins over account defaults.
+			StatusQuotePolicy savedQuotePolicy=(StatusQuotePolicy)savedInstanceState.getSerializable("quotePolicy");
+			if(savedQuotePolicy!=null)
+				statusQuotePolicy=savedQuotePolicy;
 		}else if(getArguments().containsKey("draftId")){
 			// MAMMUT: Composer 2.0 (§3) — resuming a draft from the drafts screen
 			draftId=getArguments().getString("draftId");
@@ -328,7 +350,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				// re-saves: the reply id chains the publish (review M4),
 				// the quote id survives for the warning dialog.
 				if(!draftToRestore.segments.isEmpty())
-					draftIdempotencyKey=draftToRestore.segments.get(0).idempotencyKey;
+					firstSegmentKey.seed(draftToRestore.segments.get(0).idempotencyKey, PublishKeys.fingerprintAt(draftToRestore, 0));
 				restoredReplyToStatusId=draftToRestore.replyToStatusId;
 				restoredQuotedStatusId=draftToRestore.quotedStatusId;
 			}
@@ -369,6 +391,8 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 
 		overLimitBG=new BackgroundColorSpan(UiUtils.getThemeColor(activity, R.attr.colorM3ErrorContainer));
 		overLimitFG=new ForegroundColorSpan(UiUtils.getThemeColor(activity, R.attr.colorM3Error));
+		cwOverLimitBG=new BackgroundColorSpan(UiUtils.getThemeColor(activity, R.attr.colorM3ErrorContainer));
+		cwOverLimitFG=new ForegroundColorSpan(UiUtils.getThemeColor(activity, R.attr.colorM3Error));
 	}
 
 	@Override
@@ -591,7 +615,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 						ts.spoilerTextMirror=spoiler;
 					}
 				}
-				ts.idempotencyKey=savedInstanceState.getString("threadSeg"+i+"_idem");
+				ts.keyState.seed(savedInstanceState.getString("threadSeg"+i+"_idem"), savedInstanceState.getString("threadSeg"+i+"_idemfp"));
 				updateThreadSegmentCounter(ts);
 			}
 		}
@@ -625,6 +649,14 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		outState.putSerializable("visibility", statusVisibility);
 		outState.putString("draftId", draftId);
 		outState.putParcelable("postLang", Parcels.wrap(postLang));
+		// Audit R1 F1/F2/F6: the publish identity and per-draft choices
+		// survive process death — see onCreate for the restore side.
+		outState.putString("draftIdem", firstSegmentKey.key);
+		outState.putString("draftIdemFp", firstSegmentKey.fingerprint);
+		outState.putString("restoredReplyTo", restoredReplyToStatusId!=null ? restoredReplyToStatusId : (replyTo!=null ? replyTo.id : null));
+		outState.putString("restoredQuoted", quotedStatus!=null ? quotedStatus.id : restoredQuotedStatusId);
+		outState.putString("threadAnchorId", threadAnchorId);
+		outState.putSerializable("quotePolicy", statusQuotePolicy);
 		// MAMMUT: Composer 2.0 (§4) — the thread survives process death the
 		// same way the main surface does: one state bundle per segment.
 		outState.putInt("threadSegCount", extraSegments.size());
@@ -636,7 +668,8 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			outState.putString("threadSeg"+i+"_text", ts.text.getText().toString());
 			outState.putBoolean("threadSeg"+i+"_hasSpoiler", ts.hasSpoiler);
 			outState.putString("threadSeg"+i+"_spoiler", ts.hasSpoiler ? ts.spoilerEdit.getText().toString() : null);
-			outState.putString("threadSeg"+i+"_idem", ts.idempotencyKey);
+			outState.putString("threadSeg"+i+"_idem", ts.keyState.key);
+			outState.putString("threadSeg"+i+"_idemfp", ts.keyState.fingerprint);
 		}
 		if(currentAutocompleteSpan!=null){
 			Editable e=mainEditText.getText();
@@ -698,6 +731,10 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		d.id=draftId!=null ? draftId : UUID.randomUUID().toString();
 		d.updatedAt=System.currentTimeMillis();
 		d.visibility=statusVisibility;
+		// R1 F6: the language and quote policy chosen for this composition
+		// are part of the draft, not session state.
+		d.language=postLang!=null && postLang.locale!=null ? postLang.locale.toLanguageTag() : null;
+		d.quotePolicy=statusQuotePolicy!=null ? statusQuotePolicy.name() : null;
 		// §4: once part of the thread has been published, the anchor is the
 		// last published segment — a retry (or an autosave of the remaining
 		// tail) must chain below it, not below the original reply target.
@@ -716,8 +753,11 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		seg.poll=pollViewController.getDraftPoll();
 		// §4: one key per segment, generated at first snapshot, reused on
 		// every later save of this composer session and on resume.
-		seg.idempotencyKey=draftIdempotencyKey!=null ? draftIdempotencyKey : (draftIdempotencyKey=UUID.randomUUID().toString());
+		seg.idempotencyKey=firstSegmentKey.ensureKey(UUID.randomUUID().toString());
 		d.segments.add(seg);
+		// R1 F2: the fingerprint each key is bound to travels with the
+		// draft, parallel to the segments (null = not yet bound).
+		d.segmentFingerprints.add(firstSegmentKey.fingerprint);
 		// MAMMUT (§4) — one draft.json for the whole thread: segment cards
 		// follow the main surface in list order.
 		final List<ThreadSegment> segsSnapshot=new ArrayList<>(extraSegments);
@@ -728,8 +768,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				s.spoilerText=ts.spoilerEdit.length()>0 ? ts.spoilerEdit.getText().toString() : null;
 				s.sensitive=ts.spoilerEdit.length()==0;
 			}
-			s.idempotencyKey=ts.idempotencyKey!=null ? ts.idempotencyKey : (ts.idempotencyKey=UUID.randomUUID().toString());
+			s.idempotencyKey=ts.keyState.ensureKey(UUID.randomUUID().toString());
 			d.segments.add(s);
+			d.segmentFingerprints.add(ts.keyState.fingerprint);
 		}
 		draftId=d.id;
 		// Snapshot the attachment lists on the UI thread (M5): the copy itself
@@ -1014,11 +1055,25 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			restoredDraftVisibility=true;
 			updateVisibilityButton(false);
 		}
+		// R1 F6: a resumed draft republishes with the language and quote
+		// policy its author picked. SelectedOption.index -1 is the
+		// "not in the recent list" sentinel the picker already handles.
+		if(d.language!=null && !d.language.isEmpty())
+			postLang=new ComposeLanguageAlertViewController.SelectedOption(-1, Locale.forLanguageTag(d.language), null);
+		if(d.quotePolicy!=null){
+			try{
+				statusQuotePolicy=StatusQuotePolicy.valueOf(d.quotePolicy);
+			}catch(IllegalArgumentException ignored){
+				// An unknown policy name from a newer build: keep the default.
+			}
+		}
 		if(d.quotedStatusId!=null){
 			// MAMMUT: Composer 2.0 (§1/§6, review M4) — the reply context
-			// is consumed at publish time through replyToStatusId, so only
-			// the quote is truly lost on a resumed draft, and that must
-			// never be a silent surprise.
+			// is consumed at publish time through replyToStatusId. The
+			// quote's in-memory Status cannot be rebuilt from an id, so
+			// the preview card is genuinely lost — but the id itself now
+			// survives (audit R1 F1/F5) and rides the publish request.
+			// Neither may be a silent surprise.
 			new M3AlertDialogBuilder(getActivity())
 					.setTitle(R.string.draft_context_lost_title)
 					.setMessage(R.string.draft_context_lost)
@@ -1052,7 +1107,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		for(int i=1;i<d.segments.size();i++){
 			Segment s=d.segments.get(i);
 			ThreadSegment ts=addThreadSegment(null);
-			ts.idempotencyKey=s.idempotencyKey;
+			ts.keyState.seed(s.idempotencyKey, PublishKeys.fingerprintAt(d, i));
 			if(!TextUtils.isEmpty(s.text)){
 				ts.text.setText(s.text);
 				ts.textMirror=s.text;
@@ -1111,14 +1166,12 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		emojiKeyboard.onConfigurationChanged();
 	}
 
-	@SuppressLint("NewApi")
 	private void updateCharCounter(){
 		Editable text=mainEditText.getText();
-		charCount=countTextChars(text);
-		if(hasSpoiler){
-			charCount+=spoilerEdit.length();
-		}
-		applyOverLimitSpans(text, charCount);
+		LengthLimitHighlighter.WeightedCount weighted=weightedCountOf(text.toString());
+		int cwCount=hasSpoiler ? LengthLimitHighlighter.WeightedCount.plainGraphemes(spoilerEdit.getText().toString()) : 0;
+		charCount=weighted.graphemes+cwCount;
+		applyOverLimitSpans(text, weighted, cwCount, charCount);
 		if(activeSegmentIndex==0)
 			updateCounterView(charCounter, charCount);
 		trimmedCharCount=text.toString().trim().length();
@@ -1126,33 +1179,48 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	}
 
 	/**
-	 * The weighted character count of one segment's text: URLs, mentions
-	 * and emoji count the way the instance's limit expects (§4: letters
-	 * count per segment against the instance's own limits).
+	 * The weighted grapheme count of one segment's text: URLs, mentions
+	 * and emoji count the way the instance's limit expects (§4), with the
+	 * weighted→raw offset mapping the over-limit spans index into (audit
+	 * R1 F3).
 	 */
-	private int countTextChars(Editable text){
-		String countableText=TwitterTextEmojiRegex.VALID_EMOJI_PATTERN.matcher(
-			MENTION_PATTERN.matcher(
-					HtmlParser.URL_PATTERN.matcher(text).replaceAll("$2xxxxxxxxxxxxxxxxxxxxxxx")
-			).replaceAll("$1@$3")
-		).replaceAll("x");
-		int count=0;
-		breakIterator.setText(countableText);
-		while(breakIterator.next()!=BreakIterator.DONE){
-			count++;
-		}
-		return count;
+	private static LengthLimitHighlighter.WeightedCount weightedCountOf(String raw){
+		return LengthLimitHighlighter.WeightedCount.weighted(raw, HtmlParser.URL_PATTERN, MENTION_PATTERN, TwitterTextEmojiRegex.VALID_EMOJI_PATTERN);
 	}
 
-	/** Over-limit highlight on the segment's own text field. */
-	private void applyOverLimitSpans(Editable text, int count){
-		text.removeSpan(overLimitBG);
-		text.removeSpan(overLimitFG);
-		if(count>charLimit){
-			int start=text.length()-(count-charLimit);
-			int end=text.length();
-			text.setSpan(overLimitFG, start, end, 0);
-			text.setSpan(overLimitBG, start, end, 0);
+	/**
+	 * Audit R1 F3 — over-limit highlight on the segment's own fields.
+	 * The body's span always derives from the BODY-ONLY weighted count
+	 * mapped back to raw offsets; the combined count is only ever compared
+	 * against the limit, never indexed into the body's range (the old
+	 * text.length()-(count-limit) went negative for a CW-only overflow and
+	 * crashed setSpan). When the body fits but the CW pushed the combined
+	 * count over, the CW field's own tail is highlighted instead — its
+	 * boundary is a grapheme decision too, so an astral emoji is never cut
+	 * in half (R1 F8).
+	 */
+	private void applyOverLimitSpans(Editable body, LengthLimitHighlighter.WeightedCount weighted, int cwGraphemes, int totalCount){
+		body.removeSpan(overLimitBG);
+		body.removeSpan(overLimitFG);
+		Editable cwText=spoilerEdit.getText();
+		cwText.removeSpan(cwOverLimitBG);
+		cwText.removeSpan(cwOverLimitFG);
+		int start=weighted.overLimitStart(charLimit);
+		if(start>=0){
+			body.setSpan(overLimitFG, start, body.length(), 0);
+			body.setSpan(overLimitBG, start, body.length(), 0);
+		}else if(totalCount>charLimit && cwGraphemes>0){
+			highlightCwTail(cwText, cwGraphemes, totalCount-charLimit, cwOverLimitFG, cwOverLimitBG);
+		}
+	}
+
+	/** Marks the last {@code over} graphemes of the CW field. */
+	private static void highlightCwTail(Editable cwText, int cwGraphemes, int over, Object fg, Object bg){
+		LengthLimitHighlighter.WeightedCount cwWeighted=LengthLimitHighlighter.WeightedCount.plain(cwText.toString());
+		int cwStart=over>=cwWeighted.graphemes ? 0 : cwWeighted.rawOffsetAt(cwWeighted.graphemes-over);
+		if(cwStart>=0 && cwStart<cwText.length()){
+			cwText.setSpan(fg, cwStart, cwText.length(), 0);
+			cwText.setSpan(bg, cwStart, cwText.length(), 0);
 		}
 	}
 
@@ -1169,11 +1237,22 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 */
 	private void updateThreadSegmentCounter(ThreadSegment ts){
 		Editable editable=ts.text.getText();
-		int count=countTextChars(editable);
-		if(ts.hasSpoiler)
-			count+=ts.spoilerEdit.length();
+		LengthLimitHighlighter.WeightedCount weighted=weightedCountOf(editable.toString());
+		int cwCount=ts.hasSpoiler ? LengthLimitHighlighter.WeightedCount.plainGraphemes(ts.spoilerEdit.getText().toString()) : 0;
+		int count=weighted.graphemes+cwCount;
 		ts.charCount=count;
-		applyOverLimitSpans(editable, count);
+		editable.removeSpan(ts.overLimitBG);
+		editable.removeSpan(ts.overLimitFG);
+		Editable cwText=ts.spoilerEdit.getText();
+		cwText.removeSpan(ts.overLimitBG);
+		cwText.removeSpan(ts.overLimitFG);
+		int start=weighted.overLimitStart(charLimit);
+		if(start>=0){
+			editable.setSpan(ts.overLimitFG, start, editable.length(), 0);
+			editable.setSpan(ts.overLimitBG, start, editable.length(), 0);
+		}else if(count>charLimit && cwCount>0){
+			highlightCwTail(cwText, cwCount, count-charLimit, ts.overLimitFG, ts.overLimitBG);
+		}
 		updateCounterView(ts.counter, count);
 		ts.trimmedCharCount=editable.toString().trim().length();
 		if(activeSegmentIndex==extraSegments.indexOf(ts)+1)
@@ -1199,10 +1278,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	}
 
 	public void updatePublishButtonState(){
-		uuid=null;
 		if(publishButton==null)
 			return;
-		boolean enabled=(trimmedCharCount>0 || !mediaViewController.isEmpty()) && charCount<=charLimit && mediaViewController.getNonDoneAttachmentCount()==0 && (pollViewController.isEmpty() || pollViewController.getNonEmptyOptionsCount()>1);
+		boolean enabled=(trimmedCharCount>0 || !mediaViewController.isEmpty()) && charCount<=charLimit && mediaViewController.getNonDoneAttachmentCount()==0 && (pollViewController.isEmpty() || pollViewController.isPollValidForPosting());
 		// MAMMUT (§4) — every segment must be publishable on its own before
 		// the thread can start; an empty or over-limit middle segment would
 		// fail mid-chain, after the prefix is already public.
@@ -1290,6 +1368,12 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	}
 
 	private void publish(){
+		// R1 F9 backstop: the menu item is gated by the same validity rule;
+		// a stale enabled state must never send an invalid poll.
+		if(!pollViewController.isEmpty() && !pollViewController.isPollValidForPosting()){
+			Toast.makeText(getActivity(), R.string.error, Toast.LENGTH_SHORT).show();
+			return;
+		}
 		Runnable publishAction=()->{
 			// MAMMUT (§4) — the overlay is a FrameLayout so the chain can say
 			// "Posting 2 of 4" mid-publish. The pill exists only when there
@@ -1300,6 +1384,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			if(!extraSegments.isEmpty()){
 				postingProgressText=new TextView(getActivity());
 				postingProgressText.setTextAppearance(R.style.m3_label_large);
+				// Audit R1 F11: programmatic views never pass the InflaterFactory,
+				// so the bundled family is applied by hand.
+				postingProgressText.setTypeface(MammutTypeface.apply(postingProgressText.getTypeface()));
 				postingProgressText.setTextColor(UiUtils.getThemeColor(getActivity(), R.attr.colorM3OnSurface));
 				postingProgressText.setBackgroundResource(R.drawable.bg_composer_visibility);
 				postingProgressText.setPadding(V.dp(16), V.dp(8), V.dp(16), V.dp(8));
@@ -1369,7 +1456,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// CreateStatus chained to the id the server returned for the
 		// previous one. No batch path.
 		final List<SegmentPublish> pubs=new ArrayList<>();
-		pubs.add(buildPublishForFirstSegment());
+		pubs.add(buildPublishForFirstSegment(null));
 		for(ThreadSegment ts:extraSegments)
 			pubs.add(buildPublishForThreadSegment(ts));
 		if(pubs.size()>1)
@@ -1390,7 +1477,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 * initial anchor and doSchedule must go through here.
 	 */
 	private String currentReplyAnchorId(){
-		return threadAnchorId!=null ? threadAnchorId : (replyTo!=null ? replyTo.id : restoredReplyToStatusId);
+		return PublishKeys.anchorId(threadAnchorId, replyTo!=null ? replyTo.id : null, restoredReplyToStatusId);
 	}
 
 	/**
@@ -1426,8 +1513,11 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		}
 		if(statusQuotePolicy!=null && instance.supportsQuotePostAuthoring())
 			req.quoteApprovalPolicy=statusQuotePolicy;
-		if(quotedStatus!=null)
-			req.quotedStatusId=quotedStatus.id;
+		// Audit R1 F5: a resumed draft publishes with its stored quote id
+		// when the in-memory Status object is gone.
+		String quoteId=PublishKeys.quoteIdForRequest(quotedStatus!=null ? quotedStatus.id : null, restoredQuotedStatusId);
+		if(quoteId!=null)
+			req.quotedStatusId=quoteId;
 
 		Callback<Status> resCallback=new Callback<>(){
 			@Override
@@ -1456,8 +1546,11 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 * MAMMUT (§4) — the first segment's request. Reply and quote context
 	 * belong here and only here; visibility, quote policy and language are
 	 * thread-wide and ride on every segment's request.
+	 * {@code scheduledAt} is non-null only on the schedule path; it is part
+	 * of the payload fingerprint, so rescheduling the same text at a new
+	 * time never reuses the old key.
 	 */
-	private SegmentPublish buildPublishForFirstSegment(){
+	private SegmentPublish buildPublishForFirstSegment(Instant scheduledAt){
 		String text=mainEditText.getText().toString();
 		// MAMMUT: port from upstream master — strip tracking parameters from published URLs
 		if(GlobalUserPreferences.removeTrackingParams)
@@ -1482,13 +1575,22 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		}
 		if(statusQuotePolicy!=null && instance.supportsQuotePostAuthoring())
 			req.quoteApprovalPolicy=statusQuotePolicy;
-		if(quotedStatus!=null)
-			req.quotedStatusId=quotedStatus.id;
-		// §4: a draft resumed from the store publishes with its persisted
-		// per-segment key, so a retry after failure cannot double-post.
-		if(uuid==null)
-			uuid=draftIdempotencyKey!=null ? draftIdempotencyKey : UUID.randomUUID().toString();
-		return new SegmentPublish(req, uuid);
+		// Audit R1 F5: a resumed draft publishes with its stored quote id
+		// when the in-memory Status object is gone.
+		String quoteId=PublishKeys.quoteIdForRequest(quotedStatus!=null ? quotedStatus.id : null, restoredQuotedStatusId);
+		if(quoteId!=null)
+			req.quotedStatusId=quoteId;
+		if(scheduledAt!=null)
+			req.scheduledAt=scheduledAt;
+		// §4 + audit R1 F2: a draft resumed from the store publishes with
+		// its persisted per-segment key, but ONLY for an identical payload —
+		// any text/CW/poll/media/anchor/visibility/language/quote change
+		// (this list's order included) mints a fresh key, because an
+		// idempotency key replayed with a different body is exactly the
+		// double-post/422 class the key exists to prevent.
+		PublishKeys.SegmentPayload payload=payloadFor(req, currentReplyAnchorId(), scheduledAt);
+		String key=firstSegmentKey.resolve(PublishKeys.fingerprint(payload), UUID.randomUUID().toString());
+		return new SegmentPublish(req, key);
 	}
 
 	private SegmentPublish buildPublishForThreadSegment(ThreadSegment ts){
@@ -1512,9 +1614,33 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		}
 		if(statusQuotePolicy!=null && instance.supportsQuotePostAuthoring())
 			req.quoteApprovalPolicy=statusQuotePolicy;
-		if(ts.idempotencyKey==null)
-			ts.idempotencyKey=UUID.randomUUID().toString();
-		return new SegmentPublish(req, ts.idempotencyKey);
+		// R1 F2: same policy as the first segment — reordering the thread
+		// changes what this segment carries, so its fingerprint changes.
+		PublishKeys.SegmentPayload payload=payloadFor(req, null, null);
+		String key=ts.keyState.resolve(PublishKeys.fingerprint(payload), UUID.randomUUID().toString());
+		return new SegmentPublish(req, key);
+	}
+
+	/** The full request payload as a plain value object, for fingerprinting. */
+	private static PublishKeys.SegmentPayload payloadFor(CreateStatus.Request req, String anchorId, Instant scheduledAt){
+		PublishKeys.SegmentPayload p=new PublishKeys.SegmentPayload();
+		p.text=req.status;
+		p.spoilerText=req.spoilerText;
+		p.sensitive=req.sensitive;
+		p.visibility=req.visibility!=null ? req.visibility.name() : null;
+		p.language=req.language;
+		p.quotePolicy=req.quoteApprovalPolicy!=null ? req.quoteApprovalPolicy.name() : null;
+		p.replyAnchorId=anchorId;
+		p.quotedStatusId=req.quotedStatusId;
+		p.scheduledAt=scheduledAt!=null ? scheduledAt.toString() : null;
+		if(req.mediaIds!=null)
+			p.mediaIds=new ArrayList<>(req.mediaIds);
+		if(req.poll!=null){
+			p.pollExpiresIn=req.poll.expiresIn;
+			p.pollMultiple=req.poll.multiple;
+			p.pollOptions=new ArrayList<>(req.poll.options);
+		}
+		return p;
 	}
 
 	/**
@@ -1618,6 +1744,8 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		d.id=draftId!=null ? draftId : UUID.randomUUID().toString();
 		d.updatedAt=System.currentTimeMillis();
 		d.visibility=statusVisibility;
+		d.language=postLang!=null && postLang.locale!=null ? postLang.locale.toLanguageTag() : null;
+		d.quotePolicy=statusQuotePolicy!=null ? statusQuotePolicy.name() : null;
 		// The tail's first segment chains below the last published one.
 		d.replyToStatusId=threadAnchorId;
 		final List<ThreadSegment> tail=new ArrayList<>(extraSegments.subList(publishedCount-1, extraSegments.size()));
@@ -1629,8 +1757,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				s.spoilerText=ts.spoilerEdit.length()>0 ? ts.spoilerEdit.getText().toString() : null;
 				s.sensitive=ts.spoilerEdit.length()==0;
 			}
-			s.idempotencyKey=ts.idempotencyKey!=null ? ts.idempotencyKey : (ts.idempotencyKey=UUID.randomUUID().toString());
+			s.idempotencyKey=ts.keyState.ensureKey(UUID.randomUUID().toString());
 			d.segments.add(s);
+			d.segmentFingerprints.add(ts.keyState.fingerprint);
 			threadAttachmentSnapshots.add(ts.mediaController.snapshotAttachments());
 		}
 		draftId=d.id;
@@ -1697,7 +1826,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// a timeout-class failure can double-post it.
 		if(!extraSegments.isEmpty()){
 			ThreadSegment promoted=extraSegments.get(0);
-			draftIdempotencyKey=promoted.idempotencyKey;
+			firstSegmentKey.seed(promoted.keyState.key, promoted.keyState.fingerprint);
 			if(promoted.hasSpoiler){
 				hasSpoiler=true;
 				spoilerWrap.setVisibility(View.VISIBLE);
@@ -1771,6 +1900,13 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 					.setMessage(R.string.schedule_thread_unavailable)
 					.setPositiveButton(R.string.ok, null)
 					.show();
+			return;
+		}
+		// R1 F9: scheduling goes through the same single validity rule as
+		// publishing — a scheduled poll is validated by the server at
+		// publish time otherwise, far too late.
+		if(!pollViewController.isEmpty() && !pollViewController.isPollValidForPosting()){
+			Toast.makeText(getActivity(), R.string.error, Toast.LENGTH_SHORT).show();
 			return;
 		}
 		showScheduleDatePicker();
@@ -1870,13 +2006,13 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private void doSchedule(Instant when){
 		// Single-segment scope is enforced in onScheduleClicked, so the
 		// first segment's request builder is exactly the right body; only
-		// scheduledAt and the reply anchor are added on top of the publish
-		// shape. Review M1: without the anchor a scheduled reply goes out
+		// the reply anchor is added on top of the publish shape (scheduledAt
+		// rides the builder so it lands inside the payload fingerprint).
+		// Review M1: without the anchor a scheduled reply goes out
 		// with in_reply_to_id=null and the server files it as a detached
 		// top-level status.
-		SegmentPublish pub=buildPublishForFirstSegment();
+		SegmentPublish pub=buildPublishForFirstSegment(when);
 		pub.req.inReplyToId=currentReplyAnchorId();
-		pub.req.scheduledAt=when;
 		new ScheduleStatus(pub.req, pub.idempotencyKey)
 				.setCallback(new Callback<>(){
 					@Override
@@ -1945,13 +2081,21 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		if(editingStatus!=null){
 			if(!mainEditText.getText().toString().equals(initialText))
 				return true;
+			// R1 F7: the CW is part of the edit surface — changing it is a
+			// change, and a removed CW is one too.
+			String currentSpoiler=hasSpoiler ? spoilerEdit.getText().toString() : "";
+			String originalSpoiler=editingStatus.spoilerText!=null ? editingStatus.spoilerText : "";
+			if(!currentSpoiler.equals(originalSpoiler))
+				return true;
 			List<String> existingMediaIDs=editingStatus.mediaAttachments.stream().map(a->a.id).collect(Collectors.toList());
 			if(!existingMediaIDs.equals(mediaViewController.getAttachmentIDs()))
 				return true;
 			return pollViewController.isPollChanged();
 		}
 		boolean pollFieldsHaveContent=pollViewController.getNonEmptyOptionsCount()>0;
-		if((mainEditText.length()>0 && !mainEditText.getText().toString().equals(initialText)) || !mediaViewController.isEmpty() || pollFieldsHaveContent)
+		// R1 F7: a CW-only composer holds a real draft (an empty body with
+		// the media-flagged sensitivity still publishes something).
+		if(DraftPolicy.mainSurfaceHasDraft(mainEditText.getText().toString(), initialText, !mediaViewController.isEmpty(), pollFieldsHaveContent, hasSpoiler))
 			return true;
 		// MAMMUT (§4) — any content in any segment makes the draft real.
 		for(ThreadSegment ts:extraSegments){
@@ -2261,6 +2405,11 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// A saved privacy setting from a previous compose session wins over all
 		if(savedInstanceState!=null){
 			statusVisibility=(StatusPrivacy) savedInstanceState.getSerializable("visibility");
+			// R1 F6: same parity for the quote policy — account defaults
+			// apply first, then the choice this composition already made.
+			StatusQuotePolicy savedQuotePolicy=(StatusQuotePolicy)savedInstanceState.getSerializable("quotePolicy");
+			if(savedQuotePolicy!=null)
+				statusQuotePolicy=savedQuotePolicy;
 		}
 
 		if(prefs.postingDefaultQuotePolicy!=null)
@@ -2524,6 +2673,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		ts.spoilerWrap.setBackground(spoilerBg);
 		ts.spoilerWrap.setClipToOutline(true);
 		ts.spoilerWrap.setOutlineProvider(OutlineProviders.roundedRect(8));
+		// R1 F3: the card's own over-limit spans (body or CW tail).
+		ts.overLimitBG=new BackgroundColorSpan(UiUtils.getThemeColor(getActivity(), R.attr.colorM3ErrorContainer));
+		ts.overLimitFG=new ForegroundColorSpan(UiUtils.getThemeColor(getActivity(), R.attr.colorM3Error));
 
 		// ComposeEditText dereferences its selection listener from
 		// onCreateInputConnection, so a card's field always gets one:
@@ -2722,6 +2874,176 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	}
 
 	/**
+	 * Audit R1 F1/F2/F5 — the pure publish-identity policy. Everything the
+	 * retry/double-post correctness depends on is decided here, decoupled
+	 * from the fragment so a plain JVM can pin it: which id a segment
+	 * replies to, which quote id rides the request, and when an idempotency
+	 * key may be reused.
+	 */
+	public static class PublishKeys{
+		/**
+		 * §4/§5 — the single answer to "what id does the next post reply
+		 * to": the last chained segment once part of the thread is out,
+		 * else the reply being composed to, else a reply restored from a
+		 * draft (audit R1 F1: the restored id is what survives process
+		 * death, when the in-memory Status is gone).
+		 */
+		public static String anchorId(String threadAnchorId, String replyToId, String restoredReplyToStatusId){
+			return threadAnchorId!=null ? threadAnchorId : (replyToId!=null ? replyToId : restoredReplyToStatusId);
+		}
+
+		/**
+		 * Audit R1 F5 — a resumed draft has no in-memory quoted Status, but
+		 * its stored quote id must still ride the publish request; an
+		 * explicit removal clears the restored id before this runs.
+		 */
+		public static String quoteIdForRequest(String visibleQuoteId, String restoredQuotedStatusId){
+			return visibleQuoteId!=null ? visibleQuoteId : restoredQuotedStatusId;
+		}
+
+		/**
+		 * Audit R1 F2 — the full request payload reduced to one canonical
+		 * string. Every field the server sees is here: text, CW,
+		 * sensitivity, visibility, language, quote policy, reply anchor,
+		 * quote id, schedule instant, and the media id and poll option
+		 * lists IN ORDER (a reorder is a different payload). Length-prefixed
+		 * fields and counts make the encoding unambiguous.
+		 */
+		public static String fingerprint(SegmentPayload p){
+			StringBuilder sb=new StringBuilder();
+			field(sb, p.text);
+			field(sb, p.spoilerText);
+			sb.append(p.sensitive ? '1' : '0').append('\u0001');
+			field(sb, p.visibility);
+			field(sb, p.language);
+			field(sb, p.quotePolicy);
+			field(sb, p.replyAnchorId);
+			field(sb, p.quotedStatusId);
+			field(sb, p.scheduledAt);
+			sb.append(p.pollExpiresIn).append('\u0001').append(p.pollMultiple ? '1' : '0').append('\u0001');
+			list(sb, p.mediaIds);
+			list(sb, p.pollOptions);
+			return sb.toString();
+		}
+
+		private static void field(StringBuilder sb, String s){
+			if(s==null)
+				sb.append('-');
+			else
+				sb.append(s.length()).append(':').append(s);
+			sb.append('\u0001');
+		}
+
+		private static void list(StringBuilder sb, List<String> items){
+			sb.append(items.size()).append('\u0001');
+			for(String s:items)
+				field(sb, s);
+		}
+
+		/**
+		 * Audit R1 F2 — one segment's publish payload as a plain value
+		 * object. Field-for-field the body of the CreateStatus.Request the
+		 * fragment builds; kept free of Android/API types so the fingerprint
+		 * pipeline runs on a plain JVM.
+		 */
+		public static class SegmentPayload{
+			public String text;
+			public String spoilerText;
+			public boolean sensitive;
+			public String visibility;
+			public String language;
+			public String quotePolicy;
+			public String replyAnchorId;
+			public String quotedStatusId;
+			public String scheduledAt;
+			public int pollExpiresIn;
+			public boolean pollMultiple;
+			public List<String> mediaIds=new ArrayList<>();
+			public List<String> pollOptions=new ArrayList<>();
+		}
+
+		/**
+		 * Audit R1 F2 — an idempotency key and the fingerprint of the
+		 * payload it is bound to. The rule: a key is reused only for an
+		 * identical retry. Binding for the first time (fresh composer, or a
+		 * key restored from a draft/saved state whose payload is unknown)
+		 * keeps whatever key was persisted; once bound, any payload change
+		 * mints a fresh key.
+		 */
+		public static class KeyState{
+			public String key;
+			public String fingerprint;
+
+			public KeyState(){}
+
+			/** Seed from a resumed draft or a process-death restore. */
+			public static KeyState restored(String persistedKey, String persistedFingerprint){
+				KeyState s=new KeyState();
+				s.key=persistedKey;
+				s.fingerprint=persistedFingerprint;
+				return s;
+			}
+
+			public void seed(String key, String fingerprint){
+				this.key=key;
+				this.fingerprint=fingerprint;
+			}
+
+			/** Autosave path: the key exists, but binds no payload. */
+			public String ensureKey(String mintedKey){
+				if(key==null)
+					key=mintedKey;
+				return key;
+			}
+
+			/**
+			 * Publish path: returns the key to send with this payload.
+			 * {@code payloadFingerprint} is {@link #fingerprint(SegmentPayload)}
+			 * of the request about to go out; {@code mintedKey} is a fresh
+			 * UUID supplied by the caller when a new key is needed.
+			 */
+			public String resolve(String payloadFingerprint, String mintedKey){
+				if(fingerprint==null){
+					// First publish with this key (or the first after a
+					// resume that could not know the payload): bind now.
+					fingerprint=payloadFingerprint;
+					if(key==null)
+						key=mintedKey;
+					return key;
+				}
+				if(fingerprint.equals(payloadFingerprint))
+					return key;
+				key=mintedKey;
+				fingerprint=payloadFingerprint;
+				return key;
+			}
+		}
+
+		/**
+		 * The persisted fingerprint of draft segment {@code index}; null
+		 * when the draft predates fingerprint persistence or the list is
+		 * short (R1 F2 — "unknown" binds on first publish, never silently
+		 * constrains).
+		 */
+		public static String fingerprintAt(ComposeDraft draft, int index){
+			if(draft.segmentFingerprints==null || index>=draft.segmentFingerprints.size())
+				return null;
+			return draft.segmentFingerprints.get(index);
+		}
+	}
+
+	/**
+	 * Audit R1 F7 — the pure half of {@link #hasDraft()} for the main
+	 * surface: edited text, media, poll fields, or a CW all make the draft
+	 * real (a CW-only composer saves, and is offered on discard).
+	 */
+	public static class DraftPolicy{
+		public static boolean mainSurfaceHasDraft(String currentText, String initialText, boolean hasMedia, boolean hasPollContent, boolean hasCW){
+			return (currentText.length()>0 && !currentText.equals(initialText)) || hasMedia || hasPollContent || hasCW;
+		}
+	}
+
+	/**
 	 * MAMMUT: Composer 2.0 (§4) — one card of the thread below the first
 	 * segment. Holds the card's views, its own media controller and its
 	 * persisted idempotency key; {@link #textMirror} and
@@ -2736,7 +3058,11 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		View spoilerWrap;
 		EditText spoilerEdit;
 		final ComposeMediaViewController mediaController=new ComposeMediaViewController(ComposeFragment.this);
-		String idempotencyKey;
+		/** §4 + R1 F1/F2: this segment's idempotency key and payload binding. */
+		final PublishKeys.KeyState keyState=new PublishKeys.KeyState();
+		/** R1 F3: one span pair per card, used for the body or its CW. */
+		BackgroundColorSpan overLimitBG;
+		ForegroundColorSpan overLimitFG;
 		boolean hasSpoiler;
 		String textMirror, spoilerTextMirror;
 		int charCount, trimmedCharCount;

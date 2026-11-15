@@ -34,6 +34,7 @@ import org.joinmastodon.android.ui.views.ReorderableLinearLayout;
 
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.List;
 
 import me.grishka.appkit.utils.CubicBezierInterpolator;
 import me.grishka.appkit.utils.V;
@@ -273,9 +274,78 @@ public class ComposePollViewController{
 		CreateStatus.Request.Poll poll=new CreateStatus.Request.Poll();
 		poll.expiresIn=pollDuration;
 		poll.multiple=pollIsMultipleChoice;
-		for(DraftPollOption opt:pollOptions)
-			poll.options.add(opt.edit.getText().toString());
+		// R1 F9: the request carries exactly what the one validity rule
+		// accepts — trimmed, non-blank options.
+		for(DraftPollOption opt:pollOptions){
+			String text=opt.edit.getText().toString().trim();
+			if(!text.isEmpty())
+				poll.options.add(text);
+		}
 		return poll;
+	}
+
+	/**
+	 * Audit R1 F9 — the single poll-validity rule, shared by the publish
+	 * gate, the schedule gate, and the request builder: options are
+	 * trimmed, blanks do not count, duplicates (exact, after trimming) and
+	 * grapheme-over-limit options reject the poll, and at least two options
+	 * must remain. {@link PollValidator} is the pure, JVM-testable form.
+	 */
+	public boolean isPollValidForPosting(){
+		if(pollOptions.isEmpty())
+			return true;
+		ArrayList<String> raw=new ArrayList<>(pollOptions.size());
+		for(DraftPollOption opt:pollOptions)
+			raw.add(opt.edit.getText().toString());
+		return PollValidator.validate(raw, maxPollOptions, maxPollOptionLength).isValid();
+	}
+
+	public static class PollValidator{
+		public enum Issue{
+			NONE,
+			/** Fewer than two trimmed, non-blank options. */
+			TOO_FEW_OPTIONS,
+			TOO_MANY_OPTIONS,
+			DUPLICATE_OPTION,
+			/** An option exceeds the grapheme limit (astral emoji count once). */
+			OPTION_TOO_LONG
+		}
+
+		public final Issue issue;
+		/** The offending option index, or -1 for whole-poll issues. */
+		public final int optionIndex;
+
+		private PollValidator(Issue issue, int optionIndex){
+			this.issue=issue;
+			this.optionIndex=optionIndex;
+		}
+
+		public boolean isValid(){
+			return issue==Issue.NONE;
+		}
+
+		public static PollValidator validate(List<String> rawOptions, int maxOptions, int maxCharsPerOption){
+			ArrayList<String> options=new ArrayList<>();
+			for(int i=0;i<rawOptions.size();i++){
+				String text=rawOptions.get(i).trim();
+				if(text.isEmpty())
+					continue;
+				if(LengthLimitHighlighter.WeightedCount.plainGraphemes(text)>maxCharsPerOption)
+					return new PollValidator(Issue.OPTION_TOO_LONG, i);
+				if(options.contains(text))
+					return new PollValidator(Issue.DUPLICATE_OPTION, i);
+				options.add(text);
+			}
+			// An empty list is "no poll", not a broken one; callers decide
+			// whether a poll is required at all.
+			if(rawOptions.isEmpty())
+				return new PollValidator(Issue.NONE, -1);
+			if(options.size()<2)
+				return new PollValidator(Issue.TOO_FEW_OPTIONS, -1);
+			if(options.size()>maxOptions)
+				return new PollValidator(Issue.TOO_MANY_OPTIONS, -1);
+			return new PollValidator(Issue.NONE, -1);
+		}
 	}
 
 	/**

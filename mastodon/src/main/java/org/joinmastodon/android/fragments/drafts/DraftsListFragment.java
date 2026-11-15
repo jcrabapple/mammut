@@ -21,6 +21,7 @@ import org.joinmastodon.android.drafts.ComposeDraft;
 import org.joinmastodon.android.drafts.DraftAttachment;
 import org.joinmastodon.android.drafts.DraftStore;
 import org.joinmastodon.android.drafts.Segment;
+import org.joinmastodon.android.events.ScheduledStatusCreatedEvent;
 import org.joinmastodon.android.events.ScheduledStatusDeletedEvent;
 import org.joinmastodon.android.fragments.ComposeFragment;
 import org.joinmastodon.android.fragments.MastodonToolbarFragment;
@@ -42,6 +43,9 @@ import java.util.List;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.squareup.otto.Subscribe;
+
 import me.grishka.appkit.Nav;
 import me.grishka.appkit.api.Callback;
 import me.grishka.appkit.api.ErrorResponse;
@@ -152,6 +156,29 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 			transaction.hide(visiblePage);
 		transaction.show(target).commit();
 		visiblePage=target;
+		// Audit R1 F10: hide/show does NOT change a fragment's lifecycle —
+		// the Scheduled page stays RESUMED while hidden, so its onResume
+		// reload never fires on a tab switch. Refresh it as it appears, or
+		// a schedule created (or cancelled) while the Drafts tab was up
+		// would stay stale until the whole screen left and returned.
+		if(target==scheduledPage && ScheduledRefresh.shouldReloadOnShow(scheduledPage.loaded))
+			scheduledPage.reload();
+	}
+
+	/**
+	 * Audit R1 F10 — the pure refresh policy for the hidden Scheduled tab:
+	 * showing the page reloads it once it has loaded before (a first show
+	 * loads in onCreateView), and a create event landing while the page is
+	 * hidden forces a reload so the tab is fresh when shown.
+	 */
+	public static class ScheduledRefresh{
+		public static boolean shouldReloadOnShow(boolean pageLoaded){
+			return pageLoaded;
+		}
+
+		public static boolean shouldReloadOnCreateEvent(boolean pageHidden, boolean pageLoaded){
+			return pageHidden && pageLoaded;
+		}
 	}
 
 	/**
@@ -353,6 +380,23 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 		public void onCreate(Bundle savedInstanceState){
 			super.onCreate(savedInstanceState);
 			accountID=getArguments().getString("account");
+			// R1 F10: a schedule created from the composer while this page
+			// sits hidden behind the Drafts tab must not wait for a tab
+			// switch to become visible.
+			E.register(this);
+		}
+
+		@Override
+		public void onDestroy(){
+			E.unregister(this);
+			super.onDestroy();
+		}
+
+		@Subscribe
+		public void onScheduledStatusCreated(ScheduledStatusCreatedEvent event){
+			if(accountID!=null && accountID.equals(event.accountID) &&
+					ScheduledRefresh.shouldReloadOnCreateEvent(isHidden(), loaded))
+				reload();
 		}
 
 		@Override
@@ -403,6 +447,8 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 							loading=false;
 							loaded=true;
 							nextMaxID=result.getNextPageMaxID();
+							if(list==null || adapter==null)
+								return;
 							if(maxID==null)
 								statuses.clear();
 							statuses.addAll(result);

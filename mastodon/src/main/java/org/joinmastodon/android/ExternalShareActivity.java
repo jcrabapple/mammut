@@ -5,6 +5,7 @@ import android.content.ClipData;
 import android.content.Intent;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.widget.Toast;
@@ -67,24 +68,23 @@ public class ExternalShareActivity extends FragmentStackActivity{
 		}
 		List<Uri> mediaUris;
 		if(Intent.ACTION_SEND.equals(intent.getAction())){
-			Uri singleUri=intent.getParcelableExtra(Intent.EXTRA_STREAM);
+			Uri singleUri=getStreamExtra(intent);
 			mediaUris=singleUri!=null ? Collections.singletonList(singleUri) : null;
 		}else if(Intent.ACTION_SEND_MULTIPLE.equals(intent.getAction())){
-			ClipData clipData=intent.getClipData();
-			if(clipData!=null){
-				mediaUris=new ArrayList<>(clipData.getItemCount());
-				for(int i=0;i<clipData.getItemCount();i++){
-					ClipData.Item item=clipData.getItemAt(i);
-					mediaUris.add(item.getUri());
-				}
-			}else{
-				mediaUris=null;
-			}
+			// R1 F4/S1.1: EXTRA_STREAM is the primary multi-share channel —
+			// many senders populate only it and leave ClipData empty. It
+			// wins when both are present; ClipData is the fallback, not a
+			// merge.
+			mediaUris=ShareBoundary.preferExtraStream(getStreamExtras(intent), getClipDataUris(intent));
 		}else{
 			Toast.makeText(this, "Unexpected intent action: "+intent.getAction(), Toast.LENGTH_SHORT).show();
 			finish();
 			return;
 		}
+		// R1 F4: nulls and non-content schemes (file:, http:, …) never cross
+		// the external boundary — a file:// URI here would crash the app's
+		// own content-URI pipeline downstream.
+		mediaUris=ShareBoundary.sanitize(mediaUris);
 
 		Bundle args=new Bundle();
 		args.putString("account", accountID);
@@ -95,6 +95,63 @@ public class ExternalShareActivity extends FragmentStackActivity{
 		Fragment fragment=new ComposeFragment();
 		fragment.setArguments(args);
 		showFragmentClearingBackStack(fragment);
+	}
+
+	private static Uri getStreamExtra(Intent intent){
+		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.TIRAMISU)
+			return intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class);
+		@SuppressWarnings("deprecation")
+		Uri uri=intent.getParcelableExtra(Intent.EXTRA_STREAM);
+		return uri;
+	}
+
+	private static List<Uri> getStreamExtras(Intent intent){
+		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.TIRAMISU)
+			return intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri.class);
+		@SuppressWarnings("deprecation")
+		ArrayList<Uri> uris=intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+		return uris;
+	}
+
+	private static List<Uri> getClipDataUris(Intent intent){
+		ClipData clipData=intent.getClipData();
+		if(clipData==null)
+			return null;
+		ArrayList<Uri> uris=new ArrayList<>(clipData.getItemCount());
+		for(int i=0;i<clipData.getItemCount();i++){
+			ClipData.Item item=clipData.getItemAt(i);
+			uris.add(item.getUri());
+		}
+		return uris;
+	}
+
+	/**
+	 * Audit R1 F4/S1.1 — the pure decisions behind external share intake:
+	 * which schemes cross the boundary, and EXTRA_STREAM's precedence over
+	 * ClipData. Kept free of Android calls so a plain JVM can pin them.
+	 */
+	static class ShareBoundary{
+		/** content: only; file: and every other scheme are rejected. */
+		static boolean acceptsScheme(String scheme){
+			return "content".equals(scheme);
+		}
+
+		/** EXTRA_STREAM wins when present and non-empty; ClipData is the fallback. */
+		static <T> List<T> preferExtraStream(List<T> extraStream, List<T> clipData){
+			return extraStream!=null && !extraStream.isEmpty() ? extraStream : clipData;
+		}
+
+		/** Drops nulls and non-content URIs. */
+		static List<Uri> sanitize(List<Uri> uris){
+			if(uris==null)
+				return null;
+			ArrayList<Uri> out=new ArrayList<>(uris.size());
+			for(Uri uri:uris){
+				if(uri!=null && acceptsScheme(uri.getScheme()))
+					out.add(uri);
+			}
+			return out;
+		}
 	}
 
 	private static <T> ArrayList<T> toArrayList(List<T> l){

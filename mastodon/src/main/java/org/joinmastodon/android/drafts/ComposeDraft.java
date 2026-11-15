@@ -26,5 +26,25 @@ public class ComposeDraft{
 	public String quotedStatusId;
 	/** Applies to the whole draft; per-segment visibility does not exist (§6) */
 	public StatusPrivacy visibility;
+	/**
+	 * MAMMUT (§6, audit R1 F6): the BCP-47 tag chosen with the language
+	 * picker; null = never set. Restored on resume so a draft republishes
+	 * in the language its author picked.
+	 */
+	public String language;
+	/**
+	 * MAMMUT (§6, audit R1 F6): {@link org.joinmastodon.android.model.StatusQuotePolicy}
+	 * name(); null = never set (the composer default applies).
+	 */
+	public String quotePolicy;
 	public List<Segment> segments=new ArrayList<>();
+	/**
+	 * MAMMUT (§4, audit R1 F2): the payload fingerprint each segment's
+	 * persisted idempotency key was last bound to, parallel to
+	 * {@link #segments}. A null/absent entry means "unknown": the first
+	 * publish after a resume binds the key to the payload then, and an
+	 * edited payload mints a fresh key — an idempotency key must never ride
+	 * a request it was not minted for. Older drafts simply have no list.
+	 */
+	public List<String> segmentFingerprints=new ArrayList<>();
 }

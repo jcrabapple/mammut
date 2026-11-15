@@ -29,6 +29,7 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import org.joinmastodon.android.R;
+import org.joinmastodon.android.ui.text.MammutTypeface;
 import org.joinmastodon.android.ui.utils.SimpleTextWatcher;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
@@ -87,6 +88,10 @@ public class FloatingHintEditTextLayout extends FrameLayout implements CustomVie
 
 		label=new TextView(getContext());
 		label.setTextSize(TypedValue.COMPLEX_UNIT_PX, labelTextSize);
+		// Audit R1 F11: this label is built programmatically, so the
+		// InflaterFactory never sees it — apply the bundled family by hand,
+		// mapping from the edit's already-mapped face to keep the weight.
+		label.setTypeface(MammutTypeface.apply(edit!=null ? edit.getTypeface() : null));
 //		label.setTextColor(labelColors==null ? edit.getHintTextColors() : labelColors);
 		if(edit!=null){
 			origHintColors=edit.getHintTextColors();
@@ -111,6 +116,8 @@ public class FloatingHintEditTextLayout extends FrameLayout implements CustomVie
 
 		errorView=new LinkedTextView(getContext());
 		errorView.setTextAppearance(R.style.m3_body_small);
+		// Audit R1 F11: programmatic view — bundled family applied by hand.
+		errorView.setTypeface(MammutTypeface.apply(errorView.getTypeface()));
 		errorView.setTextColor(UiUtils.getThemeColor(getContext(), R.attr.colorM3Error));
 		errorView.setLinkTextColor(UiUtils.getThemeColor(getContext(), R.attr.colorM3Primary));
 		errorView.setLayoutParams(new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
