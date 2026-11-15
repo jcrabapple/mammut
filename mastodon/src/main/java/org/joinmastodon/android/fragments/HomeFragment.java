@@ -115,11 +115,16 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 
 		if(plan.childrenUsable()){
 			Fragment current=fragmentForDestination(currentDestination);
-			getChildFragmentManager().beginTransaction()
-					.add(me.grishka.appkit.R.id.fragment_wrap, homeTabFragment)
-					.add(me.grishka.appkit.R.id.fragment_wrap, notificationsFragment).hide(notificationsFragment)
-					.show(current)
-					.commit();
+			// R4 F1 follow-up: HomeFragment is retained, so on a recreation (KEEP) the
+			// children are still added to the child FragmentManager. Re-adding them throws
+			// IllegalStateException "Fragment already added" and crashes the relaunch.
+			// Only add children that are not yet added; KEEP just re-shows the current one.
+			android.app.FragmentTransaction tx=getChildFragmentManager().beginTransaction();
+			if(!homeTabFragment.isAdded())
+				tx.add(me.grishka.appkit.R.id.fragment_wrap, homeTabFragment);
+			if(!notificationsFragment.isAdded())
+				tx.add(me.grishka.appkit.R.id.fragment_wrap, notificationsFragment);
+			tx.hide(notificationsFragment).show(current).commit();
 			maybeTriggerLoading(current);
 		}
 

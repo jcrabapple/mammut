@@ -1,0 +1,1 @@
+Fixed: a crash when returning to the home screen after changing a setting that restarts the app, such as moving the menu button to the left. The retained home screen was re-adding its child fragments on relaunch; it now reuses them.
