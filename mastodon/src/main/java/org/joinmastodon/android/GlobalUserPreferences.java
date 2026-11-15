@@ -77,6 +77,9 @@ public class GlobalUserPreferences{
 	// fallback when the instance has no built-in translator (empty = fallback disabled)
 	public static String libreTranslateUrl="";
 	public static String libreTranslateApiKey="";
+	// MAMMUT: which translation fallback to use — the built-in Mammut Translate service
+	// (default, works out of the box), a user-configured LibreTranslate instance, or none
+	public static TranslationService translationService=TranslationService.MAMMUT;
 
 	// MOSHIDON: we changed this to public, because otherwise we can't export the settings
 	public static SharedPreferences getPrefs(){
@@ -157,6 +160,7 @@ public class GlobalUserPreferences{
 		fabOnLeft=prefs.getBoolean("fabOnLeft", false);
 		libreTranslateUrl=prefs.getString("libreTranslateUrl", "");
 		libreTranslateApiKey=prefs.getString("libreTranslateApiKey", "");
+		translationService=enumOr(TranslationService.class, prefs.getString("translationService", null), TranslationService.MAMMUT);
 
 
 		if(!prefs.getBoolean("perAccountMigrationDone", false)){
@@ -238,6 +242,7 @@ public class GlobalUserPreferences{
 				.putBoolean("fabOnLeft", fabOnLeft)
 				.putString("libreTranslateUrl", libreTranslateUrl==null ? "" : libreTranslateUrl)
 				.putString("libreTranslateApiKey", libreTranslateApiKey==null ? "" : libreTranslateApiKey)
+				.putString("translationService", translationService.name())
 
 				.apply();
 	}
@@ -292,6 +297,13 @@ public class GlobalUserPreferences{
 		SOURCE_SANS,
 		LITERATA,
 		ATKINSON
+	}
+
+	// MAMMUT: translation fallback selection, stored by name like the other enums
+	public enum TranslationService{
+		MAMMUT,
+		CUSTOM,
+		OFF
 	}
 
 	public enum PreReplySheetType{

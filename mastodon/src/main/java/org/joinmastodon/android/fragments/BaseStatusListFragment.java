@@ -1028,7 +1028,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 		status.translationState=Status.TranslationState.LOADING;
 		Status content=status.getContentStatus();
 		String target=Locale.getDefault().getLanguage();
-		boolean fallbackConfigured=LibreTranslateClient.isConfigured(GlobalUserPreferences.libreTranslateUrl);
+		String fallbackUrl=LibreTranslateClient.effectiveUrl(GlobalUserPreferences.translationService, GlobalUserPreferences.libreTranslateUrl);
+		String fallbackKey=LibreTranslateClient.effectiveApiKey(GlobalUserPreferences.translationService, GlobalUserPreferences.libreTranslateApiKey);
 		new TranslateStatus(content.id, target)
 				.setCallback(new Callback<>(){
 					@Override
@@ -1040,8 +1041,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 					public void onError(ErrorResponse error){
 						if(getActivity()==null)
 							return;
-						if(fallbackConfigured){
-							translateViaLibreTranslate(status, itemID, content, target);
+						if(fallbackUrl!=null){
+							translateViaLibreTranslate(status, itemID, content, target, fallbackUrl, fallbackKey);
 						}else{
 							failTranslation(status, itemID);
 						}
@@ -1050,8 +1051,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 				.exec(accountID);
 	}
 
-	private void translateViaLibreTranslate(Status status, String itemID, Status content, String target){
-		LibreTranslateClient.translate(GlobalUserPreferences.libreTranslateUrl, GlobalUserPreferences.libreTranslateApiKey,
+	private void translateViaLibreTranslate(Status status, String itemID, Status content, String target, String url, String key){
+		LibreTranslateClient.translate(url, key,
 				content.content, content.language, target, new Callback<>(){
 					@Override
 					public void onSuccess(Translation result){

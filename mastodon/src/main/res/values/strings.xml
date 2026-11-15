@@ -733,9 +733,12 @@
 	<string name="mo_fab_on_left_summary">Place the navigation button on the left side of the screen</string>
 	<!-- MAMMUT: universal translation via a configurable LibreTranslate fallback -->
 	<string name="mo_translation_service">Translation service</string>
-	<string name="mo_translation_service_summary">Optional LibreTranslate endpoint used when your server has no built-in translation. Your server\'s own translator is still preferred. Leave empty to disable the fallback.</string>
-	<string name="mo_translation_service_off">Off</string>
-	<string name="mo_translation_service_on">On</string>
+	<string name="mo_translation_service_summary">Translate posts even on servers without built-in translation. Mammut Translate is used by default; you can point to your own LibreTranslate instance instead.</string>
+	<string name="mo_translation_mammut">Mammut Translate</string>
+	<string name="mo_translation_custom">Custom instance</string>
+	<string name="mo_translation_off">Off</string>
+	<string name="mo_translation_custom_title">Custom translation instance</string>
+	<string name="mo_translation_custom_summary">Your own LibreTranslate endpoint. Your server\'s own translator is still tried first.</string>
 	<string name="mo_translation_url_hint">LibreTranslate URL (https://…)</string>
 	<string name="mo_translation_api_key_hint">API key (optional)</string>
 	<string name="settings_privacy">Privacy and reach</string>

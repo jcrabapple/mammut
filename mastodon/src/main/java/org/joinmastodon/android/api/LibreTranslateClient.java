@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.model.Translation;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
@@ -37,6 +38,32 @@ public class LibreTranslateClient{
 	/** True when a usable fallback endpoint is configured. */
 	public static boolean isConfigured(String url){
 		return normalizeEndpoint(url)!=null;
+	}
+
+	/** The built-in Mammut Translate endpoint, available to every user out of the box. */
+	public static final String MAMMUT_TRANSLATE_URL="https://translate.snakepit.us";
+
+	/**
+	 * Resolve the fallback endpoint for the selected translation service. MAMMUT uses the
+	 * built-in endpoint; CUSTOM uses the user's normalized URL (null if invalid); OFF disables
+	 * the fallback entirely (null). Pure so the routing decision is unit-testable.
+	 */
+	public static String effectiveUrl(GlobalUserPreferences.TranslationService service, String customUrl){
+		switch(service){
+			case MAMMUT: return MAMMUT_TRANSLATE_URL;
+			case CUSTOM: return normalizeEndpoint(customUrl);
+			default: return null;
+		}
+	}
+
+	/** The API key only applies to a custom instance; Mammut Translate needs none. */
+	public static String effectiveApiKey(GlobalUserPreferences.TranslationService service, String customKey){
+		return service==GlobalUserPreferences.TranslationService.CUSTOM ? customKey : null;
+	}
+
+	/** True when the selected service yields a usable fallback endpoint. */
+	public static boolean isFallbackEnabled(GlobalUserPreferences.TranslationService service, String customUrl){
+		return effectiveUrl(service, customUrl)!=null;
 	}
 
 	/**

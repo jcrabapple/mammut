@@ -3,6 +3,7 @@ package org.joinmastodon.android.api;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.model.Translation;
 import org.junit.Test;
 
@@ -135,5 +136,45 @@ public class LibreTranslateClientTest{
 	@Test(expected=IllegalArgumentException.class)
 	public void nullTranslatedTextThrows(){
 		LibreTranslateClient.parseTranslation("{\"translatedText\":null}", "en");
+	}
+
+	// --- translation service mode resolution (Mammut Translate / Custom / Off) ---
+
+	@Test
+	public void mammutModeUsesBuiltInEndpoint(){
+		assertEquals(LibreTranslateClient.MAMMUT_TRANSLATE_URL,
+				LibreTranslateClient.effectiveUrl(GlobalUserPreferences.TranslationService.MAMMUT, ""));
+		// the built-in default works even with no custom URL configured
+		assertTrue(LibreTranslateClient.isFallbackEnabled(GlobalUserPreferences.TranslationService.MAMMUT, ""));
+		// Mammut Translate needs no API key, even if a custom one is stored
+		assertNull(LibreTranslateClient.effectiveApiKey(GlobalUserPreferences.TranslationService.MAMMUT, "stored-key"));
+	}
+
+	@Test
+	public void builtInEndpointIsAValidUrl(){
+		assertTrue(LibreTranslateClient.isConfigured(LibreTranslateClient.MAMMUT_TRANSLATE_URL));
+	}
+
+	@Test
+	public void customModeUsesNormalizedUrlAndKey(){
+		assertEquals("https://lt.example.com/translate",
+				LibreTranslateClient.effectiveUrl(GlobalUserPreferences.TranslationService.CUSTOM, "https://lt.example.com"));
+		assertEquals("stored-key",
+				LibreTranslateClient.effectiveApiKey(GlobalUserPreferences.TranslationService.CUSTOM, "stored-key"));
+		assertTrue(LibreTranslateClient.isFallbackEnabled(GlobalUserPreferences.TranslationService.CUSTOM, "https://lt.example.com"));
+	}
+
+	@Test
+	public void customModeWithInvalidUrlDisablesFallback(){
+		assertNull(LibreTranslateClient.effectiveUrl(GlobalUserPreferences.TranslationService.CUSTOM, ""));
+		assertNull(LibreTranslateClient.effectiveUrl(GlobalUserPreferences.TranslationService.CUSTOM, "not a url"));
+		assertFalse(LibreTranslateClient.isFallbackEnabled(GlobalUserPreferences.TranslationService.CUSTOM, ""));
+	}
+
+	@Test
+	public void offModeDisablesFallbackEvenWithAUrl(){
+		assertNull(LibreTranslateClient.effectiveUrl(GlobalUserPreferences.TranslationService.OFF, "https://lt.example.com"));
+		assertFalse(LibreTranslateClient.isFallbackEnabled(GlobalUserPreferences.TranslationService.OFF, "https://lt.example.com"));
+		assertNull(LibreTranslateClient.effectiveApiKey(GlobalUserPreferences.TranslationService.OFF, "stored-key"));
 	}
 }

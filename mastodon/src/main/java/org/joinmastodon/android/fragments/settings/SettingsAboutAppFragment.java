@@ -442,6 +442,7 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 			m.put("fabOnLeft", PrefRule.bool());
 			m.put("libreTranslateUrl", PrefRule.string());
 			m.put("libreTranslateApiKey", PrefRule.string());
+			m.put("translationService", PrefRule.enumValue(GlobalUserPreferences.TranslationService.class));
 			m.put("perAccountMigrationDone", PrefRule.bool());
 			return java.util.Collections.unmodifiableMap(m);
 		}

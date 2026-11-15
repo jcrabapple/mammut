@@ -366,15 +366,51 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 				: getString(color.getName());
 	}
 
-	// MAMMUT: universal translation — configure the LibreTranslate fallback endpoint. The
-	// instance's own translator is still preferred; this is only used when it is unavailable.
+	// MAMMUT: universal translation — Mammut Translate (built-in, default), a custom
+	// LibreTranslate instance, or off. The instance's own translator is still preferred;
+	// the fallback is only used when it is unavailable.
 	private String getTranslationServiceValue(){
-		return LibreTranslateClient.isConfigured(GlobalUserPreferences.libreTranslateUrl)
-				? getString(R.string.mo_translation_service_on)
-				: getString(R.string.mo_translation_service_off);
+		switch(GlobalUserPreferences.translationService){
+			case MAMMUT: return getString(R.string.mo_translation_mammut);
+			case CUSTOM: return getString(R.string.mo_translation_custom);
+			default: return getString(R.string.mo_translation_off);
+		}
 	}
 
 	private void onTranslationServiceClick(ListItem<?> item_){
+		Context ctx=getActivity();
+		GlobalUserPreferences.TranslationService[] modes={
+				GlobalUserPreferences.TranslationService.MAMMUT,
+				GlobalUserPreferences.TranslationService.CUSTOM,
+				GlobalUserPreferences.TranslationService.OFF};
+		String[] labels={
+				getString(R.string.mo_translation_mammut),
+				getString(R.string.mo_translation_custom),
+				getString(R.string.mo_translation_off)};
+		int selected=0;
+		for(int i=0;i<modes.length;i++)
+			if(modes[i]==GlobalUserPreferences.translationService)
+				selected=i;
+		new M3AlertDialogBuilder(ctx)
+				.setTitle(R.string.mo_translation_service)
+				.setMessage(R.string.mo_translation_service_summary)
+				.setSingleChoiceItems(labels, selected, (dlg, which)->{
+					dlg.dismiss();
+					if(modes[which]==GlobalUserPreferences.TranslationService.CUSTOM){
+						// Custom only takes effect once a URL is saved; cancelling keeps the prior mode.
+						openCustomTranslationDialog();
+					}else{
+						GlobalUserPreferences.translationService=modes[which];
+						GlobalUserPreferences.save();
+						translationServiceItem.subtitle=getTranslationServiceValue();
+						rebindItem(translationServiceItem);
+					}
+				})
+				.setNegativeButton(R.string.cancel, null)
+				.show();
+	}
+
+	private void openCustomTranslationDialog(){
 		Context ctx=getActivity();
 		LinearLayout layout=new LinearLayout(ctx);
 		layout.setOrientation(LinearLayout.VERTICAL);
@@ -391,12 +427,13 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		keyField.setText(GlobalUserPreferences.libreTranslateApiKey);
 		layout.addView(keyField);
 		new M3AlertDialogBuilder(ctx)
-				.setTitle(R.string.mo_translation_service)
-				.setMessage(R.string.mo_translation_service_summary)
+				.setTitle(R.string.mo_translation_custom_title)
+				.setMessage(R.string.mo_translation_custom_summary)
 				.setView(layout)
 				.setPositiveButton(R.string.save, (dlg, which)->{
 					GlobalUserPreferences.libreTranslateUrl=urlField.getText().toString().trim();
 					GlobalUserPreferences.libreTranslateApiKey=keyField.getText().toString().trim();
+					GlobalUserPreferences.translationService=GlobalUserPreferences.TranslationService.CUSTOM;
 					GlobalUserPreferences.save();
 					translationServiceItem.subtitle=getTranslationServiceValue();
 					rebindItem(translationServiceItem);
