@@ -10,6 +10,7 @@ import org.joinmastodon.android.E;
 import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.session.AccountSessionManager;
+import org.joinmastodon.android.events.StatusCountersUpdatedEvent;
 import org.joinmastodon.android.events.StatusUpdatedEvent;
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.model.NotificationType;
@@ -211,33 +212,69 @@ public abstract class BaseNotificationsListFragment extends BaseStatusListFragme
 			if(statusesForDisplayItems.isEmpty())
 				return;
 
-			for(NotificationViewModel s:statusesForDisplayItems){
-				int i=0;
-				for(StatusDisplayItem item:displayItems){
-					if(item.parentID.equals(s.getID())){
-						int start=i;
-						for(;i<displayItems.size();i++){
-							if(!displayItems.get(i).parentID.equals(s.getID()))
-								break;
-						}
-						List<StatusDisplayItem> postItems=displayItems.subList(start, i);
-						postItems.clear();
-						postItems.addAll(buildDisplayItems(s));
-						int oldSize=i-start, newSize=postItems.size();
-						if(oldSize==newSize){
-							adapter.notifyItemRangeChanged(start, newSize);
-						}else if(oldSize<newSize){
-							adapter.notifyItemRangeChanged(start, oldSize);
-							adapter.notifyItemRangeInserted(start+oldSize, newSize-oldSize);
-						}else{
-							adapter.notifyItemRangeChanged(start, newSize);
-							adapter.notifyItemRangeRemoved(start+newSize, oldSize-newSize);
-						}
+			for(NotificationViewModel s:statusesForDisplayItems)
+				rebindNotification(s);
+		}
+
+		// MAMMUT: audit R3 F4 — favorite/boost/bookmark failures restore the model and post
+		// this event; without a handler the notification rows kept the optimistic tint/count
+		// until an unrelated rebind. Mirrors StatusListFragment's counter-event handling.
+		@Subscribe
+		public void onStatusCountersUpdated(StatusCountersUpdatedEvent ev){
+			List<NotificationViewModel> affected=CounterRebind.apply(data, preloadedData, ev);
+			for(NotificationViewModel s:affected)
+				rebindNotification(s);
+		}
+	}
+
+	private void rebindNotification(NotificationViewModel s){
+		int i=0;
+		for(StatusDisplayItem item:displayItems){
+			if(item.parentID.equals(s.getID())){
+				int start=i;
+				for(;i<displayItems.size();i++){
+					if(!displayItems.get(i).parentID.equals(s.getID()))
 						break;
-					}
-					i++;
+				}
+				List<StatusDisplayItem> postItems=displayItems.subList(start, i);
+				postItems.clear();
+				postItems.addAll(buildDisplayItems(s));
+				int oldSize=i-start, newSize=postItems.size();
+				if(oldSize==newSize){
+					adapter.notifyItemRangeChanged(start, newSize);
+				}else if(oldSize<newSize){
+					adapter.notifyItemRangeChanged(start, oldSize);
+					adapter.notifyItemRangeInserted(start+oldSize, newSize-oldSize);
+				}else{
+					adapter.notifyItemRangeChanged(start, newSize);
+					adapter.notifyItemRangeRemoved(start+newSize, oldSize-newSize);
+				}
+				break;
+			}
+			i++;
+		}
+	}
+
+	/**
+	 * MAMMUT: audit R3 F4 — pure part of the counter-rollback path: applies the updated
+	 * counters to every notification row referencing the status (including preloaded
+	 * rows) and returns the visible rows that need a rebind. Unit testable without a
+	 * RecyclerView.
+	 */
+	public static class CounterRebind{
+		public static List<NotificationViewModel> apply(List<NotificationViewModel> data, List<NotificationViewModel> preloadedData, StatusCountersUpdatedEvent ev){
+			ArrayList<NotificationViewModel> affected=new ArrayList<>();
+			for(NotificationViewModel nvm:data){
+				if(nvm.status!=null && nvm.status.id.equals(ev.id)){
+					nvm.status.update(ev);
+					affected.add(nvm);
 				}
 			}
+			for(NotificationViewModel nvm:preloadedData){
+				if(nvm.status!=null && nvm.status.id.equals(ev.id))
+					nvm.status.update(ev);
+			}
+			return affected;
 		}
 	}
 }

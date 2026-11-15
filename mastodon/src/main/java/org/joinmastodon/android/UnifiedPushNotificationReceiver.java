@@ -40,7 +40,8 @@ public class UnifiedPushNotificationReceiver extends MessagingReceiver{
 
 	@Override
 	public void onNewEndpoint(@NonNull Context context, @NonNull PushEndpoint endpoint, @NonNull String instance){
-		Log.d(TAG, "onNewEndpoint: "+endpoint.getUrl()+" for "+instance);
+		// MAMMUT: audit S1.7 — the endpoint URL is a capability URL; only the host is logged
+		Log.d(TAG, "onNewEndpoint: "+org.joinmastodon.android.utils.UnifiedPushHelper.redactEndpoint(endpoint.getUrl())+" for "+instance);
 		AccountSession account=AccountSessionManager.getInstance().tryGetAccount(instance);
 		if(account==null)
 			return;
@@ -76,39 +77,70 @@ public class UnifiedPushNotificationReceiver extends MessagingReceiver{
 		AccountSession account=AccountSessionManager.getInstance().tryGetAccount(instance);
 		if(account==null)
 			return;
+		// MAMMUT: audit R3 F6 — the per-account pause must gate UnifiedPush exactly like FCM:
+		// no fetch, no shade notification, no unread increment while it is active
+		if(DeliveryGate.shouldDrop(account.getLocalPreferences().getNotificationsPauseEndTime(), System.currentTimeMillis())){
+			Log.i(TAG, "onMessage: dropping notification because user has paused notifications for this account");
+			return;
+		}
 		if(message.getDecrypted()){
-			PushNotification pn=MastodonAPIController.gson.fromJson(new String(message.getContent(), StandardCharsets.UTF_8), PushNotification.class);
-			new GetNotificationByID(pn.notificationId)
-					.setCallback(new Callback<>(){
-						@Override
-						public void onSuccess(Notification result){
-							MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notify(context, pn, instance, result));
-						}
+			// MAMMUT: audit R3 F2 — validate like the FCM path; an unknown/future type or a
+			// malformed payload must fall back to fetching instead of crashing the receiver
+			PushNotification pn=null;
+			try{
+				pn=MastodonAPIController.gson.fromJson(new String(message.getContent(), StandardCharsets.UTF_8), PushNotification.class);
+				if(pn!=null)
+					pn.postprocess();
+			}catch(Exception x){
+				Log.w(TAG, "onMessage: could not parse the decrypted payload", x);
+				pn=null;
+			}
+			if(pn!=null){
+				PushNotification validPn=pn;
+				new GetNotificationByID(validPn.notificationId)
+						.setCallback(new Callback<>(){
+							@Override
+							public void onSuccess(Notification result){
+								MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notify(context, validPn, instance, result));
+							}
 
-						@Override
-						public void onError(ErrorResponse error){
-							MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notify(context, pn, instance, null));
-						}
-					})
-					.exec(instance);
-		}else{
-			// The app cannot decrypt this payload, so pull the newest notification instead.
-			new GetNotificationsV1(null, 1, null)
-					.setCallback(new Callback<>(){
-						@Override
-						public void onSuccess(List<Notification> result){
-							if(result.isEmpty())
-								return;
-							Notification notification=result.get(0);
-							MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notifyUnifiedPush(context, account, notification));
-						}
+							@Override
+							public void onError(ErrorResponse error){
+								MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notify(context, validPn, instance, null));
+							}
+						})
+						.exec(instance);
+				return;
+			}
+			Log.w(TAG, "onMessage: decrypted payload failed validation, falling back to fetch");
+		}
+		// The app cannot decrypt this payload (or it failed validation), so pull the newest
+		// notification instead.
+		new GetNotificationsV1(null, 1, null)
+				.setCallback(new Callback<>(){
+					@Override
+					public void onSuccess(List<Notification> result){
+						if(result.isEmpty())
+							return;
+						Notification notification=result.get(0);
+						MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notifyUnifiedPush(context, account, notification));
+					}
 
-						@Override
-						public void onError(ErrorResponse error){
-							Log.w(TAG, "onMessage: could not fetch the notification for "+instance);
-						}
-					})
-					.exec(instance);
+					@Override
+					public void onError(ErrorResponse error){
+						Log.w(TAG, "onMessage: could not fetch the notification for "+instance);
+					}
+				})
+				.exec(instance);
+	}
+
+	/**
+	 * MAMMUT: audit R3 F6 — pure pause gate: delivery is dropped while the pause end time
+	 * is in the future and resumes the moment it expires.
+	 */
+	public static class DeliveryGate{
+		public static boolean shouldDrop(long pauseEndTimeMillis, long nowMillis){
+			return pauseEndTimeMillis>nowMillis;
 		}
 	}
 }

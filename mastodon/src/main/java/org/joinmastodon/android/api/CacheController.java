@@ -162,6 +162,32 @@ public class CacheController{
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * MAMMUT: audit R3 F5 — pure V1-to-view-model conversion. System notifications
+	 * (severed relationships, moderation warnings) arrive without an account; they map
+	 * to empty sample-account lists instead of dereferencing a null account.
+	 */
+	public static class V1Conversion{
+		public static NotificationViewModel convert(Notification n){
+			NotificationGroup group=new NotificationGroup();
+			group.groupKey="converted-"+n.id;
+			group.notificationsCount=1;
+			group.type=n.type;
+			group.mostRecentNotificationId=group.pageMaxId=group.pageMinId=n.id;
+			group.latestPageNotificationAt=n.createdAt;
+			group.sampleAccountIds=n.account!=null ? List.of(n.account.id) : List.of();
+			group.event=n.event;
+			group.moderationWarning=n.moderationWarning;
+			if(n.status!=null)
+				group.statusId=n.status.id;
+			NotificationViewModel nvm=new NotificationViewModel();
+			nvm.notification=group;
+			nvm.status=n.status;
+			nvm.accounts=n.account!=null ? List.of(n.account) : List.of();
+			return nvm;
+		}
+	}
+
 	public void getNotifications(String maxID, int count, boolean onlyMentions, boolean forceReload, Callback<PaginatedResponse<List<NotificationViewModel>>> callback){
 		cancelDelayedClose();
 		databaseThread.postRunnable(()->{
@@ -272,26 +298,9 @@ public class CacheController{
 									ArrayList<Notification> filtered=new ArrayList<>(result);
 									AccountSessionManager.get(accountID).filterStatusContainingObjects(filtered, n->n.status, FilterContext.NOTIFICATIONS);
 									List<Status> statuses=filtered.stream().map(n->n.status).filter(Objects::nonNull).collect(Collectors.toList());
-									List<Account> accounts=filtered.stream().map(n->n.account).collect(Collectors.toList());
+									List<Account> accounts=filtered.stream().map(n->n.account).filter(Objects::nonNull).collect(Collectors.toList());
 									List<NotificationViewModel> converted=filtered.stream()
-											.map(n->{
-												NotificationGroup group=new NotificationGroup();
-												group.groupKey="converted-"+n.id;
-												group.notificationsCount=1;
-												group.type=n.type;
-												group.mostRecentNotificationId=group.pageMaxId=group.pageMinId=n.id;
-												group.latestPageNotificationAt=n.createdAt;
-												group.sampleAccountIds=List.of(n.account.id);
-												group.event=n.event;
-												group.moderationWarning=n.moderationWarning;
-												if(n.status!=null)
-													group.statusId=n.status.id;
-												NotificationViewModel nvm=new NotificationViewModel();
-												nvm.notification=group;
-												nvm.status=n.status;
-												nvm.accounts=List.of(n.account);
-												return nvm;
-											})
+											.map(V1Conversion::convert)
 											.collect(Collectors.toList());
 									PaginatedResponse<List<NotificationViewModel>> res=new PaginatedResponse<>(converted, result.isEmpty() ? null : result.get(result.size()-1).id);
 									callback.onSuccess(res);

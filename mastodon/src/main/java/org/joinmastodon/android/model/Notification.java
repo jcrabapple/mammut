@@ -24,7 +24,11 @@ public class Notification extends BaseModel implements DisplayItemsParent{
 	@Override
 	public void postprocess() throws ObjectValidationException{
 		super.postprocess();
-		account.postprocess();
+		// MAMMUT: audit R3 F5 — severed_relationships/moderation_warning arrive without an
+		// account; postprocess() must not NPE on it (the presence check below already exempts
+		// those types from requiring one)
+		if(account!=null)
+			account.postprocess();
 		if(status!=null)
 			status.postprocess();
 		if(event!=null){

@@ -213,7 +213,8 @@ public class PushSubscriptionManager{
 			AccountSession session=AccountSessionManager.getInstance().tryGetAccount(accountID);
 			if(session==null)
 				return;
-			Log.d(TAG, "registerAccountForPush(unifiedpush): registering "+accountID+" at "+endpoint);
+			// MAMMUT: audit S1.7 — the endpoint is a capability URL; only the host is logged
+			Log.d(TAG, "registerAccountForPush(unifiedpush): registering "+accountID+" at "+org.joinmastodon.android.utils.UnifiedPushHelper.redactEndpoint(endpoint));
 			session.needReRegisterForPush=true;
 			AccountSessionManager.getInstance().writeAccountPushSettings(accountID);
 			new RegisterForPushNotifications(endpoint, standard, p256dh, auth,

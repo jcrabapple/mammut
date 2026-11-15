@@ -108,7 +108,8 @@ public class NavToolbarUtils{
 		Runnable register=()->{
 			if(!registered[0]){
 				registered[0]=true;
-				UnreadNotificationStore.addListener(listener);
+				// MAMMUT: audit R3 F3 — the chip only ever sees its own account's counts
+				UnreadNotificationStore.addListener(listener, accountID);
 			}
 		};
 		Runnable unregister=()->{
@@ -138,35 +139,27 @@ public class NavToolbarUtils{
 
 	/**
 	 * Long-press on the bell: write the notifications marker at the newest
-	 * notification, then clear the shared unread store so every badge and chip
-	 * drops at once. Reading the marker back is not enough on its own — the
-	 * count is computed from it, so the store is only cleared once the server
-	 * has accepted the new position.
+	 * notification, then update the shared unread store. The store is touched only
+	 * after the server accepted the marker — and then by recomputing, not by forcing
+	 * zero, so a push that arrived while the save was in flight is not erased
+	 * (MAMMUT: audit R3 F9).
 	 */
 	private static void markAllNotificationsRead(Activity activity, String accountID){
 		new org.joinmastodon.android.api.requests.notifications.GetNotificationsV1(null, 1, java.util.EnumSet.allOf(org.joinmastodon.android.model.NotificationType.class))
 				.setCallback(new me.grishka.appkit.api.Callback<java.util.List<org.joinmastodon.android.model.Notification>>(){
 					@Override
 					public void onSuccess(java.util.List<org.joinmastodon.android.model.Notification> result){
-						if(result.isEmpty()){
-							UnreadNotificationStore.markRead();
+						if(storeUpdateAfterSave(result.isEmpty())==StoreUpdateAfterSave.CLEAR){
+							UnreadNotificationStore.markRead(accountID);
 							android.widget.Toast.makeText(activity, R.string.nav_notifications_marked_read, android.widget.Toast.LENGTH_SHORT).show();
 							return;
 						}
-						new org.joinmastodon.android.api.requests.markers.SaveMarkers(null, result.get(0).id)
-								.setCallback(new me.grishka.appkit.api.Callback<org.joinmastodon.android.model.TimelineMarkers>(){
-									@Override
-									public void onSuccess(org.joinmastodon.android.model.TimelineMarkers r){
-										UnreadNotificationStore.markRead();
-										android.widget.Toast.makeText(activity, R.string.nav_notifications_marked_read, android.widget.Toast.LENGTH_SHORT).show();
-									}
-
-									@Override
-									public void onError(me.grishka.appkit.api.ErrorResponse error){
-										android.widget.Toast.makeText(activity, R.string.nav_notifications_mark_read_failed, android.widget.Toast.LENGTH_SHORT).show();
-									}
-								})
-								.exec(accountID);
+						markAllNotificationsReadServerOnly(activity, accountID, result.get(0).id, ()->{
+							// Recompute instead of forcing zero: the save covered everything
+							// up to the fetched id, but a push may have landed after the fetch.
+							UnreadNotificationStore.refresh(accountID);
+							android.widget.Toast.makeText(activity, R.string.nav_notifications_marked_read, android.widget.Toast.LENGTH_SHORT).show();
+						});
 					}
 
 					@Override
@@ -175,6 +168,63 @@ public class NavToolbarUtils{
 					}
 				})
 				.exec(accountID);
+	}
+
+	/**
+	 * MAMMUT: audit R3 F11 — one shared, account-scoped mark-all-read path for the bell
+	 * long-press and the notifications menu. Local state (local marker, unread store)
+	 * commits only after the server accepted the marker; a failed write leaves both
+	 * untouched and reports the failure.
+	 */
+	public static void markAllNotificationsReadServerOnly(Activity activity, String accountID, String newestId, Runnable onSuccess){
+		commitMarkerAfterServerSuccess(accountID, newestId, (id, onServerSuccess, onServerError)->
+				new org.joinmastodon.android.api.requests.markers.SaveMarkers(null, id)
+						.setCallback(new me.grishka.appkit.api.Callback<org.joinmastodon.android.model.TimelineMarkers>(){
+							@Override
+							public void onSuccess(org.joinmastodon.android.model.TimelineMarkers r){
+								onServerSuccess.run();
+							}
+
+							@Override
+							public void onError(me.grishka.appkit.api.ErrorResponse error){
+								onServerError.run();
+							}
+						})
+						.exec(accountID),
+				()->{
+					AccountSessionManager.get(accountID).setNotificationsMarker(newestId, false);
+					if(onSuccess!=null)
+						onSuccess.run();
+				},
+				()->android.widget.Toast.makeText(activity, R.string.nav_notifications_mark_read_failed, android.widget.Toast.LENGTH_SHORT).show());
+	}
+
+	/**
+	 * Pure transport-splitting core of the server-success-only marker commit: the
+	 * transport performs the SaveMarkers request and calls back; local state only
+	 * advances through {@code onCommitted}. Testable with a fake transport.
+	 */
+	public static void commitMarkerAfterServerSuccess(String accountID, String newestId, MarkerSaveTransport transport, Runnable onCommitted, Runnable onFailed){
+		transport.save(newestId, onCommitted, onFailed);
+	}
+
+	public interface MarkerSaveTransport{
+		void save(String newestId, Runnable onServerSuccess, Runnable onServerError);
+	}
+
+	/**
+	 * MAMMUT: audit R3 F9 — after a successful marker save the store recomputes
+	 * ({@link StoreUpdateAfterSave#REFRESH}) instead of being forced to zero, so a
+	 * push that arrived between the newest-id fetch and the save keeps the badge at 1.
+	 * Only a genuinely empty notification list clears outright.
+	 */
+	enum StoreUpdateAfterSave{
+		CLEAR,
+		REFRESH
+	}
+
+	static StoreUpdateAfterSave storeUpdateAfterSave(boolean fetchReturnedEmpty){
+		return fetchReturnedEmpty ? StoreUpdateAfterSave.CLEAR : StoreUpdateAfterSave.REFRESH;
 	}
 
 	public static void openSelfProfile(Activity activity, String accountID){

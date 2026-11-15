@@ -42,6 +42,25 @@ public class UnifiedPushHelper{
 		return !UnifiedPush.getDistributors(context).isEmpty();
 	}
 
+	/**
+	 * MAMMUT: audit S1.7 — pure log redaction for push endpoint URLs, which are capability
+	 * URLs (the path/query authorizes delivery). Keeps scheme and host, drops everything
+	 * after the host; anything unparseable is replaced by a placeholder.
+	 */
+	public static String redactEndpoint(String endpoint){
+		if(endpoint==null)
+			return "null";
+		try{
+			java.net.URL url=new java.net.URL(endpoint);
+			String host=url.getHost();
+			if(host==null || host.isEmpty())
+				return "[endpoint host redacted]";
+			return url.getProtocol()+"://"+host;
+		}catch(java.net.MalformedURLException x){
+			return "[unparseable endpoint]";
+		}
+	}
+
 	public static void registerAllAccounts(@NonNull Context context){
 		boolean registeredAny=false, missingVapid=false;
 		for(AccountSession accountSession:AccountSessionManager.getInstance().getLoggedInAccounts()){
@@ -49,7 +68,8 @@ public class UnifiedPushHelper{
 			if(vapidKey==null){
 				// The server never told us its VAPID key (dead or misconfigured instance). Registering
 				// without one still works when the server does not use standard web push.
-				Log.w(TAG, "registerAllAccounts: no vapid key for "+accountSession.getFullUsername());
+				// MAMMUT: audit S1.7 — log the account id, never the full handle
+				Log.w(TAG, "registerAllAccounts: no vapid key for "+accountSession.getID());
 				missingVapid=true;
 				continue;
 			}
@@ -65,7 +85,8 @@ public class UnifiedPushHelper{
 				registeredAny=true;
 			}catch(RuntimeException x){
 				// 3.3.x throws on malformed VAPID keys
-				Log.e(TAG, "registerAllAccounts: registration failed for "+accountSession.getFullUsername(), x);
+				// MAMMUT: audit S1.7 — log the account id, never the full handle
+				Log.e(TAG, "registerAllAccounts: registration failed for "+accountSession.getID(), x);
 			}
 		}
 		if(!registeredAny){

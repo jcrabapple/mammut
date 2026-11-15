@@ -21,7 +21,6 @@ import com.squareup.otto.Subscribe;
 
 import org.joinmastodon.android.E;
 import org.joinmastodon.android.R;
-import org.joinmastodon.android.api.requests.markers.SaveMarkers;
 import org.joinmastodon.android.api.requests.notifications.GetNotificationsPolicy;
 import org.joinmastodon.android.api.requests.notifications.SetNotificationsPolicy;
 import org.joinmastodon.android.api.session.AccountSessionManager;
@@ -353,9 +352,9 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 			return;
 		String id=data.get(0).notification.pageMaxId;
 		if(force || ObjectIdComparator.INSTANCE.compare(id, realUnreadMarker)>0){
-			new SaveMarkers(null, id).exec(accountID);
-			AccountSessionManager.get(accountID).setNotificationsMarker(id, true);
-			realUnreadMarker=id;
+			// MAMMUT: audit R3 F11 — server-success-only through the shared helper: a failed
+			// marker write leaves the local marker, the unread store, and the badge untouched
+			NavToolbarUtils.markAllNotificationsReadServerOnly(getActivity(), accountID, id, ()->realUnreadMarker=id);
 		}
 	}
 

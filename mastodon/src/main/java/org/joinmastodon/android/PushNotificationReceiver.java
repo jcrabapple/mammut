@@ -83,6 +83,12 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 						}
 						String accountID=account.getID();
 						PushNotification pn=AccountSessionManager.getInstance().getAccount(accountID).getPushSubscriptionManager().decryptNotification(k, p, s);
+						// MAMMUT: audit R3 F2 — an unknown/future push type fails validation and
+						// decryptNotification returns null; drop it instead of NPE-ing on it
+						if(pn==null){
+							Log.w(TAG, "onReceive: could not decrypt/validate the notification, dropping");
+							return;
+						}
 						new GetNotificationByID(pn.notificationId)
 								.setCallback(new Callback<>(){
 									@Override
@@ -112,8 +118,9 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 	}
 
 	public void notify(Context context, PushNotification pn, String accountID, org.joinmastodon.android.model.Notification notification){
-		// MAMMUT: keep the in-app unread indicator live while the app is in memory
-		org.joinmastodon.android.ui.utils.UnreadNotificationStore.onPushReceived();
+		// MAMMUT: keep the in-app unread indicator live while the app is in memory; the
+		// increment is account-scoped (audit R3 F3) so it lands on the pushed account's badge
+		org.joinmastodon.android.ui.utils.UnreadNotificationStore.onPushReceived(accountID);
 		if(TextUtils.isEmpty(pn.icon)){
 			doNotify(context, pn, accountID, notification, null);
 		}else{
@@ -131,6 +138,18 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 		}
 	}
 
+	/**
+	 * MAMMUT: audit R3 F12 — pure boost-action eligibility, mirroring the interaction
+	 * footer: boost is offered for public/unlisted/local posts and for private posts
+	 * owned by the current account, never for direct posts or others' private posts.
+	 */
+	public static boolean shouldSwapBookmarkForBoost(boolean swapEnabled, StatusPrivacy visibility, boolean isOwnPost){
+		if(!swapEnabled)
+			return false;
+		return visibility==StatusPrivacy.PUBLIC || visibility==StatusPrivacy.UNLISTED || visibility==StatusPrivacy.LOCAL
+				|| (visibility==StatusPrivacy.PRIVATE && isOwnPost);
+	}
+
 	private void doNotify(Context context, PushNotification pn, String accountID, org.joinmastodon.android.model.Notification notification, Drawable avatar){
 		NotificationManager nm=context.getSystemService(NotificationManager.class);
 		Account self=AccountSessionManager.getInstance().getAccount(accountID).self;
@@ -138,6 +157,8 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 		Notification.Builder builder;
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O){
 			boolean hasGroup=false;
+			// MAMMUT: audit R3 F2 — version 3 adds channels for the quote/severed/moderation
+			// push types this build understands; existing installs must recreate the set
 			int version=AccountSessionManager.get(accountID).getRawLocalPreferences().getInt("notificationChannelsVersion", 1);
 			List<NotificationChannelGroup> channelGroups=nm.getNotificationChannelGroups();
 			for(NotificationChannelGroup group:channelGroups){
@@ -146,7 +167,7 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 					break;
 				}
 			}
-			if(!hasGroup || version!=2){
+			if(!hasGroup || version!=3){
 				NotificationChannelGroup group=new NotificationChannelGroup(accountID, accountName);
 				nm.createNotificationChannelGroup(group);
 				List<NotificationChannel> channels=Arrays.stream(PushNotification.Type.values())
@@ -159,7 +180,7 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 						})
 						.collect(Collectors.toList());
 				nm.createNotificationChannels(channels);
-				AccountSessionManager.get(accountID).getRawLocalPreferences().edit().putInt("notificationChannelsVersion", 2).apply();
+				AccountSessionManager.get(accountID).getRawLocalPreferences().edit().putInt("notificationChannelsVersion", 3).apply();
 			}
 			builder=new Notification.Builder(context, accountID+"_"+pn.notificationType);
 		}else{
@@ -178,7 +199,7 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 				.setContentText(pn.body)
 				.setStyle(new Notification.BigTextStyle().bigText(pn.body))
 				.setSmallIcon(R.drawable.ic_ntf_logo)
-				.setContentIntent(PendingIntent.getActivity(context, (accountID+pn.notificationId).hashCode() & 0xFFFF, contentIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
+				.setContentIntent(PendingIntent.getActivity(context, PushNotification.Fallback.contentIntentKey(accountID, pn.notificationId).hashCode() & 0xFFFF, contentIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
 				.setWhen(notification==null ? System.currentTimeMillis() : notification.createdAt.toEpochMilli())
 				.setShowWhen(true)
 				.setCategory(Notification.CATEGORY_SOCIAL)
@@ -239,7 +260,7 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 			if(cwText!=null && prefixCW && !cwText.startsWith("re: "))
 				replyIntent.putExtra("replySpoilerText", "re: "+cwText);
 				builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_reply_24px),
-						context.getString(R.string.button_reply), PendingIntent.getService(context, (accountID+pn.notificationId+"reply").hashCode(), replyIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE))
+						context.getString(R.string.button_reply), PendingIntent.getService(context, PushNotification.Fallback.actionIntentKey(accountID, pn.notificationId, "reply").hashCode(), replyIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE))
 								.addRemoteInput(new RemoteInput.Builder("replyText").setLabel(context.getString(R.string.button_reply)).build())
 								.build());
 			}
@@ -250,18 +271,20 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 			favIntent.putExtra("post", notification.status.id);
 			favIntent.putExtra("notificationTag", notificationTag);
 			builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, GlobalUserPreferences.likeIcon ? R.drawable.ic_fluent_heart_24_filled : R.drawable.ic_star_24px),
-					context.getString(R.string.button_favorite), PendingIntent.getService(context, (accountID+pn.notificationId+"favorite").hashCode(), favIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)).build());
+					context.getString(R.string.button_favorite), PendingIntent.getService(context, PushNotification.Fallback.actionIntentKey(accountID, pn.notificationId, "favorite").hashCode(), favIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)).build());
 
 			// MAMMUT: port from upstream master — bookmark is the third action by default,
-			// optionally swapped for boost (which is unavailable on direct posts)
-			boolean useBoost=GlobalUserPreferences.swapBookmarkWithBoostAction && notification.status.visibility!=StatusPrivacy.DIRECT;
+			// optionally swapped for boost. Audit R3 F12: the swap must pass the same
+			// visibility/ownership eligibility the in-app footer enforces, so a private
+			// mention from another user never gets a Boost action that can only fail.
+			boolean useBoost=shouldSwapBookmarkForBoost(GlobalUserPreferences.swapBookmarkWithBoostAction, notification.status.visibility, notification.status.account.id.equals(self.id));
 			if(useBoost){
 				Intent boostIntent=new Intent(context, NotificationActionHandlerService.class);
 				boostIntent.putExtra("action", "boost");
 				boostIntent.putExtra("account", accountID);
 				boostIntent.putExtra("post", notification.status.id);
 				boostIntent.putExtra("notificationTag", notificationTag);
-				PendingIntent boostActionIntent=PendingIntent.getService(context, (accountID+pn.notificationId+"boost").hashCode(), boostIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+				PendingIntent boostActionIntent=PendingIntent.getService(context, PushNotification.Fallback.actionIntentKey(accountID, pn.notificationId, "boost").hashCode(), boostIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 				builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_boost_24px),
 						context.getString(R.string.button_reblog), boostActionIntent).build());
 			}else{
@@ -270,7 +293,7 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 				bookmarkIntent.putExtra("account", accountID);
 				bookmarkIntent.putExtra("post", notification.status.id);
 				bookmarkIntent.putExtra("notificationTag", notificationTag);
-				PendingIntent bookmarkActionIntent=PendingIntent.getService(context, (accountID+pn.notificationId+"bookmark").hashCode(), bookmarkIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+				PendingIntent bookmarkActionIntent=PendingIntent.getService(context, PushNotification.Fallback.actionIntentKey(accountID, pn.notificationId, "bookmark").hashCode(), bookmarkIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 				builder.addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_fluent_bookmark_24_regular),
 						context.getString(R.string.add_bookmark), bookmarkActionIntent).build());
 			}

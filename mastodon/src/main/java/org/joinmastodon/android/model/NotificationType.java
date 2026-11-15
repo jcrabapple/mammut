@@ -28,7 +28,13 @@ public enum NotificationType{
 	@SerializedName("quote")
 	QUOTE,
 	@SerializedName("quoted_update")
-	QUOTED_UPDATE;
+	QUOTED_UPDATE,
+	// MAMMUT: audit R3 F2 — admin notifications exist in Mastodon 4.x; without these values a
+	// fetched admin notification deserializes type=null and every switch over it throws
+	@SerializedName("admin.sign_up")
+	ADMIN_SIGN_UP,
+	@SerializedName("admin.report")
+	ADMIN_REPORT;
 
 	public boolean canBeGrouped(){
 		return this==REBLOG || this==FAVORITE || this==FOLLOW;

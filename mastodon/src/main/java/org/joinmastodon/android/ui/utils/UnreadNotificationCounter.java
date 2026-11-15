@@ -8,6 +8,7 @@ import org.joinmastodon.android.model.Notification;
 import org.joinmastodon.android.model.NotificationType;
 import org.joinmastodon.android.utils.ObjectIdComparator;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
@@ -46,8 +47,10 @@ public class UnreadNotificationCounter{
 		}else{
 			List<Notification>[] notifications=new List[]{null};
 			String[] marker={null};
+			boolean[] markerReady={false};
 			AccountSessionManager.get(accountID).reloadNotificationsMarker(m->{
 				marker[0]=m;
+				markerReady[0]=true;
 				if(notifications[0]!=null)
 					updateUnreadCountV1(accountID, notifications[0], marker[0], callback);
 			});
@@ -57,7 +60,7 @@ public class UnreadNotificationCounter{
 						@Override
 						public void onSuccess(List<Notification> result){
 							notifications[0]=result;
-							if(marker[0]!=null)
+							if(markerReady[0])
 								updateUnreadCountV1(accountID, notifications[0], marker[0], callback);
 						}
 
@@ -68,20 +71,33 @@ public class UnreadNotificationCounter{
 	}
 
 	private static void updateUnreadCountV1(String accountID, List<Notification> notifications, String marker, CountCallback callback){
-		if(notifications.isEmpty() || ObjectIdComparator.INSTANCE.compare(notifications.get(0).id, marker)<=0){
-			callback.onUnreadCount(0, false);
-		}else{
-			if(ObjectIdComparator.INSTANCE.compare(notifications.get(notifications.size()-1).id, marker)>0){
-				callback.onUnreadCount(notifications.size(), true);
-			}else{
-				int count=0;
-				for(Notification n:notifications){
-					if(n.id.equals(marker))
-						break;
-					count++;
-				}
-				callback.onUnreadCount(count, false);
+		List<String> ids=new ArrayList<>(notifications.size());
+		for(Notification n:notifications)
+			ids.add(n.id);
+		int[] result=V1Count.compute(ids, marker);
+		callback.onUnreadCount(result[0], result[1]==1);
+	}
+
+	/**
+	 * MAMMUT: audit R3 F8 — pure V1 unread counting. Counts every id newer than the
+	 * marker ({@code compare(id, marker) > 0}); the marker object itself does not have
+	 * to be in the page, so a deleted or filtered marker notification no longer makes
+	 * the whole page count as read. The list must be in reverse-chronological order.
+	 */
+	public static class V1Count{
+		/** Returns {count, more-as-1}. */
+		public static int[] compute(List<String> idsDescending, String marker){
+			if(idsDescending.isEmpty() || ObjectIdComparator.INSTANCE.compare(idsDescending.get(0), marker)<=0)
+				return new int[]{0, 0};
+			if(ObjectIdComparator.INSTANCE.compare(idsDescending.get(idsDescending.size()-1), marker)>0)
+				return new int[]{idsDescending.size(), 1};
+			int count=0;
+			for(String id:idsDescending){
+				if(ObjectIdComparator.INSTANCE.compare(id, marker)<=0)
+					break;
+				count++;
 			}
+			return new int[]{count, 0};
 		}
 	}
 }

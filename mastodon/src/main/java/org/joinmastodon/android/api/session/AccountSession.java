@@ -237,24 +237,46 @@ public class AccountSession{
 				.setCallback(new Callback<>(){
 					@Override
 					public void onSuccess(TimelineMarkers result){
-						if(result.notifications!=null && !TextUtils.isEmpty(result.notifications.lastReadId)){
-							String id=result.notifications.lastReadId;
-							String lastKnown=getLastKnownNotificationsMarker();
-							if(ObjectIdComparator.INSTANCE.compare(id, lastKnown)<0){
-								// Marker moved back -- previous marker update must have failed.
-								// Pretend it didn't happen and repeat the request.
-								id=lastKnown;
-								new SaveMarkers(null, id).exec(getID());
-							}
-							callback.accept(id);
-							setNotificationsMarker(id, false);
+						// MAMMUT: audit R3 F7 — always complete: a missing notifications marker
+						// (new account, pre-4.3 instance) or a failed request must fall back to
+						// the locally saved marker, then to the "0" sentinel, so the unread
+						// counter publishes a count instead of waiting forever
+						String serverId=result.notifications!=null ? result.notifications.lastReadId : null;
+						String lastKnown=getLastKnownNotificationsMarker();
+						String id=MarkerResolution.resolve(serverId, lastKnown);
+						if(serverId!=null && !serverId.isEmpty() && lastKnown!=null && ObjectIdComparator.INSTANCE.compare(serverId, lastKnown)<0){
+							// Marker moved back -- previous marker update must have failed.
+							// Pretend it didn't happen and repeat the request.
+							new SaveMarkers(null, id).exec(getID());
 						}
+						callback.accept(id);
+						setNotificationsMarker(id, false);
 					}
 
 					@Override
-					public void onError(ErrorResponse error){}
+					public void onError(ErrorResponse error){
+						callback.accept(MarkerResolution.resolve(null, getLastKnownNotificationsMarker()));
+					}
 				})
 				.exec(getID());
+	}
+
+	/**
+	 * MAMMUT: audit R3 F7 — pure marker resolution: the server's last-read id wins,
+	 * a moved-back server marker is clamped to the locally known one, and an absent
+	 * marker falls back to the local marker or the "0" sentinel (older than any real
+	 * snowflake id, so compare(id, "0") > 0 counts everything unread).
+	 */
+	public static class MarkerResolution{
+		public static String resolve(String serverLastReadId, String lastKnown){
+			boolean serverValid=serverLastReadId!=null && !serverLastReadId.isEmpty();
+			if(serverValid){
+				if(lastKnown!=null && ObjectIdComparator.INSTANCE.compare(serverLastReadId, lastKnown)<0)
+					return lastKnown;
+				return serverLastReadId;
+			}
+			return lastKnown!=null ? lastKnown : "0";
+		}
 	}
 
 	public String getLastKnownNotificationsMarker(){
