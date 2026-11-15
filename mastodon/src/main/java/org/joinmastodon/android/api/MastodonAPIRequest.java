@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import androidx.annotation.CallSuper;
+import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 import me.grishka.appkit.api.APIRequest;
 import me.grishka.appkit.api.Callback;
@@ -44,9 +45,9 @@ public abstract class MastodonAPIRequest<T> extends APIRequest<T>{
 	private List<Pair<String, String>> queryParams;
 	Class<T> respClass;
 	TypeToken<T> respTypeToken;
-	Call okhttpCall;
+	/** F9 (audit R2 F9): cancellation flag + the in-flight call, one monitor — see {@link EnqueueGate}. */
+	final EnqueueGate gate=new EnqueueGate();
 	Token token;
-	boolean canceled;
 	Map<String, String> headers;
 	long timeout;
 	boolean cacheable;
@@ -69,10 +70,7 @@ public abstract class MastodonAPIRequest<T> extends APIRequest<T>{
 	public synchronized void cancel(){
 		if(BuildConfig.DEBUG)
 			Log.d(TAG, "canceling request "+this);
-		canceled=true;
-		if(okhttpCall!=null){
-			okhttpCall.cancel();
-		}
+		gate.cancel();
 	}
 
 	@Override
@@ -215,17 +213,17 @@ public abstract class MastodonAPIRequest<T> extends APIRequest<T>{
 	}
 
 	void onError(ErrorResponse err){
-		if(!canceled)
+		if(!gate.isCanceled())
 			invokeErrorCallback(err);
 	}
 
 	void onError(String msg, int httpStatus, Throwable exception){
-		if(!canceled)
+		if(!gate.isCanceled())
 			invokeErrorCallback(new MastodonErrorResponse(msg, httpStatus, exception));
 	}
 
 	void onSuccess(T resp){
-		if(!canceled)
+		if(!gate.isCanceled())
 			invokeSuccessCallback(resp);
 	}
 
@@ -242,5 +240,60 @@ public abstract class MastodonAPIRequest<T> extends APIRequest<T>{
 		PUT,
 		DELETE,
 		PATCH
+	}
+
+	/**
+	 * Audit R2 F9 — the cancellation protocol shared by MastodonAPIRequest and
+	 * MastodonAPIController. The controller builds the request body on the API
+	 * worker before it owns an OkHttp call, so a plain boolean {@code canceled}
+	 * raced body construction: the worker passed the early canceled check,
+	 * built the body, and enqueued anyway, sending bytes for a request the
+	 * caller believed was dead (orphaning the attachment server-side). Every
+	 * transition here happens under this gate's monitor, so the flag is safely
+	 * visible across threads, and {@link #claim(Call)} is the recheck under
+	 * that monitor immediately before enqueue: a request canceled while its
+	 * body was being constructed never reaches the wire.
+	 */
+	public static final class EnqueueGate{
+		private boolean canceled;
+		private Call call;
+
+		/** Marks the request canceled and cancels the in-flight call, if any. Idempotent. */
+		public void cancel(){
+			Call c;
+			synchronized(this){
+				canceled=true;
+				c=call;
+			}
+			if(c!=null)
+				c.cancel();
+		}
+
+		/**
+		 * Rechecks cancellation under the monitor and, while the request is still
+		 * live, claims the call slot. Returns false when the request was canceled
+		 * while its body was being constructed — the caller must not enqueue.
+		 */
+		public boolean claim(@Nullable Call call){
+			synchronized(this){
+				if(canceled)
+					return false;
+				this.call=call;
+				return true;
+			}
+		}
+
+		/** Releases the call slot once the call has terminated. Idempotent. */
+		public void release(){
+			synchronized(this){
+				call=null;
+			}
+		}
+
+		public boolean isCanceled(){
+			synchronized(this){
+				return canceled;
+			}
+		}
 	}
 }

@@ -90,7 +90,9 @@ public class MastodonAPIController{
 	public <T> void submitRequest(final MastodonAPIRequest<T> req){
 		thread.postRunnable(()->{
 			try{
-				if(req.canceled)
+				// Audit R2 F9: cheap lock-free pre-check; the authoritative recheck is
+				// gate.claim() after the body has been constructed.
+				if(req.gate.isCanceled())
 					return;
 				Request.Builder builder=new Request.Builder()
 						.url(req.getURL().toString())
@@ -117,9 +119,13 @@ public class MastodonAPIController{
 
 				Request hreq=builder.build();
 				Call call=httpClient.newCall(hreq);
-				synchronized(req){
-					req.okhttpCall=call;
-				}
+				// Audit R2 F9: recheck cancellation under the request monitor immediately
+				// before enqueue. A cancel that landed while getRequestBody() was building
+				// the body (staging + resize read) wins here — the call is never enqueued,
+				// so zero bytes hit the wire for a canceled upload and no orphaned
+				// attachment can appear server-side.
+				if(!req.gate.claim(call))
+					return;
 				if(req.timeout>0){
 					call.timeout().timeout(req.timeout, TimeUnit.MILLISECONDS);
 				}
@@ -130,27 +136,23 @@ public class MastodonAPIController{
 				call.enqueue(new Callback(){
 					@Override
 					public void onFailure(@NonNull Call call, @NonNull IOException e){
-						if(req.canceled)
+						if(req.gate.isCanceled())
 							return;
 						if(BuildConfig.DEBUG)
 							Log.w(TAG, logTag(session)+""+hreq+" failed", e);
-						synchronized(req){
-							req.okhttpCall=null;
-						}
+						req.gate.release();
 						req.onError(e.getLocalizedMessage(), 0, e);
 					}
 
 					@Override
 					public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException{
-						if(req.canceled){
+						if(req.gate.isCanceled()){
 							response.close();
 							return;
 						}
 						if(BuildConfig.DEBUG)
 							Log.d(TAG, logTag(session)+hreq+" received response: "+response);
-						synchronized(req){
-							req.okhttpCall=null;
-						}
+						req.gate.release();
 						if(BuildConfig.DEBUG){
 							String deprecationHeader=response.header("Deprecation");
 							if(deprecationHeader!=null && deprecationHeader.startsWith("@")){

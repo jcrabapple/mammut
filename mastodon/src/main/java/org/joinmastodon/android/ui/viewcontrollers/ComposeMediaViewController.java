@@ -119,6 +119,11 @@ public class ComposeMediaViewController{
 			ArrayList<Parcelable> serializedAttachments=savedInstanceState.getParcelableArrayList("attachments");
 			for(Parcelable a:serializedAttachments){
 				DraftMediaAttachment att=Parcels.unwrap(a);
+				// Audit R2 F6: the transient request/polling handles did not survive
+				// the parcel — an UPLOADING attachment rejoins the queue, a PROCESSING
+				// one becomes retryable ERROR (its server-side id died with the
+				// request). Either way publish is not blocked on a dead request.
+				att.state=restoredUploadState(att.state);
 				attachmentsView.addView(createMediaAttachmentView(att));
 				attachments.add(att);
 			}
@@ -132,6 +137,10 @@ public class ComposeMediaViewController{
 			updateMediaAttachmentsLayout();
 		}
 		rebuildDescriptionEditors();
+		// Audit R2 F4: (re)binding the view is the reattachment hook — restart
+		// polling and advance the queue for work whose callbacks were deferred
+		// while the retained composer was detached.
+		resumePendingUploadWork();
 	}
 
 	public void onViewCreated(Bundle savedInstanceState){
@@ -167,7 +176,7 @@ public class ComposeMediaViewController{
 		}
 		Instance instance=fragment.instance;
 		if(instance!=null && instance.configuration!=null && instance.configuration.mediaAttachments!=null){
-			if(instance.configuration.mediaAttachments.supportedMimeTypes!=null && !instance.configuration.mediaAttachments.supportedMimeTypes.contains(type)){
+			if(instance.configuration.mediaAttachments.supportedMimeTypes!=null && !instance.configuration.mediaAttachments.supportedMimeTypes.contains(preflightMimeType(type))){
 				showMediaAttachmentError(fragment.getString(R.string.media_attachment_unsupported_type, UiUtils.getFileName(uri)));
 				return false;
 			}
@@ -354,22 +363,30 @@ public class ComposeMediaViewController{
 		if(areThereAnyUploadingAttachments()){
 			throw new IllegalStateException("there is already an attachment being uploaded");
 		}
+		// Audit R2 F4: the queue walker only calls this while the fragment is
+		// attached; guard anyway so a stale callback can never reach the
+		// getActivity() NPE the audit found at the old :360.
+		if(!isFragmentAttached())
+			return;
 		attachment.state=AttachmentUploadState.UPLOADING;
 		attachment.progressBar.setVisibility(View.VISIBLE);
-		int maxSize=0;
-		String contentType=fragment.getActivity().getContentResolver().getType(attachment.uri);
-		if(contentType!=null && contentType.startsWith("image/")){
-			Instance instance=fragment.instance;
-			if(instance.configuration!=null && instance.configuration.mediaAttachments!=null && instance.configuration.mediaAttachments.imageMatrixLimit>0){
-				maxSize=instance.configuration.mediaAttachments.imageMatrixLimit;
-			}else{
-				maxSize=2_073_600;
-			}
-		}
+		// Audit R2 F5: prefer the MIME stored when the attachment was added over a
+		// fresh resolver query — a file:// draft URI returns null from getType(),
+		// which used to zero maxSize and send the oversized original.
+		String resolverType=fragment.getActivity().getContentResolver().getType(attachment.uri);
+		String contentType=effectiveUploadMimeType(attachment.mimeType, resolverType);
+		int maxSize=maxImagePixelsForUpload(contentType, configuredImageMatrixLimit());
 		attachment.progressBar.setProgress(0);
 		attachment.speedTracker.reset();
 		attachment.speedTracker.addSample(0);
 		stageAndUpload(attachment, maxSize, contentType);
+	}
+
+	private int configuredImageMatrixLimit(){
+		Instance instance=fragment.instance;
+		if(instance!=null && instance.configuration!=null && instance.configuration.mediaAttachments!=null)
+			return instance.configuration.mediaAttachments.imageMatrixLimit;
+		return 0;
 	}
 
 	private void onRemoveMediaAttachmentClick(View v){
@@ -437,27 +454,35 @@ public class ComposeMediaViewController{
 
 	private void pollForMediaAttachmentProcessing(DraftMediaAttachment attachment){
 		attachment.processingPollingRequest=(GetAttachmentByID) new GetAttachmentByID(attachment.serverAttachment.id)
-				.setCallback(new Callback<>(){
-					@Override
-					public void onSuccess(Attachment result){
-						attachment.processingPollingRequest=null;
-						if(!TextUtils.isEmpty(result.url)){
-							attachment.processingPollingRunnable=null;
-							attachment.serverAttachment=result;
-							finishMediaAttachmentUpload(attachment);
-						}else if(fragment.getActivity()!=null){
-							UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
-						}
+			.setCallback(new Callback<>(){
+				@Override
+				public void onSuccess(Attachment result){
+					attachment.processingPollingRequest=null;
+					// Audit R2 F4: removed while the poll was in flight — the tile,
+					// its staged file and its request are already gone.
+					if(!attachments.contains(attachment))
+						return;
+					if(!TextUtils.isEmpty(result.url)){
+						attachment.processingPollingRunnable=null;
+						attachment.serverAttachment=result;
+						finishMediaAttachmentUpload(attachment);
+					}else if(isFragmentAttached()){
+						UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
 					}
+					// Detached and still processing: the runnable stays armed and
+					// resumePendingUploadWork() re-posts it from the reattachment hook.
+				}
 
-					@Override
-					public void onError(ErrorResponse error){
-						attachment.processingPollingRequest=null;
-						if(fragment.getActivity()!=null)
-							UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
-					}
-				})
-				.exec(fragment.getAccountID());
+				@Override
+				public void onError(ErrorResponse error){
+					attachment.processingPollingRequest=null;
+					if(!attachments.contains(attachment))
+						return;
+					if(isFragmentAttached())
+						UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
+				}
+			})
+			.exec(fragment.getAccountID());
 	}
 
 	private void finishMediaAttachmentUpload(DraftMediaAttachment attachment){
@@ -468,6 +493,11 @@ public class ComposeMediaViewController{
 		// t_8ab12a49 S1: the media lives on the server now — keeping the staged copy
 		// would leave a full-size duplicate in cache until Android purges it.
 		releaseStagedUpload(attachment);
+		// Audit R2 F4: while the retained composer is detached there are no live
+		// views to update; setView's re-inflation renders the finished tile from
+		// state when the fragment reattaches.
+		if(!isFragmentAttached())
+			return;
 		attachment.editButton.setImageResource(R.drawable.ic_edit_24px);
 		attachment.removeButton.setImageResource(R.drawable.ic_delete_24px);
 		if(isImage(attachment)){
@@ -485,6 +515,10 @@ public class ComposeMediaViewController{
 	}
 
 	private void uploadNextQueuedAttachment(){
+		// Audit R2 F4: no queue advancement while the retained composer is
+		// detached — resumePendingUploadWork() drives it from the reattachment hook.
+		if(!isFragmentAttached())
+			return;
 		for(DraftMediaAttachment att:attachments){
 			if(att.state==AttachmentUploadState.QUEUED){
 				uploadMediaAttachment(att);
@@ -921,6 +955,9 @@ public class ComposeMediaViewController{
 		attachmentsScroller.setVisibility(attachments.isEmpty() ? View.GONE : View.VISIBLE);
 		updateMediaAttachmentsLayout();
 		rebuildDescriptionEditors();
+		// Audit R2 F4: rebind-after-swap is also a reattachment point — deferred
+		// polling and queued uploads resume here.
+		resumePendingUploadWork();
 		fragment.updatePublishButtonState();
 		fragment.updateMediaPollStates();
 	}
@@ -1259,24 +1296,44 @@ public class ComposeMediaViewController{
 					@Override
 					public void onSuccess(Attachment result){
 						attachment.serverAttachment=result;
-						if(TextUtils.isEmpty(result.url)){
-							attachment.state=AttachmentUploadState.PROCESSING;
-							attachment.processingPollingRunnable=()->pollForMediaAttachmentProcessing(attachment);
-							if(fragment.getActivity()==null)
-								return;
-							attachment.titleView.setText(R.string.upload_processing);
-							UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
-							if(!areThereAnyUploadingAttachments())
-								uploadNextQueuedAttachment();
-						}else{
-							finishMediaAttachmentUpload(attachment);
+						// Audit R2 F4: decide from presence + attachment state, never
+						// from which views happen to be alive — a stale callback on a
+						// removed attachment is ignored outright, and a detached
+						// fragment gets model state only.
+						switch(planUploadSuccess(attachments.contains(attachment), isFragmentAttached(), !TextUtils.isEmpty(result.url))){
+							case FINISH -> finishMediaAttachmentUpload(attachment);
+							case FINISH_DEFERRED -> {
+								attachment.uploadRequest=null;
+								attachment.state=AttachmentUploadState.DONE;
+								releaseStagedUpload(attachment);
+							}
+							case BEGIN_PROCESSING -> {
+								attachment.uploadRequest=null;
+								attachment.state=AttachmentUploadState.PROCESSING;
+								attachment.processingPollingRunnable=()->pollForMediaAttachmentProcessing(attachment);
+								attachment.titleView.setText(R.string.upload_processing);
+								UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
+								if(!areThereAnyUploadingAttachments())
+									uploadNextQueuedAttachment();
+							}
+							case BEGIN_PROCESSING_DEFERRED -> {
+								attachment.uploadRequest=null;
+								attachment.state=AttachmentUploadState.PROCESSING;
+								attachment.processingPollingRunnable=()->pollForMediaAttachmentProcessing(attachment);
+							}
 						}
 					}
 
 					@Override
 					public void onError(ErrorResponse error){
+						UploadErrorDecision decision=planUploadError(attachments.contains(attachment), isFragmentAttached());
 						attachment.uploadRequest=null;
+						if(decision==UploadErrorDecision.IGNORE)
+							return;
 						attachment.state=AttachmentUploadState.ERROR;
+						// Audit R2 F4: detached — reattachment re-inflates the error tile.
+						if(decision==UploadErrorDecision.APPLY_DEFERRED)
+							return;
 						// t_54414ac0 req 4: a 5xx from the media endpoint is the server failing on the bytes it
 						// got, not a network error and not a local read failure — say so instead of "upload failed".
 						if(error instanceof MastodonErrorResponse mer && mer.httpStatus>=500)
@@ -1312,6 +1369,9 @@ public class ComposeMediaViewController{
 		Log.w("ComposeMediaViewController", "Could not stage media for upload", t);
 		attachment.uploadRequest=null;
 		attachment.state=AttachmentUploadState.ERROR;
+		// Audit R2 F4: detached — reattachment re-inflates the error tile.
+		if(!isFragmentAttached())
+			return;
 		attachment.titleView.setText(R.string.upload_error_unreadable);
 		V.setVisibilityAnimated(attachment.editButton, View.VISIBLE);
 		attachment.editButton.setImageResource(R.drawable.ic_restart_alt_24px);
@@ -1319,6 +1379,140 @@ public class ComposeMediaViewController{
 		attachment.setUseErrorColors(true);
 		V.setVisibilityAnimated(attachment.progressBar, View.GONE);
 		if(!areThereAnyUploadingAttachments())
+			uploadNextQueuedAttachment();
+	}
+
+	/**
+	 * Audit R2 F4/F5/F6/F7 — pure decision seams for the upload lifecycle. The
+	 * Android-bound callbacks above delegate to exactly these so the policy is
+	 * unit-testable on a plain JVM: what a success/error callback may do, when
+	 * the queue may advance, how an in-flight state survives a parcel round-trip,
+	 * which MIME decides resize + preflight. Locale.ROOT everywhere: the Turkish
+	 * default-locale trap silently misclassified "IMAGE/HEIC".
+	 */
+
+	public enum UploadSuccessDecision{
+		/** Stale callback — the attachment was removed while the request was in flight. */
+		IGNORE,
+		/** Attached: run the full finish path (views + queue advance). */
+		FINISH,
+		/** Detached: model state only; reattachment renders and advances. */
+		FINISH_DEFERRED,
+		/** Attached: arm processing polling and advance the queue. */
+		BEGIN_PROCESSING,
+		/** Detached: mark PROCESSING; resumePendingUploadWork() re-arms polling. */
+		BEGIN_PROCESSING_DEFERRED
+	}
+
+	public enum UploadErrorDecision{
+		IGNORE,
+		APPLY,
+		APPLY_DEFERRED
+	}
+
+	public static UploadSuccessDecision planUploadSuccess(boolean stillPresent, boolean attached, boolean hasUrl){
+		if(!stillPresent)
+			return UploadSuccessDecision.IGNORE;
+		if(hasUrl)
+			return attached ? UploadSuccessDecision.FINISH : UploadSuccessDecision.FINISH_DEFERRED;
+		return attached ? UploadSuccessDecision.BEGIN_PROCESSING : UploadSuccessDecision.BEGIN_PROCESSING_DEFERRED;
+	}
+
+	public static UploadErrorDecision planUploadError(boolean stillPresent, boolean attached){
+		if(!stillPresent)
+			return UploadErrorDecision.IGNORE;
+		return attached ? UploadErrorDecision.APPLY : UploadErrorDecision.APPLY_DEFERRED;
+	}
+
+	public static final class ResumePlan{
+		public final int pollsToRestart;
+		public final boolean startNextUpload;
+
+		private ResumePlan(int pollsToRestart, boolean startNextUpload){
+			this.pollsToRestart=pollsToRestart;
+			this.startNextUpload=startNextUpload;
+		}
+	}
+
+	/**
+	 * F4: what the reattachment hook may restart. Nothing runs while detached;
+	 * one upload starts at most (the walker throws on a second concurrent
+	 * upload), and polling restarts once per PROCESSING attachment.
+	 */
+	public static ResumePlan planResume(List<AttachmentUploadState> states, boolean attached){
+		if(!attached)
+			return new ResumePlan(0, false);
+		int polls=0;
+		boolean uploading=false, queued=false;
+		for(AttachmentUploadState s:states){
+			switch(s){
+				case UPLOADING -> uploading=true;
+				case PROCESSING -> polls++;
+				case QUEUED -> queued=true;
+			}
+		}
+		return new ResumePlan(polls, queued && !uploading);
+	}
+
+	/** F6: parcel restore maps every in-flight state to something live or retryable. */
+	public static AttachmentUploadState restoredUploadState(AttachmentUploadState saved){
+		return switch(saved){
+			case UPLOADING -> AttachmentUploadState.QUEUED; // the request did not survive — requeue
+			case PROCESSING -> AttachmentUploadState.ERROR; // server-side id died with the request — retryable
+			default -> saved;
+		};
+	}
+
+	/** F5: the stored MIME wins; the fresh resolver query is only a fallback. */
+	public static String effectiveUploadMimeType(@Nullable String storedMimeType, @Nullable String resolverMimeType){
+		return storedMimeType!=null ? storedMimeType : resolverMimeType;
+	}
+
+	/** F5: pixels cap for the upload, from the effective MIME and the instance matrix limit. */
+	public static int maxImagePixelsForUpload(@Nullable String effectiveMimeType, int configuredMatrixLimit){
+		if(effectiveMimeType==null || !effectiveMimeType.startsWith("image/"))
+			return 0;
+		return configuredMatrixLimit>0 ? configuredMatrixLimit : 2_073_600;
+	}
+
+	/** F7: HEIC/HEIF transcode to JPEG before upload, so preflight checks the output MIME. */
+	@Nullable
+	public static String preflightMimeType(@Nullable String mimeType){
+		if(mimeType==null)
+			return null;
+		String lower=mimeType.toLowerCase(Locale.ROOT);
+		if("image/heic".equals(lower) || "image/heif".equals(lower))
+			return "image/jpeg";
+		return mimeType;
+	}
+
+	private boolean isFragmentAttached(){
+		return fragment.getActivity()!=null;
+	}
+
+	/**
+	 * Audit R2 F4 — reattachment/resume hook, called whenever the card view is
+	 * (re)bound: setView after rotation or detach, reloadViewsFromState after a
+	 * segment swap. While the retained composer was detached, upload callbacks
+	 * only updated model state; this restarts deferred processing polling and
+	 * advances the queue, exactly once.
+	 */
+	public void resumePendingUploadWork(){
+		if(!isFragmentAttached() || attachmentsView==null)
+			return;
+		ArrayList<AttachmentUploadState> states=new ArrayList<>(attachments.size());
+		for(DraftMediaAttachment att:attachments)
+			states.add(att.state);
+		ResumePlan plan=planResume(states, true);
+		if(plan.pollsToRestart>0){
+			for(DraftMediaAttachment att:attachments){
+				if(att.state==AttachmentUploadState.PROCESSING && att.processingPollingRunnable!=null && att.processingPollingRequest==null){
+					att.titleView.setText(R.string.upload_processing);
+					UiUtils.runOnUiThread(att.processingPollingRunnable, 1000);
+				}
+			}
+		}
+		if(plan.startNextUpload)
 			uploadNextQueuedAttachment();
 	}
 
