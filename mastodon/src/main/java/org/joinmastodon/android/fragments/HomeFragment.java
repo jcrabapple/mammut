@@ -9,6 +9,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 
 import com.squareup.otto.Subscribe;
@@ -44,6 +45,9 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	private NavMenuController navMenuController;
 	private NavDestination currentDestination=NavDestination.HOME;
 	private boolean backCallbackRegistered;
+	// MAMMUT: last window insets, re-applied to the children after a retained recreation
+	// (their views are not yet present when the activity first dispatches insets).
+	private WindowInsets lastInsets;
 
 	private String accountID;
 
@@ -136,6 +140,18 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		content.post(this::updateScrollTarget);
 		updateBackCallback();
 
+		// MAMMUT: re-apply the status-bar inset to the children on the first draw after
+		// (re)creation, when their views exist — covers the retained-recreation case where
+		// the initial inset dispatch ran before the child views were ready.
+		content.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener(){
+			@Override
+			public boolean onPreDraw(){
+				content.getViewTreeObserver().removeOnPreDrawListener(this);
+				reapplyChildInsets();
+				return true;
+			}
+		});
+
 		return content;
 	}
 
@@ -185,6 +201,7 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 
 	@Override
 	public void onApplyWindowInsets(WindowInsets insets){
+		lastInsets=insets;
 		if(Build.VERSION.SDK_INT>=27){
 			// MAMMUT: the tab bar is gone; the timelines extend to the bottom inset and
 			// the navigation FAB floats 16dp above it
@@ -200,6 +217,20 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 			homeTabFragment.onApplyWindowInsets(topOnlyInsets);
 		if(notificationsFragment!=null)
 			notificationsFragment.onApplyWindowInsets(topOnlyInsets);
+	}
+
+	// MAMMUT: on a retained recreation (e.g. the FAB-side toggle restarts the activity) the
+	// activity dispatches window insets before the child fragments' views exist, so their
+	// FragmentRootLinearLayout roots miss the status-bar top padding and the header draws
+	// under the status bar. Re-apply the cached top inset once the children have views.
+	private void reapplyChildInsets(){
+		if(lastInsets==null)
+			return;
+		WindowInsets topOnly=lastInsets.replaceSystemWindowInsets(0, lastInsets.getSystemWindowInsetTop(), 0, 0);
+		if(homeTabFragment!=null && homeTabFragment.getView()!=null)
+			homeTabFragment.onApplyWindowInsets(topOnly);
+		if(notificationsFragment!=null && notificationsFragment.getView()!=null)
+			notificationsFragment.onApplyWindowInsets(topOnly);
 	}
 
 	private Fragment fragmentForDestination(NavDestination destination){

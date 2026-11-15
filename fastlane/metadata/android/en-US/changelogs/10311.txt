@@ -1,0 +1,1 @@
+Fixed: after switching the menu button between the left and right side, the top of the home timeline no longer slides up under the status bar. The header keeps its proper spacing below the status bar across the restart.
