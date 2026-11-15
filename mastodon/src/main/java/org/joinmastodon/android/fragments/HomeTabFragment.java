@@ -123,7 +123,7 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 	private ElevationOnScrollListener elevationOnScrollListener;
 	private ImageView toolbarAvatar;
 	private TextView timelineSubtitle;
-	private final List<Runnable> pageChangeListeners=new ArrayList<>();
+	private final PageChangeRegistry pageChangeRegistry=new PageChangeRegistry();
 
 	// TODO: rename this
 	private Runnable returnToBeginningOfPager=this::returnToBeginningOfPager;
@@ -268,7 +268,7 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 					switcher.setAlpha(0.65f);
 				}
 				updateSwitcherIcon(position);
-			for(Runnable r:pageChangeListeners) r.run();
+				pageChangeRegistry.fire();
 				if (!timelines[position].equals(TimelineDefinition.HOME_TIMELINE)) hideNewPostsButton();
 				if (fragments[position] instanceof BaseRecyclerFragment<?> page){
 					if(!page.loaded && !page.isDataLoading()) page.loadData();
@@ -369,10 +369,12 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 
 	/**
 	 * MAMMUT: HomeFragment re-points the navigation FAB's scroll rule at the pager's
-	 * current page whenever it changes.
+	 * current page whenever it changes. The registry dedupes by identity so a
+	 * listener is registered exactly once per instance (R4 F1: re-registration
+	 * across view recreations used to fire one callback per registration).
 	 */
 	public void addPageChangeListener(Runnable listener){
-		pageChangeListeners.add(listener);
+		pageChangeRegistry.add(listener);
 	}
 
 	private void onFabClick(View v){
@@ -913,6 +915,34 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 		@Override
 		public int getItemViewType(int position){
 			return position;
+		}
+	}
+
+	/**
+	 * R4 F1 — identity-deduping registry for the pager's page-change listeners.
+	 *
+	 * HomeFragment registers one listener per HomeTabFragment instance; without the
+	 * dedupe, a registration repeated across view recreations (each of which used to
+	 * create a fresh lambda) accumulated, and one swipe fired as many callbacks as
+	 * the fragment had been recreated.
+	 */
+	static final class PageChangeRegistry{
+		private final List<Runnable> listeners=new ArrayList<>();
+
+		boolean add(Runnable listener){
+			if(listeners.contains(listener))
+				return false;
+			listeners.add(listener);
+			return true;
+		}
+
+		int size(){
+			return listeners.size();
+		}
+
+		void fire(){
+			for(Runnable r:List.copyOf(listeners))
+				r.run();
 		}
 	}
 }

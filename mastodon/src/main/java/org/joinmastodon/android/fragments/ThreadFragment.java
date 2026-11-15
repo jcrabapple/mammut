@@ -52,7 +52,7 @@ import org.joinmastodon.android.ui.displayitems.UnrollBranchMarkerStatusDisplayI
 import org.joinmastodon.android.ui.displayitems.UnrollFooterStatusDisplayItem;
 import org.joinmastodon.android.ui.text.HtmlParser;
 import org.joinmastodon.android.ui.utils.UiUtils;
-import org.joinmastodon.android.ui.utils.UnreadNotificationCounter;
+import org.joinmastodon.android.ui.utils.UnreadNotificationStore;
 import org.parceler.Parcels;
 
 import java.util.ArrayList;
@@ -107,7 +107,14 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 	 */
 	private String pendingConversationScrollId;
 	private final Runnable unrollBackCallback=()->setUnrollMode(false);
-	private boolean unrollBackRegistered;
+	private final UnrollBackCallbackState unrollBackState=new UnrollBackCallbackState();
+	// R3 F10: live badge subscription to this account's unread store.
+	private final UnreadBadgeState unreadBadgeState=new UnreadBadgeState();
+	private final UnreadNotificationStore.Listener unreadBadgeListener=(count, more)->{
+		unreadBadgeState.apply(count, more);
+		if(navMenuController!=null)
+			navMenuController.setUnreadCount(count, more);
+	};
 	private int savedFirstVisibleOffset=0;
 	private boolean highlightDecorationAdded=false;
 	private NewRepliesHighlightDecoration highlightDecoration=new NewRepliesHighlightDecoration();
@@ -143,12 +150,23 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		updateSubtitle();
 		setRefreshEnabled(false);
 		setHasOptionsMenu(true);
+		// R3 F10: subscribe this thread to its account's unread store. The pre-fix
+		// one-shot load in onShown rendered a count that went stale the moment a
+		// push arrived; the scoped listener keeps the badge live until destroy.
+		if(unreadBadgeState.shouldSubscribe()){
+			UnreadNotificationStore.addListener(unreadBadgeListener, accountID);
+			unreadBadgeState.onSubscribed();
+		}
 	}
 
 	@Override
 	public void onDestroy(){
 		if(asyncRefreshID!=null){
 			AccountSessionManager.get(accountID).getApiController().cancelPollingAsyncRefresh(asyncRefreshID, asyncRefreshCallback);
+		}
+		if(unreadBadgeState.shouldUnsubscribe()){
+			UnreadNotificationStore.removeListener(unreadBadgeListener);
+			unreadBadgeState.onUnsubscribed();
 		}
 		super.onDestroy();
 	}
@@ -530,8 +548,10 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			dataLoading=true;
 			doLoadData();
 		}
-		// MAMMUT: the navigation FAB is available in threads too
-		UnreadNotificationCounter.load(accountID, (count, more)->navMenuController.setUnreadCount(count, more));
+		// MAMMUT: the navigation FAB is available in threads too. R3 F10: refresh
+		// through the store — the scoped badge listener above applies the result, so a
+		// push or a mark-read that lands while the thread is open moves the badge live.
+		UnreadNotificationStore.refresh(accountID);
 	}
 
 	@Override
@@ -745,8 +765,16 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 	private void onConversationChanged(){
 		chain=ConversationChain.build(data, mainStatus);
 		boolean wasUnroll=unrollMode;
-		if(unrollMode && !chain.eligible)
-			unrollMode=false; // §6: a missing link shortens the chain; below 3 members the mode quietly exits
+		if(unrollMode && !chain.eligible){
+			// §6: a missing link shortens the chain; below 3 members the mode quietly exits.
+			// R4 F7: the automatic exit must take the same transition path as every
+			// other exit — above all it retires the Back callback. Pre-fix this set
+			// unrollMode=false directly, leaving the callback registered, so the next
+			// Back press was swallowed by a callback whose mode no longer existed and
+			// the reader stayed in the thread instead of leaving it.
+			unrollMode=false;
+			updateUnrollBackCallback();
+		}
 		updateSubtitle();
 		if(wasUnroll || unrollMode)
 			rebuildList();
@@ -871,20 +899,20 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 
 	@Override
 	public void onDetach(){
-		if(unrollBackRegistered){
+		if(unrollBackState.registered()){
 			removeBackCallback(unrollBackCallback);
-			unrollBackRegistered=false;
+			unrollBackState.onUnregistered();
 		}
 		super.onDetach();
 	}
 
 	private void updateUnrollBackCallback(){
-		if(unrollMode && !unrollBackRegistered){
+		if(unrollBackState.shouldRegister(unrollMode)){
 			addBackCallback(unrollBackCallback);
-			unrollBackRegistered=true;
-		}else if(!unrollMode && unrollBackRegistered){
+			unrollBackState.onRegistered();
+		}else if(unrollBackState.shouldUnregister(unrollMode)){
 			removeBackCallback(unrollBackCallback);
-			unrollBackRegistered=false;
+			unrollBackState.onUnregistered();
 		}
 	}
 
@@ -1155,5 +1183,84 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 	@Override
 	public Uri getWebUri(Uri.Builder base) {
 		return Uri.parse(mainStatus.url);
+	}
+
+	/**
+	 * R4 F7 — pure state for the Unroll Back callback.
+	 *
+	 * Every transition out of Unroll (the app-bar action, a side-branch marker tap,
+	 * and the automatic exit when the chain drops below eligibility) must pass through
+	 * the same sync. The pre-fix automatic exit set unrollMode=false directly and left
+	 * the callback registered: the next Back press was consumed by a callback whose
+	 * mode no longer existed, so Back did not leave the Conversation. This class makes
+	 * the register/unregister decisions explicit and unit-testable — after an
+	 * automatic exit the callback is retired, and Back falls through to pop the
+	 * thread.
+	 */
+	static final class UnrollBackCallbackState{
+		private boolean registered;
+
+		boolean shouldRegister(boolean unrollMode){
+			return unrollMode && !registered;
+		}
+
+		boolean shouldUnregister(boolean unrollMode){
+			return !unrollMode && registered;
+		}
+
+		void onRegistered(){
+			registered=true;
+		}
+
+		void onUnregistered(){
+			registered=false;
+		}
+
+		boolean registered(){
+			return registered;
+		}
+	}
+
+	/**
+	 * R3 F10 — pure mirror of the thread's unread-badge subscription so the
+	 * push/mark-read lifecycle is unit-testable without Android: the fragment
+	 * subscribes once on creation, applies every published count while subscribed,
+	 * and surfaces nothing once removed.
+	 */
+	static final class UnreadBadgeState{
+		private boolean subscribed;
+		private int count;
+		private boolean more;
+
+		boolean shouldSubscribe(){
+			return !subscribed;
+		}
+
+		void onSubscribed(){
+			subscribed=true;
+		}
+
+		boolean shouldUnsubscribe(){
+			return subscribed;
+		}
+
+		void onUnsubscribed(){
+			subscribed=false;
+		}
+
+		void apply(int newCount, boolean newMore){
+			if(!subscribed)
+				return;
+			count=Math.max(0, newCount);
+			more=newMore;
+		}
+
+		int count(){
+			return subscribed ? count : 0;
+		}
+
+		boolean more(){
+			return subscribed && more;
+		}
 	}
 }

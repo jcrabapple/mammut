@@ -62,8 +62,6 @@ public class CatchUpFragment extends StatusListFragment{
 	private static final java.time.format.DateTimeFormatter SINCE_FORMATTER=
 			java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT);
 
-	private enum EndReason{NONE, WINDOW_END, CAP, SERVER_END}
-
 	/** Start of the window this catch-up covers, in epoch millis. */
 	private long windowStart;
 	/** When this catch-up began; stored on completion so the next one starts there. */
@@ -74,15 +72,16 @@ public class CatchUpFragment extends StatusListFragment{
 	private int shownCount;
 
 	private long cutoff;
-	private int fillPages;
-	private String oldestFetchedID;
-	private EndReason endReason=EndReason.NONE;
-	private boolean capTruncated; // the initial window was cut by the 200 cap, not by time
-	private boolean serverEnded; // the server itself ran out of pages
 	private boolean extended; // the user left the window via "Load older posts"
 	private boolean fillRunning, extensionRunning;
 	private boolean boostsCollapsed; // session-only, by design (spec §5)
 	private Runnable pendingRetry; // resumes paging from the last cursor after an inline error
+	/**
+	 * Fill/pagination/marker state machine (R4 F3/F4/F5/F9/F10). Replaced on every
+	 * fill; every cursor, stop-reason and marker decision lives in {@link CatchUpFill}
+	 * so the transitions are unit-testable without Android.
+	 */
+	private CatchUpFill.State fill=CatchUpFill.initialState();
 
 	private TextView scopeLine, filterSummary;
 	private TextView emptySubtitle;
@@ -119,6 +118,12 @@ public class CatchUpFragment extends StatusListFragment{
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P)
 			scopeLine.setAccessibilityHeading(true); // spec §8: the screen's first heading
 		filterSummary=view.findViewById(R.id.catch_up_filters);
+		// R4 F14: the rule line states the view's scope; it names no action, so it
+		// must not present as one. The layout dresses it as a button (primary color,
+		// ripple background, clickable/focusable) with no click handler — an inert
+		// control. Disable the interaction here; the words stay, the fake button goes.
+		filterSummary.setClickable(false);
+		filterSummary.setFocusable(false);
 		// Catch up has no view settings of its own: what it shows is the point of it.
 		// The custom empty view carries a supporting line and a secondary action on
 		// top of the appkit empty_text/empty_button pair (spec §7 filtered-to-empty).
@@ -156,17 +161,13 @@ public class CatchUpFragment extends StatusListFragment{
 		long lastAt=AccountSessionManager.get(accountID).getLocalPreferences().catchUpLastAt;
 		// The window starts where the last completed catch-up started. A first run, or a
 		// return after more than a day, falls back to 24 hours: a catch-up is a day's
-		// reading, not an archive dig.
-		long floor=now-CATCH_UP_WINDOW_MS;
-		hasPreviousCatchUp=lastAt>0 && lastAt>floor;
-		windowStart=hasPreviousCatchUp ? lastAt : floor;
+		// reading, not an archive dig. R4 F9: a marker from the future (clock skew) is
+		// rejected and falls back to the same 24h floor.
+		hasPreviousCatchUp=CatchUpFill.hasPreviousCatchUp(now, lastAt, CATCH_UP_WINDOW_MS);
+		windowStart=CatchUpFill.windowStart(now, lastAt, CATCH_UP_WINDOW_MS);
 		fillStartedAt=now;
 		cutoff=windowStart;
-		fillPages=0;
-		oldestFetchedID=null;
-		endReason=EndReason.NONE;
-		capTruncated=false;
-		serverEnded=false;
+		fill=CatchUpFill.initialState();
 		extended=false;
 		boostsCollapsed=false;
 		pendingRetry=null;
@@ -190,13 +191,16 @@ public class CatchUpFragment extends StatusListFragment{
 						// page size. Server-side filters (keyword, blur) remove items here, so a
 						// filtered page shorter than PAGE_SIZE must never be mistaken for
 						// "the server has nothing older" — that is the one claim the footer is
-						// allowed to make only when the server licenses it.
-						int rawCount=page.size();
+						// allowed to make only when the server licenses it. R4 F4: the raw ids
+						// are also the fill's pagination cursor, captured BEFORE filtering.
+						ArrayList<String> rawIDs=new ArrayList<>(page.size());
+						for(Status s:page)
+							rawIDs.add(s.id);
 						AccountSessionManager.get(accountID).filterStatuses(page, FilterContext.HOME);
 						if(extension){
-							onExtensionPageLoaded(page, rawCount);
+							onExtensionPageLoaded(page, rawIDs);
 						}else{
-							onFillPageLoaded(page, rawCount);
+							onFillPageLoaded(page, rawIDs);
 						}
 					}
 
@@ -225,7 +229,7 @@ public class CatchUpFragment extends StatusListFragment{
 							dataLoading=false;
 							loaded=true;
 							dataLoaded();
-							pendingRetry=()->fetchPage(oldestFetchedID, false);
+							pendingRetry=()->fetchPage(fill.networkCursor, false);
 							buildList();
 						}
 					}
@@ -233,59 +237,38 @@ public class CatchUpFragment extends StatusListFragment{
 				.exec(accountID);
 	}
 
-	private void onFillPageLoaded(List<Status> page, int rawCount){
-		fillPages++;
-		boolean stop=false;
+	private void onFillPageLoaded(List<Status> page, List<String> rawIDs){
+		ArrayList<CatchUpFill.PageItem> items=new ArrayList<>(page.size());
+		for(Status s:page)
+			items.add(new CatchUpFill.PageItem(s.id, s.createdAt.toEpochMilli()));
 		// Inclusion tests the wrapper's createdAt — a boost of a week-old post inside
 		// the window counts (spec §2). Pages are newest-first, so every wrapper from
 		// the first older-than-cutoff one on is dropped as a boundary straggler.
-		int keep=page.size();
-		for(int i=0;i<page.size();i++){
-			if(page.get(i).createdAt.toEpochMilli()<cutoff){
-				keep=i;
-				break;
-			}
-		}
-		if(keep<page.size()){
+		int keep=CatchUpFill.onFillPage(fill, rawIDs, items, cutoff, PAGE_SIZE, CATCH_UP_MAX_POSTS, REQUEST_CEILING);
+		if(keep<page.size())
 			page=new ArrayList<>(page.subList(0, keep));
-			endReason=EndReason.WINDOW_END;
-			stop=true;
-		}
-		ingest(page);
-		if(!stop){
-			if(rawCount<PAGE_SIZE){
-				// Server pagination end: the footer may claim completeness only
-				// because the server itself licensed it (spec §6).
-				endReason=EndReason.SERVER_END;
-				serverEnded=true;
-				stop=true;
-			}else if(data.size()>=CATCH_UP_MAX_POSTS){
+		if(!page.isEmpty())
+			ingest(page);
+		if(fill.end==CatchUpFill.End.NONE){
+			// R4 F4: the fill cursor is the RAW oldest of the last page, so a page
+			// that filtering emptied still advances — the same page can never repeat.
+			fetchPage(fill.networkCursor, false);
+		}else{
+			if(fill.end==CatchUpFill.End.CAP){
+				// Trim to the cap; the trimmed stragglers stay re-reachable because the
+				// first extension fetch keys on the oldest *kept* wrapper.
 				while(data.size()>CATCH_UP_MAX_POSTS)
 					data.remove(data.size()-1);
-				// The extension cursor must stay on the oldest *kept* wrapper; the
-				// trimmed stragglers are re-reachable from the next extension page.
-				oldestFetchedID=data.get(data.size()-1).id;
-				endReason=EndReason.CAP;
-				capTruncated=true;
-				stop=true;
-			}else if(fillPages>=REQUEST_CEILING){
-				// Coincides with the cap by construction: 5 x 40 = 200.
-				endReason=EndReason.CAP;
-				capTruncated=true;
-				stop=true;
+				if(!data.isEmpty())
+					CatchUpFill.noteCapTrim(fill, data.get(data.size()-1).id);
 			}
-		}
-		if(stop){
 			endFill();
-		}else{
-			fetchPage(oldestFetchedID, false);
 		}
 	}
 
 	private void ingest(List<Status> page){
 		for(Status s:page){
 			data.add(s);
-			oldestFetchedID=s.id;
 			addAccountToKnown(s);
 		}
 		postprocessNewlyLoadedStatuses(page);
@@ -293,9 +276,11 @@ public class CatchUpFragment extends StatusListFragment{
 	}
 
 	private void endFill(){
-		// Only a completed fill advances the marker: abandoning the view mid-fetch must not
-		// skip posts the reader never saw.
-		if(pendingRetry==null && endReason!=EndReason.NONE && fillStartedAt>0){
+		// Only a completed, non-cap-truncated fill advances the marker: abandoning the
+		// view mid-fetch, erroring out, or stopping at the cap must never skip posts the
+		// reader never saw (R4 F5 — a CAP-truncated window keeps the old marker, so the
+		// remainder is still inside the next catch-up's window).
+		if(pendingRetry==null && CatchUpFill.shouldAdvanceMarker(fill) && fillStartedAt>0){
 			AccountLocalPreferences lp=AccountSessionManager.get(accountID).getLocalPreferences();
 			lp.catchUpLastAt=fillStartedAt;
 			lp.save();
@@ -304,6 +289,7 @@ public class CatchUpFragment extends StatusListFragment{
 		dataLoading=false;
 		loaded=true;
 		currentRequest=null;
+		CatchUpFill.prepareExtension(fill);
 		dataLoaded();
 		updateScopeAndSummary();
 		buildList();
@@ -312,23 +298,23 @@ public class CatchUpFragment extends StatusListFragment{
 // Load older posts (spec §6)
 
 	private void loadOlderPosts(){
-		if(extensionRunning || serverEnded)
+		if(extensionRunning || fill.serverEnded)
 			return;
 		extensionRunning=true;
 		pendingRetry=null;
 		buildList(); // swaps the footer for the inline progress row
-		fetchPage(oldestFetchedID, true);
+		fetchPage(fill.extensionCursor, true);
 	}
 
-	private void onExtensionPageLoaded(List<Status> page, int rawCount){
+	private void onExtensionPageLoaded(List<Status> page, List<String> rawIDs){
 		extensionRunning=false;
 		extended=true; // the 24-hour window and the 200 cap no longer gate this view
-		if(rawCount==0){
-			// Only the server's own pagination end licenses the completeness copy.
-			serverEnded=true;
-		}else{
+		ArrayList<CatchUpFill.PageItem> items=new ArrayList<>(page.size());
+		for(Status s:page)
+			items.add(new CatchUpFill.PageItem(s.id, s.createdAt.toEpochMilli()));
+		CatchUpFill.onExtensionPage(fill, rawIDs, items);
+		if(!page.isEmpty())
 			ingest(page);
-		}
 		updateScopeAndSummary();
 		buildList();
 	}
@@ -354,7 +340,7 @@ public class CatchUpFragment extends StatusListFragment{
 		// Card groups: one elevated card per author group (and one for the boosts
 		// section). Negative means the row sits outside any card.
 		ArrayList<Integer> cardOf=new ArrayList<>();
-		shownCount=filtered.size();
+		shownCount=shownCountOf(data);
 		if(!filtered.isEmpty()){
 			CatchUpGrouping.Result grouping=CatchUpGrouping.group(filtered);
 			int groupIndex=0;
@@ -429,7 +415,7 @@ public class CatchUpFragment extends StatusListFragment{
 		}else{
 			displayItems.add(new CatchUpFooterStatusDisplayItem("catchup_footer", this, getActivity(),
 					footerTitle(), footerBody(), getString(R.string.catch_up_load_older),
-					serverEnded ? null : this::loadOlderPosts));
+					fill.serverEnded ? null : this::loadOlderPosts));
 		}
 	}
 
@@ -441,7 +427,7 @@ public class CatchUpFragment extends StatusListFragment{
 	}
 
 	private String footerTitle(){
-		if(endReason==EndReason.CAP)
+		if(fill.end==CatchUpFill.End.CAP)
 			return getString(R.string.catch_up_footer_title_cap);
 		return getString(R.string.catch_up_footer_title_done);
 	}
@@ -449,14 +435,25 @@ public class CatchUpFragment extends StatusListFragment{
 	private String footerBody(){
 		// Counts describe what is on screen. Fetched statuses that this view refuses to
 		// show (boosts, replies) must not be counted as if the reader had seen them.
+		// R4 F6: the footer states what Mammut fetched, never what "the server has" —
+		// the only count it can vouch for is the fetched originals it shows.
 		int n=shownCount;
-		if(serverEnded)
-			return getResources().getQuantityString(R.plurals.catch_up_footer_body_server_end, n, n);
-		if(endReason==EndReason.CAP && !extended)
-			return getResources().getQuantityString(R.plurals.catch_up_footer_body_cap, n, n);
-		if(extended)
-			return getResources().getQuantityString(R.plurals.catch_up_footer_body_extended, n, n);
-		return getResources().getQuantityString(hasPreviousCatchUp ? R.plurals.catch_up_footer_body_since : R.plurals.catch_up_footer_body_window, n, n);
+		return switch(CatchUpFill.footerBody(extended, fill.end, hasPreviousCatchUp)){
+			case CAP -> getResources().getQuantityString(R.plurals.catch_up_footer_body_cap, n, n);
+			case EXTENDED -> getResources().getQuantityString(R.plurals.catch_up_footer_body_extended, n, n);
+			case SINCE -> getResources().getQuantityString(R.plurals.catch_up_footer_body_since, n, n);
+			case WINDOW -> getResources().getQuantityString(R.plurals.catch_up_footer_body_window, n, n);
+		};
+	}
+
+	/** R4 F3: posts shown by this view — no boosts, no replies — counted from the list itself, never from a stale field. */
+	static int shownCountOf(List<Status> statuses){
+		int n=0;
+		for(Status s:statuses){
+			if(s.reblog==null && s.inReplyToId==null)
+				n++;
+		}
+		return n;
 	}
 
 
@@ -470,8 +467,11 @@ public class CatchUpFragment extends StatusListFragment{
 			// The window no longer applies once the user has left it; the scope line
 			// must not keep claiming a span it is not showing (spec §6's no-overclaim rule).
 			scopeLine.setText(R.string.catch_up_scope_extended);
-		}else if(capTruncated){
-			scopeLine.setText(getString(R.string.catch_up_scope_cap, shownCount));
+		}else if(fill.capTruncated){
+			// R4 F3: the count is derived from `data` at format time, not read from a
+			// field buildList may not have refreshed yet — the moment the fill ends the
+			// scope line names the real, nonzero count.
+			scopeLine.setText(getString(R.string.catch_up_scope_cap, shownCountOf(data)));
 		}else if(hasPreviousCatchUp){
 			// An Instant carries no calendar fields, so the localized formatter needs a zone
 			// before it can name a month. Without it this threw on the second open.
@@ -485,11 +485,13 @@ public class CatchUpFragment extends StatusListFragment{
 
 	private void updateEmptyView(int filteredCount){
 		boolean filteredEmpty=!data.isEmpty() && filteredCount==0;
-		boolean emptyWindow=data.isEmpty() && !fillRunning && endReason!=EndReason.NONE && pendingRetry==null;
+		boolean emptyWindow=data.isEmpty() && !fillRunning && fill.end!=CatchUpFill.End.NONE && pendingRetry==null;
 		if(emptySubtitle!=null)
 			emptySubtitle.setVisibility(filteredEmpty ? View.VISIBLE : View.GONE);
+		// R4 F10: with the server ended, "Load older posts" can never return anything;
+		// a button that is a guaranteed no-op is hidden rather than shown inert.
 		if(emptySecondaryButton!=null)
-			emptySecondaryButton.setVisibility(filteredEmpty ? View.VISIBLE : View.GONE);
+			emptySecondaryButton.setVisibility(filteredEmpty && CatchUpFill.showFilteredEmptyLoadOlder(fill) ? View.VISIBLE : View.GONE);
 		if(filteredEmpty){
 			setEmptyText(R.string.catch_up_empty_posts_only);
 			if(emptySubtitle!=null)
@@ -498,7 +500,7 @@ public class CatchUpFragment extends StatusListFragment{
 			emptyPrimaryAction=null;
 		}else if(emptyWindow){
 			setEmptyText(hasPreviousCatchUp ? R.string.catch_up_empty_window_since : R.string.catch_up_empty_window);
-			if(serverEnded){
+			if(fill.serverEnded){
 				// The server has no posts at all for this account; a Load older
 				// button here would be a no-op, so the state offers nothing it
 				// cannot deliver (spec §6's honesty rules).
@@ -583,6 +585,162 @@ public class CatchUpFragment extends StatusListFragment{
 			// statuses already fetched — no refetch, cursors untouched (spec §4).
 			updateScopeAndSummary();
 			buildList();
+		}
+	}
+
+	/**
+	 * MAMMUT: audit R4 F3/F4/F5/F9/F10 — the pure Catch up fill/pagination/marker state
+	 * machine (docs/AUDIT-1.3.5-TRIAGE.md §Fix 5, improvement #1: the pagination/marker
+	 * transitions extracted from the fragment so they are unit-testable). The fragment
+	 * owns requests, ingestion side effects and display; every cursor, stop-reason,
+	 * marker and footer decision lives here.
+	 *
+	 * Two cursors are tracked separately (R4 F4):
+	 *  - {@link State#networkCursor}: the RAW oldest id of the most recent page,
+	 *    captured BEFORE filtering. A page that filtering empties still advances it,
+	 *    so the fill can never re-request the same page (the pre-fix repeating page).
+	 *  - {@link State#extensionCursor}: starts at the oldest kept wrapper, so
+	 *    window-trimmed stragglers stay re-reachable from "Load older posts"; later
+	 *    extension pages advance by their own raw oldest.
+	 */
+	static final class CatchUpFill{
+		enum End{NONE, WINDOW_END, CAP, SERVER_END}
+		/** R4 F6: the footer states a fetched-originals fact scoped by the window — no "what the server has" variant exists. */
+		enum FooterBody{WINDOW, SINCE, CAP, EXTENDED}
+
+		static final class PageItem{
+			final String id;
+			final long createdAtMillis;
+
+			PageItem(String id, long createdAtMillis){
+				this.id=id;
+				this.createdAtMillis=createdAtMillis;
+			}
+		}
+
+		static final class State{
+			int pages;
+			int keptCount;
+			End end=End.NONE;
+			boolean capTruncated;
+			boolean serverEnded;
+			/** Raw oldest id of the most recent page (pre-filter); drives fill pagination and mid-fill retries. */
+			String networkCursor;
+			/** Oldest ingested wrapper; seeds the first extension fetch. */
+			String oldestKeptID;
+			/** Cursor for the next "Load older posts" tap. */
+			String extensionCursor;
+		}
+
+		static State initialState(){
+			return new State();
+		}
+
+		/**
+		 * Accounts for one fill page. {@code rawIDs} lists EVERY id the server
+		 * returned, newest first, before filtering; {@code items} lists the filtered
+		 * page's (id, createdAt) in the same order. Returns how many leading items
+		 * pass the window and must be ingested.
+		 */
+		static int onFillPage(State s, List<String> rawIDs, List<PageItem> items, long cutoff,
+				int pageSize, int maxPosts, int requestCeiling){
+			s.pages++;
+			if(!rawIDs.isEmpty())
+				s.networkCursor=rawIDs.get(rawIDs.size()-1);
+			// Inclusion tests the wrapper's createdAt; pages are newest-first, so every
+			// wrapper from the first older-than-cutoff one on is a boundary straggler.
+			int keep=items.size();
+			for(int i=0;i<items.size();i++){
+				if(items.get(i).createdAtMillis<cutoff){
+					keep=i;
+					break;
+				}
+			}
+			if(keep<items.size()){
+				s.keptCount+=keep;
+				if(keep>0)
+					s.oldestKeptID=items.get(keep-1).id;
+				s.end=End.WINDOW_END;
+				return keep;
+			}
+			s.keptCount+=items.size();
+			if(!items.isEmpty())
+				s.oldestKeptID=items.get(items.size()-1).id;
+			if(rawIDs.size()<pageSize){
+				// Server pagination end: the only condition under which the fill may
+				// stop for a reason other than the window or the cap.
+				s.end=End.SERVER_END;
+				s.serverEnded=true;
+			}else if(s.keptCount>=maxPosts){
+				s.end=End.CAP;
+				s.capTruncated=true;
+			}else if(s.pages>=requestCeiling){
+				// Coincides with the cap by construction: ceiling x pageSize = maxPosts.
+				s.end=End.CAP;
+				s.capTruncated=true;
+			}
+			return keep;
+		}
+
+		/** The fragment trimmed `data` to the cap; the kept-oldest cursor must follow the trim. */
+		static void noteCapTrim(State s, String trimmedOldestKeptID){
+			s.oldestKeptID=trimmedOldestKeptID;
+		}
+
+		/** Called once when the fill ends: the first extension re-reads from the oldest kept wrapper. */
+		static void prepareExtension(State s){
+			s.extensionCursor=s.oldestKeptID;
+		}
+
+		/**
+		 * Accounts for one extension page. An empty raw page is the server's own
+		 * pagination end; anything else advances the extension cursor to the page's
+		 * raw oldest so a page that filtering emptied can never repeat either.
+		 */
+		static void onExtensionPage(State s, List<String> rawIDs, List<PageItem> items){
+			if(rawIDs.isEmpty()){
+				s.serverEnded=true;
+				return;
+			}
+			s.extensionCursor=rawIDs.get(rawIDs.size()-1);
+			if(!items.isEmpty())
+				s.oldestKeptID=items.get(items.size()-1).id;
+		}
+
+		/**
+		 * R4 F5: only a fill that ran to a non-cap stop advanced the whole window the
+		 * reader asked about. A CAP-truncated fill leaves the marker where it was, so
+		 * the unseen remainder of the window is still inside the next catch-up.
+		 */
+		static boolean shouldAdvanceMarker(State s){
+			return s.end!=End.NONE && !s.capTruncated;
+		}
+
+		/** R4 F9: a marker from the future (clock skew, restored backup) is rejected; the window falls back to the 24h floor. */
+		static long windowStart(long now, long lastAt, long windowMs){
+			long floor=now-windowMs;
+			if(lastAt<=0 || lastAt>now || lastAt<=floor)
+				return floor;
+			return lastAt;
+		}
+
+		static boolean hasPreviousCatchUp(long now, long lastAt, long windowMs){
+			long floor=now-windowMs;
+			return lastAt>0 && lastAt<=now && lastAt>floor;
+		}
+
+		/** R4 F6: the footer states what Mammut fetched — scoped by the window when there is one, plain once extended. */
+		static FooterBody footerBody(boolean extended, End end, boolean hasPreviousCatchUp){
+			if(extended)
+				return FooterBody.EXTENDED;
+			if(end==End.CAP)
+				return FooterBody.CAP;
+			return hasPreviousCatchUp ? FooterBody.SINCE : FooterBody.WINDOW;
+		}
+
+		/** R4 F10: a filtered-to-empty "Load older posts" is offered only while the server may still have something older. */
+		static boolean showFilteredEmptyLoadOlder(State s){
+			return !s.serverEnded;
 		}
 	}
 }

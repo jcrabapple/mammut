@@ -48,6 +48,10 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	private String accountID;
 
 	private final Runnable backCallback=this::onBackPressedInternal;
+	// R4 F1: one listener instance per HomeFragment, registered once per child-fragment
+	// instance (creation or restoration) — a fresh lambda per view creation accumulated
+	// one callback per recreation.
+	private final Runnable homePageChangeListener=this::onHomePageChanged;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState){
@@ -78,6 +82,7 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 			args.putBoolean("noAutoLoad", true);
 			notificationsFragment=new NotificationsListFragment();
 			notificationsFragment.setArguments(new Bundle(args));
+			homeTabFragment.addPageChangeListener(homePageChangeListener);
 		}
 
 		E.register(this);
@@ -93,6 +98,11 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	@Nullable
 	@Override
 	public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState){
+		// R4 F1: the child fragments exist here only on first launch (created in
+		// onCreate). Process-death recreation restores them later, in
+		// onViewStateRestored — this method must not dereference them when the plan
+		// says they are not back yet.
+		ChildFragmentPlan plan=ChildFragmentPlan.decide(savedInstanceState!=null, homeTabFragment!=null);
 		content=new FragmentRootLinearLayout(getActivity());
 		content.setOrientation(FragmentRootLinearLayout.VERTICAL);
 
@@ -103,7 +113,7 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		fragmentContainer.setId(me.grishka.appkit.R.id.fragment_wrap);
 		mainContainer.addView(fragmentContainer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-		if(savedInstanceState==null){
+		if(plan.childrenUsable()){
 			Fragment current=fragmentForDestination(currentDestination);
 			getChildFragmentManager().beginTransaction()
 					.add(me.grishka.appkit.R.id.fragment_wrap, homeTabFragment)
@@ -115,8 +125,9 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 
 		navMenuController.attach(mainContainer);
 		navMenuController.setDestination(currentDestination);
-		// Re-point the scroll rule whenever the home pager flips to another timeline
-		homeTabFragment.addPageChangeListener(this::onHomePageChanged);
+		// R4 F1: the page listener is registered when the child fragment is obtained
+		// (onCreate or onViewStateRestored), not here — on recreation this method runs
+		// before the restoration and homeTabFragment is still null.
 		content.post(this::updateScrollTarget);
 		updateBackCallback();
 
@@ -131,8 +142,12 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		if(savedInstanceState==null)
 			return;
 		homeTabFragment=(HomeTabFragment) getChildFragmentManager().getFragment(savedInstanceState, "homeTabFragment");
-		homeTabFragment.addPageChangeListener(this::onHomePageChanged);
 		notificationsFragment=(NotificationsListFragment) getChildFragmentManager().getFragment(savedInstanceState, "notificationsFragment");
+		// R4 F1: register the page listener on the restored instance — the deduping
+		// registry keeps this to exactly one callback even if the view is recreated
+		// again without re-running onCreate.
+		if(homeTabFragment!=null)
+			homeTabFragment.addPageChangeListener(homePageChangeListener);
 		Fragment current=fragmentForDestination(currentDestination);
 		getChildFragmentManager().beginTransaction()
 				.hide(homeTabFragment)
@@ -146,7 +161,11 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	@Override
 	public void onHiddenChanged(boolean hidden){
 		super.onHiddenChanged(hidden);
-		fragmentForDestination(currentDestination).onHiddenChanged(hidden);
+		// R4 F1: the children can be absent only before restoration; never forward the
+		// call into null.
+		Fragment f=fragmentForDestination(currentDestination);
+		if(f!=null)
+			f.onHiddenChanged(hidden);
 	}
 
 	@Override
@@ -170,8 +189,12 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 			super.onApplyWindowInsets(insets.replaceSystemWindowInsets(insets.getSystemWindowInsetLeft(), 0, insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom()));
 		}
 		WindowInsets topOnlyInsets=insets.replaceSystemWindowInsets(0, insets.getSystemWindowInsetTop(), 0, 0);
-		homeTabFragment.onApplyWindowInsets(topOnlyInsets);
-		notificationsFragment.onApplyWindowInsets(topOnlyInsets);
+		// R4 F1: both children are consulted here; on recreation this can run before
+		// they are restored.
+		if(homeTabFragment!=null)
+			homeTabFragment.onApplyWindowInsets(topOnlyInsets);
+		if(notificationsFragment!=null)
+			notificationsFragment.onApplyWindowInsets(topOnlyInsets);
 	}
 
 	private Fragment fragmentForDestination(NavDestination destination){
@@ -268,7 +291,7 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	}
 
 	private void updateScrollTarget(){
-		if(navMenuController==null || !isAdded())
+		if(navMenuController==null || !isAdded() || homeTabFragment==null || notificationsFragment==null)
 			return;
 		Fragment f=fragmentForDestination(currentDestination);
 		if(f==homeTabFragment)
@@ -323,8 +346,10 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		outState.putString("selectedDestination", currentDestination.name());
 
 		// MOSHIDON: we use the isAdded because of user themes
-		if(homeTabFragment.isAdded()) getChildFragmentManager().putFragment(outState, "homeTabFragment", homeTabFragment);
-		if(notificationsFragment.isAdded()) getChildFragmentManager().putFragment(outState, "notificationsFragment", notificationsFragment);
+		// R4 F1: on recreation the children may not have been restored yet when the
+		// save runs — only persist what actually exists.
+		if(homeTabFragment!=null && homeTabFragment.isAdded()) getChildFragmentManager().putFragment(outState, "homeTabFragment", homeTabFragment);
+		if(notificationsFragment!=null && notificationsFragment.isAdded()) getChildFragmentManager().putFragment(outState, "notificationsFragment", notificationsFragment);
 	}
 
 	@Override
@@ -370,6 +395,43 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	public void onProvideAssistContent(AssistContent content){
 		if(fragmentForDestination(currentDestination) instanceof AssistContentProviderFragment provider){
 			provider.onProvideAssistContent(content);
+		}
+	}
+
+	/**
+	 * R4 F1 — pure plan for the child-fragment lifecycle across recreation.
+	 *
+	 * Process death recreates HomeFragment with a saved state but without its children:
+	 * the children are re-obtained from the child FragmentManager, which has not run by
+	 * onCreateView time. The pre-fix fragment restored them only in onViewStateRestored
+	 * but dereferenced them in onCreateView (recreation NPE on Home/Local/Notifications),
+	 * and registered a fresh page-change listener on every view creation, so N
+	 * recreations fired N callbacks for one swipe. The plan makes the decisions
+	 * explicit: children are created only on first launch, restored whenever a saved
+	 * state exists and they are absent, and they must not be touched while the plan
+	 * says they are not back yet.
+	 */
+	static final class ChildFragmentPlan{
+		enum Action{CREATE, RESTORE, KEEP}
+
+		final Action action;
+
+		private ChildFragmentPlan(Action action){
+			this.action=action;
+		}
+
+		static ChildFragmentPlan decide(boolean hasSavedState, boolean childrenPresent){
+			if(childrenPresent)
+				return new ChildFragmentPlan(Action.KEEP);
+			return new ChildFragmentPlan(hasSavedState ? Action.RESTORE : Action.CREATE);
+		}
+
+		/**
+		 * Children may be dereferenced only once they exist: CREATE makes them, KEEP
+		 * retained them, RESTORE must wait for onViewStateRestored.
+		 */
+		boolean childrenUsable(){
+			return action!=Action.RESTORE;
 		}
 	}
 }

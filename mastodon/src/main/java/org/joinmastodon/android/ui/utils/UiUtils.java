@@ -978,13 +978,37 @@ public class UiUtils{
 		});
 
 		AccountLocalPreferences prefs=session!=null ? session.getLocalPreferences() : null;
-		AccountLocalPreferences.ColorPreference color=prefs!=null ? prefs.getCurrentColor() : AccountLocalPreferences.ColorPreference.MAMMUT;
+		// R4 F12: with no session (external share, account chooser) the palette falls
+		// back to the reader's GLOBAL palette choice, not a hard-coded MAMMUT; an
+		// account's own choice still wins when a session exists (getCurrentColor
+		// already folds account-over-global-over-default).
+		AccountLocalPreferences.ColorPreference color=prefs!=null
+				? prefs.getCurrentColor()
+				: PaletteFallback.resolve(null, GlobalUserPreferences.color);
 		ColorPalette palette = ColorPalette.palettes.get(color);
 		if (palette != null) palette.apply(context, theme);
 
 		Resources res = context.getResources();
 //		MAX_WIDTH = (int) res.getDimension(R.dimen.layout_max_width);
 		SCROLL_TO_TOP_DELTA = (int) res.getDimension(R.dimen.scroll_to_top_delta);
+	}
+
+	/**
+	 * R4 F12 — pure palette resolution for the compose surfaces that open without a
+	 * session. Pre-fix, {@code setUserPreferredTheme(context, null)} hard-coded the
+	 * MAMMUT palette and ignored the reader's global palette preference. Order:
+	 * account override, then global preference, then the MAMMUT default.
+	 */
+	public static final class PaletteFallback{
+		public static AccountLocalPreferences.ColorPreference resolve(
+				@Nullable AccountLocalPreferences.ColorPreference accountColor,
+				@Nullable AccountLocalPreferences.ColorPreference globalColor){
+			if(accountColor!=null)
+				return accountColor;
+			if(globalColor!=null)
+				return globalColor;
+			return AccountLocalPreferences.ColorPreference.MAMMUT;
+		}
 	}
 
 	public static int getThemeForUserPreference(Context context, GlobalUserPreferences.ThemePreference pref){
