@@ -393,7 +393,7 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 				selected=i;
 		new M3AlertDialogBuilder(ctx)
 				.setTitle(R.string.mo_translation_service)
-				.setMessage(R.string.mo_translation_service_summary)
+				.setSupportingText(R.string.mo_translation_service_summary)
 				.setSingleChoiceItems(labels, selected, (dlg, which)->{
 					dlg.dismiss();
 					if(modes[which]==GlobalUserPreferences.TranslationService.CUSTOM){
@@ -428,7 +428,7 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		layout.addView(keyField);
 		new M3AlertDialogBuilder(ctx)
 				.setTitle(R.string.mo_translation_custom_title)
-				.setMessage(R.string.mo_translation_custom_summary)
+				.setSupportingText(R.string.mo_translation_custom_summary)
 				.setView(layout)
 				.setPositiveButton(R.string.save, (dlg, which)->{
 					GlobalUserPreferences.libreTranslateUrl=urlField.getText().toString().trim();

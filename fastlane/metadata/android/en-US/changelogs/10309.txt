@@ -1,0 +1,1 @@
+Fixed: the Translation service setting now shows all three options (Mammut Translate, Custom instance, Off). Previously the dialog only displayed Mammut Translate, so a custom LibreTranslate instance could not be configured.
