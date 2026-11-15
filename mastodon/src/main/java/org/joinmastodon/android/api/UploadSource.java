@@ -87,6 +87,33 @@ public class UploadSource{
 	}
 
 	/**
+	 * PNG by declared type, compared as type/subtype — never {@code String.equals(MediaType)},
+	 * which is always false and silently flattened transparent PNGs to JPEG (R2 F2).
+	 */
+	public static boolean isPngMime(String mime){
+		if(mime==null)
+			return false;
+		String lower=mime.toLowerCase(Locale.ROOT);
+		return lower.startsWith("image/") && lower.substring("image/".length()).equals("png");
+	}
+
+	/** PNG by this source's declared type. */
+	public boolean isPng(){
+		return isPngMime(mime);
+	}
+
+	/**
+	 * Whether a request body may only be built over a verified local copy of this source
+	 * (R2 F1). Content URIs always require one: the provider size column is frequently NULL
+	 * (read as 0 through {@code Cursor.getInt}), cursors come back null or empty, and picker
+	 * read grants expire between attempts — none of which may be visible to the wire. A
+	 * {@code file://} length, by contrast, is stat'ed from disk and is a fact.
+	 */
+	public boolean requiresVerifiedCopy(){
+		return kind==Kind.CONTENT;
+	}
+
+	/**
 	 * A file on disk is a fact: zero bytes there means nothing readable, reject before
 	 * any request is built. A provider's 0 is ambiguous (NULL columns surface as 0),
 	 * so content sources are never rejected here — the post-copy verification decides.

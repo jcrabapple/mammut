@@ -22,6 +22,7 @@ public class UpdateAccountCredentials extends MastodonAPIRequest<Account>{
 	private File avatarFile, coverFile;
 	private List<AccountField> fields;
 	private Boolean discoverable, indexable;
+	private ResizedImageRequestBody avatarBody, coverBody;
 
 	public UpdateAccountCredentials(String displayName, String bio, Uri avatar, Uri cover, List<AccountField> fields){
 		super(HttpMethod.PATCH, "/accounts/update_credentials", Account.class);
@@ -49,20 +50,21 @@ public class UpdateAccountCredentials extends MastodonAPIRequest<Account>{
 
 	@Override
 	public RequestBody getRequestBody() throws IOException{
+		releaseBodies();
 		MultipartBody.Builder bldr=new MultipartBody.Builder()
 				.setType(MultipartBody.FORM)
 				.addFormDataPart("display_name", displayName)
 				.addFormDataPart("note", bio);
 
 		if(avatar!=null){
-			bldr.addFormDataPart("avatar", UiUtils.getFileName(avatar), new AvatarResizedImageRequestBody(avatar, null));
+			bldr.addFormDataPart("avatar", UiUtils.getFileName(avatar), avatarBody=new AvatarResizedImageRequestBody(avatar, null));
 		}else if(avatarFile!=null){
-			bldr.addFormDataPart("avatar", avatarFile.getName(), new AvatarResizedImageRequestBody(Uri.fromFile(avatarFile), null));
+			bldr.addFormDataPart("avatar", avatarFile.getName(), avatarBody=new AvatarResizedImageRequestBody(Uri.fromFile(avatarFile), null));
 		}
 		if(cover!=null){
-			bldr.addFormDataPart("header", UiUtils.getFileName(cover), new ResizedImageRequestBody(cover, 1500*500, null));
+			bldr.addFormDataPart("header", UiUtils.getFileName(cover), coverBody=new ResizedImageRequestBody(cover, 1500*500, null));
 		}else if(coverFile!=null){
-			bldr.addFormDataPart("header", coverFile.getName(), new ResizedImageRequestBody(Uri.fromFile(coverFile), 1500*500, null));
+			bldr.addFormDataPart("header", coverFile.getName(), coverBody=new ResizedImageRequestBody(Uri.fromFile(coverFile), 1500*500, null));
 		}
 		if(fields!=null){
 			if(fields.isEmpty()){
@@ -81,5 +83,33 @@ public class UpdateAccountCredentials extends MastodonAPIRequest<Account>{
 			bldr.addFormDataPart("indexable", indexable.toString());
 
 		return bldr.build();
+	}
+
+	/**
+	 * R2 F3 terminal cleanup: the avatar/header bodies stage verified cache temps that
+	 * must not outlive the request. {@code onRequestDone} runs before the success and
+	 * error callbacks; {@code cancel} covers the path where neither ever fires.
+	 */
+	@Override
+	public synchronized void cancel(){
+		releaseBodies();
+		super.cancel();
+	}
+
+	@Override
+	protected void onRequestDone(){
+		releaseBodies();
+		super.onRequestDone();
+	}
+
+	private void releaseBodies(){
+		if(avatarBody!=null){
+			avatarBody.release();
+			avatarBody=null;
+		}
+		if(coverBody!=null){
+			coverBody.release();
+			coverBody=null;
+		}
 	}
 }

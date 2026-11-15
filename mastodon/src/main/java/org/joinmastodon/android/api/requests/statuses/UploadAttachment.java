@@ -29,6 +29,7 @@ public class UploadAttachment extends MastodonAPIRequest<Attachment>{
 	private int maxImageSize;
 	private String description;
 	private String fileName;
+	private ResizedImageRequestBody resizedBody;
 
 	public UploadAttachment(UploadStaging.StagedUpload staged, int maxImageSize, String description, String fileName){
 		super(HttpMethod.POST, "/media", Attachment.class);
@@ -41,6 +42,31 @@ public class UploadAttachment extends MastodonAPIRequest<Attachment>{
 	public UploadAttachment setProgressListener(ProgressListener progressListener){
 		this.progressListener=progressListener;
 		return this;
+	}
+
+	/**
+	 * R2 F3 terminal cleanup: the resized body decodes into a cache temp that must not
+	 * outlive the request. {@code onRequestDone} runs before the success and error
+	 * callbacks; {@code cancel} covers the path where neither ever fires (including
+	 * cancel-before-write, where the temp was staged but never streamed).
+	 */
+	@Override
+	public synchronized void cancel(){
+		releaseResizedBody();
+		super.cancel();
+	}
+
+	@Override
+	protected void onRequestDone(){
+		releaseResizedBody();
+		super.onRequestDone();
+	}
+
+	private void releaseResizedBody(){
+		if(resizedBody!=null){
+			resizedBody.release();
+			resizedBody=null;
+		}
 	}
 
 	@Override
@@ -57,9 +83,10 @@ public class UploadAttachment extends MastodonAPIRequest<Attachment>{
 
 	@Override
 	public RequestBody getRequestBody() throws IOException{
+		releaseResizedBody();
 		RequestBody fileBody;
 		if(maxImageSize>0 && staged.mediaType!=null && "image".equals(staged.mediaType.type()))
-			fileBody=new ResizedImageRequestBody(Uri.fromFile(staged.file), maxImageSize, progressListener);
+			fileBody=resizedBody=new ResizedImageRequestBody(Uri.fromFile(staged.file), maxImageSize, progressListener);
 		else
 			fileBody=new FileRequestBody(staged.file, staged.mediaType, progressListener);
 		MultipartBody.Builder builder=new MultipartBody.Builder()

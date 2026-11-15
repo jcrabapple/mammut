@@ -77,7 +77,7 @@ public class UploadStaging{
 		File file;
 		boolean ours;
 		if(source.stage()==UploadSource.Stage.COPY_TO_CACHE){
-			file=copyToCache(context, uri, suffixFor(source));
+			file=copyToCache(context, uri, source);
 			ours=true;
 		}else{
 			file=new File(uri.getPath());
@@ -85,21 +85,35 @@ public class UploadStaging{
 			if(!file.isFile())
 				throw new IOException("Upload file does not exist: "+uri);
 		}
-		verifyNonEmpty(file);
-		if(source.format()==UploadSource.Format.TRANSCODE_TO_JPEG){
-			File jpg;
-			try{
-				jpg=transcodeHeicToJpeg(context, file, maxImageSize);
-			}finally{
-				// The JPEG replaces the cache copy — including when the transcode throws,
-				// otherwise a failed HEIC would leave its full-size duplicate behind.
-				if(ours)
-					file.delete();
+		// R2 F11: once the copy exists, every failure path out of staging must take it
+		// (and anything the transcode created) back down — a zero-byte or half-written
+		// mastodon_upload_* temp must never survive as cache litter.
+		try{
+			verifyNonEmpty(file);
+			if(source.format()==UploadSource.Format.TRANSCODE_TO_JPEG){
+				File jpg;
+				try{
+					jpg=transcodeHeicToJpeg(context, file, maxImageSize);
+				}finally{
+					// The JPEG replaces the cache copy — including when the transcode throws,
+					// otherwise a failed HEIC would leave its full-size duplicate behind.
+					if(ours)
+						file.delete();
+				}
+				try{
+					verifyNonEmpty(jpg);
+				}catch(IOException | RuntimeException e){
+					jpg.delete();
+					throw e;
+				}
+				return new StagedUpload(jpg, MediaType.parse("image/jpeg"), true, true);
 			}
-			verifyNonEmpty(jpg);
-			return new StagedUpload(jpg, MediaType.parse("image/jpeg"), true, true);
+			return new StagedUpload(file, resolveMediaType(context, uri, source, file), false, ours);
+		}catch(IOException | RuntimeException e){
+			if(ours)
+				file.delete();
+			throw e;
 		}
-		return new StagedUpload(file, resolveMediaType(context, uri, source, file), false, ours);
 	}
 
 	/** Post-copy gate (t_54414ac0 req 2): a staged file with no bytes is a local read failure, never an upload. */
@@ -108,25 +122,68 @@ public class UploadStaging{
 			throw new EmptyUploadException("Nothing readable to upload"+(file==null ? "" : ": "+file));
 	}
 
-	private static File copyToCache(Context context, Uri uri, String suffix) throws IOException{
-		File file=File.createTempFile("mastodon_upload_", suffix, context.getCacheDir());
-		boolean ok=false;
+	public static File copyToCache(Context context, Uri uri, UploadSource source) throws IOException{
 		try(InputStream in=context.getContentResolver().openInputStream(uri)){
 			if(in==null)
 				throw new IOException("ContentResolver returned no stream for "+uri);
+			return copyToCache(in, context.getCacheDir(), suffixFor(source));
+		}
+	}
+
+	/**
+	 * Copies a stream into a {@code mastodon_upload_*} temp under {@code dir} and verifies
+	 * the result non-empty before handing it back (R2 F1/F11). An empty or failed copy is
+	 * deleted here, in the finally, so no artifact outlives a failed staging — the caller
+	 * never sees a zero-byte temp. Stream-based so the decision is unit-testable on a JVM.
+	 */
+	public static File copyToCache(InputStream in, File dir, String suffix) throws IOException{
+		File file=File.createTempFile("mastodon_upload_", suffix, dir);
+		boolean ok=false;
+		try{
+			if(in==null)
+				throw new IOException("No stream to stage");
 			try(FileOutputStream out=new FileOutputStream(file)){
 				byte[] buf=new byte[128*1024];
 				int read;
 				while((read=in.read(buf))>0)
 					out.write(buf, 0, read);
 				out.getFD().sync();
-				ok=true;
 			}
+			// ok is set only after the copy verified: an empty provider stream must
+			// take the temp back down in the finally below.
+			verifyNonEmpty(file);
+			ok=true;
+			return file;
 		}finally{
 			if(!ok)
 				file.delete();
 		}
-		return file;
+	}
+
+	/**
+	 * The cache temp files one upload request body created, deleted exactly once on
+	 * explicit release (R2 F3). A resized body stays readable for every {@code writeTo}
+	 * of the request lifetime — OkHttp transport retries included — and is removed only
+	 * at a terminal event (success, error, cancel, constructor failure), never on first
+	 * write, which is what used to make the first retry stream a deleted file.
+	 */
+	public static class TempFiles{
+		private final java.util.List<File> files=new java.util.ArrayList<>();
+
+		public synchronized void add(File file){
+			if(file!=null)
+				files.add(file);
+		}
+
+		public synchronized boolean isEmpty(){
+			return files.isEmpty();
+		}
+
+		public synchronized void releaseAll(){
+			for(File file:files)
+				file.delete();
+			files.clear();
+		}
 	}
 
 	private static String suffixFor(UploadSource source){
@@ -149,6 +206,29 @@ public class UploadStaging{
 	}
 
 	private static File transcodeHeicToJpeg(Context context, File src, int maxImageSize) throws IOException{
+		// The output file is created up front and every failure after that point —
+		// decode, encode, sync — takes it back down in the finally (R2 F11): a
+		// zero-byte or half-written mastodon_upload_*.jpg must never leak.
+		File jpg=File.createTempFile("mastodon_upload_", ".jpg", context.getCacheDir());
+		boolean ok=false;
+		try{
+			Bitmap bitmap=decodeHeic(src, maxImageSize);
+			if(bitmap==null)
+				throw new IOException("Could not decode HEIC image: "+src);
+			try(FileOutputStream out=new FileOutputStream(jpg)){
+				if(!bitmap.compress(Bitmap.CompressFormat.JPEG, HEIC_JPEG_QUALITY, out))
+					throw new IOException("Could not encode HEIC as JPEG: "+src);
+				out.getFD().sync();
+				ok=true;
+			}
+			return jpg;
+		}finally{
+			if(!ok)
+				jpg.delete();
+		}
+	}
+
+	private static Bitmap decodeHeic(File src, int maxImageSize) throws IOException{
 		Bitmap bitmap;
 		if(Build.VERSION.SDK_INT>=28){
 			// ImageDecoder applies EXIF orientation itself — the P+ path of
@@ -175,21 +255,9 @@ public class UploadStaging{
 			}
 			bitmap=BitmapFactory.decodeFile(src.getPath(), opts);
 			if(bitmap!=null)
-				bitmap=applyExifRotation(bitmap, src);
+				bitmap=applyExifOrientation(bitmap, src);
 		}
-		if(bitmap==null)
-			throw new IOException("Could not decode HEIC image: "+src);
-		File jpg=File.createTempFile("mastodon_upload_", ".jpg", context.getCacheDir());
-		boolean ok=false;
-		try(FileOutputStream out=new FileOutputStream(jpg)){
-			bitmap.compress(Bitmap.CompressFormat.JPEG, HEIC_JPEG_QUALITY, out);
-			out.getFD().sync();
-			ok=true;
-		}finally{
-			if(!ok)
-				jpg.delete();
-		}
-		return jpg;
+		return bitmap;
 	}
 
 	/**
@@ -205,19 +273,34 @@ public class UploadStaging{
 		return new int[]{targetWidth, targetHeight};
 	}
 
-	private static Bitmap applyExifRotation(Bitmap bitmap, File src) throws IOException{
+	/**
+	 * The one EXIF-orientation transform for the legacy (&lt; API 28) decode path (R2 F10):
+	 * all 8 orientation values, not just the three rotations — a flipped photo (e.g.
+	 * {@code ORIENTATION_TRANSPOSE} from a front camera) must not arrive mirrored.
+	 * Shared by the HEIC transcode and {@link ResizedImageRequestBody}.
+	 */
+	public static Bitmap applyExifOrientation(Bitmap bitmap, File src) throws IOException{
 		ExifInterface exif=new ExifInterface(src.getPath());
 		int orientation=exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
-		int rotation=switch(orientation){
-			case ExifInterface.ORIENTATION_ROTATE_90 -> 90;
-			case ExifInterface.ORIENTATION_ROTATE_180 -> 180;
-			case ExifInterface.ORIENTATION_ROTATE_270 -> 270;
-			default -> 0;
-		};
-		if(rotation==0)
-			return bitmap;
 		Matrix matrix=new Matrix();
-		matrix.setRotate(rotation);
+		switch(orientation){
+			case ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90);
+			case ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180);
+			case ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(270);
+			case ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1, 1);
+			case ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.setScale(1, -1);
+			case ExifInterface.ORIENTATION_TRANSPOSE -> {
+				matrix.setRotate(90);
+				matrix.postScale(-1, 1);
+			}
+			case ExifInterface.ORIENTATION_TRANSVERSE -> {
+				matrix.setRotate(270);
+				matrix.postScale(-1, 1);
+			}
+			default -> {
+				return bitmap;
+			}
+		}
 		return Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, false);
 	}
 
