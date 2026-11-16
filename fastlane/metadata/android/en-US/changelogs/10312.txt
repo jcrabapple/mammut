@@ -1,0 +1,1 @@
+Fixed: the home timeline header staying below the status bar after switching the menu button side. The previous fix could run before the timeline views were rebuilt; the status-bar spacing is now re-applied reliably once they are ready.

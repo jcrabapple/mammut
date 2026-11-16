@@ -140,15 +140,16 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		content.post(this::updateScrollTarget);
 		updateBackCallback();
 
-		// MAMMUT: re-apply the status-bar inset to the children on the first draw after
-		// (re)creation, when their views exist — covers the retained-recreation case where
-		// the initial inset dispatch ran before the child views were ready.
-		content.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener(){
+		// MAMMUT: re-apply the status-bar inset to the children once their views exist and the
+		// insets are cached. A global-layout listener retries across layout passes until both
+		// are ready (a one-shot pre-draw fired before the retained child views were rebuilt).
+		content.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener(){
 			@Override
-			public boolean onPreDraw(){
-				content.getViewTreeObserver().removeOnPreDrawListener(this);
+			public void onGlobalLayout(){
+				if(lastInsets==null || homeTabFragment==null || homeTabFragment.getView()==null)
+					return;
+				content.getViewTreeObserver().removeOnGlobalLayoutListener(this);
 				reapplyChildInsets();
-				return true;
 			}
 		});
 
@@ -222,15 +223,27 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 	// MAMMUT: on a retained recreation (e.g. the FAB-side toggle restarts the activity) the
 	// activity dispatches window insets before the child fragments' views exist, so their
 	// FragmentRootLinearLayout roots miss the status-bar top padding and the header draws
-	// under the status bar. Re-apply the cached top inset once the children have views.
+	// under the status bar. Re-apply the cached top inset once the children have views, and
+	// guarantee the root padding directly (the toolbar root does not fitSystemWindows, so the
+	// dispatch alone is not reliable across recreation).
 	private void reapplyChildInsets(){
 		if(lastInsets==null)
 			return;
-		WindowInsets topOnly=lastInsets.replaceSystemWindowInsets(0, lastInsets.getSystemWindowInsetTop(), 0, 0);
-		if(homeTabFragment!=null && homeTabFragment.getView()!=null)
-			homeTabFragment.onApplyWindowInsets(topOnly);
-		if(notificationsFragment!=null && notificationsFragment.getView()!=null)
-			notificationsFragment.onApplyWindowInsets(topOnly);
+		int top=lastInsets.getSystemWindowInsetTop();
+		WindowInsets topOnly=lastInsets.replaceSystemWindowInsets(0, top, 0, 0);
+		reapplyChildTopInset(homeTabFragment, topOnly, top);
+		reapplyChildTopInset(notificationsFragment, topOnly, top);
+	}
+
+	private void reapplyChildTopInset(AppKitFragment child, WindowInsets topOnly, int top){
+		if(child==null)
+			return;
+		View v=child.getView();
+		if(v==null)
+			return;
+		child.onApplyWindowInsets(topOnly);
+		if(v.getPaddingTop()!=top)
+			v.setPadding(v.getPaddingLeft(), top, v.getPaddingRight(), v.getPaddingBottom());
 	}
 
 	private Fragment fragmentForDestination(NavDestination destination){
