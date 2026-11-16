@@ -64,8 +64,11 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		accountID=getArguments().getString("account");
 		setTitle(R.string.app_name);
 
-		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.N)
-			setRetainInstance(true);
+		// MAMMUT: do NOT retain this fragment. Retaining it across activity.recreate()
+		// (the restart-to-apply settings such as the FAB side) duplicates the child timeline
+		// views and leaves the visible copy without its status-bar inset, drawing the header
+		// under the status bar. Recreating from saved state (the ChildFragmentPlan RESTORE
+		// path) rebuilds the children cleanly, exactly as process-death restoration does.
 
 		navMenuController=new NavMenuController(this);
 		navMenuController.setAccountID(accountID);

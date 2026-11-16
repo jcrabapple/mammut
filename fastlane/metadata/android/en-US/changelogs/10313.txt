@@ -1,0 +1,1 @@
+Fixed: switching the menu button between left and right no longer pushes the home header under the status bar. The home screen now rebuilds cleanly on the restart instead of duplicating its timeline views.
