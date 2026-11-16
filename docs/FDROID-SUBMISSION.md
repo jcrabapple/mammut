@@ -121,12 +121,13 @@ Metadata draft: `fdroid/app.mammut.android.yml` (gradle `fdroidRelease`, OpenJDK
 `AutoUpdateMode: Version`, `UpdateCheckMode: Tags`). Reproducible-build verification
 (`Binaries:` + `AllowedAPKSigningKeys:`) is optional and can be added after inclusion.
 
-## Decisions needed from Jason
-1. **Donation link** — README points to Moshidon's author (LucasGGamerM). F-Droid requires
-   upstream-verified donation links. List his, yours, or none?
-2. **Who files the IzzyOnDroid issue** — needs a Codeberg account and is a public submission
-   under your identity. File it yourself, or authorize me to file it via your account.
-3. **F-Droid main timing** — wait for ~3 months / a user base, or stay IzzyOnDroid-only for now.
+## Decisions (resolved 2026-11-16)
+1. **Donation link** — Moshidon's author (LucasGGamerM), matching the README. Already set in
+   `fdroid/app.mammut.android.yml` (`Donate: https://github.com/sponsors/LucasGGamerM`).
+2. **Who files the IzzyOnDroid issue** — Jason files it himself on Codeberg using the
+   ready-to-paste text above.
+3. **F-Droid main timing** — IzzyOnDroid first; revisit F-Droid main after ~3 months of
+   development or a demonstrated user base (Quality #6).
 
 ## Signing note
 F-Droid main signs its own build (F-Droid key) — users cannot upgrade in place from the
