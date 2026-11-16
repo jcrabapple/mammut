@@ -1,0 +1,45 @@
+# DRAFT F-Droid build metadata for Mammut.
+# Target file in fdroiddata: metadata/app.mammut.android.yml
+# Modeled on Moshidon's metadata/org.joinmastodon.android.moshinda.yml (same build system).
+# Verify the gradle flavor name and tag matching before submitting (see docs/FDROID-SUBMISSION.md).
+Categories:
+  - Connectivity
+  - Internet
+  - Social Network
+License: GPL-3.0-only
+AuthorName: Jason Crabtree
+AuthorWebSite: https://github.com/jcrabapple
+WebSite: https://github.com/jcrabapple/mammut
+SourceCode: https://github.com/jcrabapple/mammut
+IssueTracker: https://github.com/jcrabapple/mammut/issues
+Changelog: https://github.com/jcrabapple/mammut/releases
+# DECISION: donation link must be upstream-verified (F-Droid Security #2). The README asks
+# readers to donate to Moshidon's author. Confirm whether to list his link, your own, or none.
+Donate: https://github.com/sponsors/LucasGGamerM
+
+AutoName: Mammut
+
+RepoType: git
+Repo: https://github.com/jcrabapple/mammut.git
+
+# For reproducible-build verification (optional, can add after initial inclusion):
+# Binaries: https://github.com/jcrabapple/mammut/releases/download/v%v/mammut-%v.apk
+# AllowedAPKSigningKeys: 9e6c898feb404dee7f774d8b9f5586e27d4ad2b7b3e1644b5afb0f32dfe6f887
+
+Builds:
+  - versionName: 1.3.13
+    versionCode: 10313
+    commit: c55ee1ed5e3e983726cc9177ef9efb47d7cb8c69
+    subdir: mastodon
+    sudo:
+      - apt-get update
+      - apt-get install -y openjdk-17-jdk-headless
+      - update-alternatives --auto java
+    gradle:
+      - fdroidRelease
+    output: build/outputs/apk/fdroidRelease/*.apk
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 1.3.13
+CurrentVersionCode: 10313
