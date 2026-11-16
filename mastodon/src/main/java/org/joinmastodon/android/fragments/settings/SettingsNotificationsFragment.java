@@ -15,6 +15,7 @@ import android.widget.TextView;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.PushSubscriptionManager;
 import org.joinmastodon.android.api.session.AccountSession;
+import org.joinmastodon.android.api.session.AccountLocalPreferences;
 import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.model.PushSubscription;
 import org.joinmastodon.android.model.viewmodel.CheckableListItem;
@@ -126,7 +127,7 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 		GlobalUserPreferences.swapBookmarkWithBoostAction=swapBookmarkWithReblogItem.checked;
 		GlobalUserPreferences.enableDeleteNotifications=deleteNotificationsItem.checked;
 		GlobalUserPreferences.save();
-		if(needUpdateNotificationSettings && PushSubscriptionManager.arePushNotificationsAvailable()){
+		if(needUpdateNotificationSettings){
 			ps.alerts.mention=mentionsItem.checked;
 			ps.alerts.reblog=boostsItem.checked;
 			ps.alerts.favourite=favoritesItem.checked;
@@ -134,7 +135,20 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 			ps.alerts.poll=pollsItem.checked;
 			ps.alerts.status=statusesItem.checked;
 			ps.alerts.quote=quotesItem.checked;
-			AccountSessionManager.getInstance().getAccount(accountID).getPushSubscriptionManager().updatePushSettings(pushSubscription);
+			// MAMMUT: persist the selection locally ALWAYS, not only when a push device token
+			// exists. The old code gated the entire save on arePushNotificationsAvailable()
+			// (== deviceToken non-empty), so on UnifiedPush-only setups — or before push has
+			// registered — the toggles were never written and reverted on re-entering the screen.
+			AccountSession session=AccountSessionManager.getInstance().getAccount(accountID);
+			session.pushSubscription=ps;
+			AccountSessionManager.getInstance().writeAccountPushSettings(accountID);
+			AccountLocalPreferences lp=session.getLocalPreferences();
+			lp.notificationFilters=ps.alerts.clone();
+			lp.save();
+			// The server-side push sync still needs a registration; the local save stands alone.
+			if(PushSubscriptionManager.arePushNotificationsAvailable()){
+				session.getPushSubscriptionManager().updatePushSettings(pushSubscription);
+			}
 		}
 	}
 

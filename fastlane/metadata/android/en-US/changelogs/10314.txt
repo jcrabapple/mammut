@@ -1,0 +1,1 @@
+Fixed: the notification type toggles (mentions, boosts, favorites, follows, polls, statuses, quotes) in your account notification settings now stay saved after you leave the screen, including when using UnifiedPush. Previously they reverted if no push device token was registered.
