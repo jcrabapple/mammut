@@ -34,6 +34,14 @@ at all, and a donation matters more than a star on any fork:
   pretending a conversation is one column.
 - **Inline image descriptions**, off by default, for timelines where alt text matters.
 
+### Translation
+
+- **Mammut Translate** makes post translation work on any server. When your instance has no
+  translator of its own, or its translate call fails, Mammut falls back to a built-in open-source
+  LibreTranslate service hosted by the maintainer, so no third-party cloud and no API key are
+  involved. Your server's own translator is still tried first. In Display settings you can point
+  Mammut at your own LibreTranslate instance or turn the fallback off.
+
 ### Writing
 
 - **Drafts** that survive leaving the app, with their media, descriptions, content warnings and polls
@@ -81,7 +89,7 @@ at all, and a donation matters more than a star on any fork:
 - GPL-3.0, like upstream, with the complete source for every released build in this repository.
 
 Everything else Moshidon offers is still here: multiple accounts, crossposting, lists, filters, post
-editing, translation, pronouns, emoji reactions, and the rest.
+editing, pronouns, emoji reactions, and the rest.
 
 ## Install
 
@@ -108,13 +116,14 @@ Release builds are signed when `SIGNING_STORE_FILE`, `SIGNING_STORE_PASSWORD`, `
 `SIGNING_KEY_PASSWORD` are set. CI does this from the `KEYSTORE_BASE64` secret. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
-## Translations
+## App localization
 
 The app ships 79 locales inherited from Moshidon and the projects it came from. Mammut's own
 strings — Catch up, the Reading Room, typefaces, the upload messages — exist only in English, and
-show in English inside an otherwise translated app.
+show in English inside an otherwise translated app. (This is about the app's own interface text;
+translating other people's posts is Mammut Translate, above.)
 
-There is no translation service connected, and the inherited `crowdin.yml` was removed so nobody
+There is no localization service connected, and the inherited `crowdin.yml` was removed so nobody
 syncs into Moshidon's project by accident. Strings are plain Android resources in
 `mastodon/src/main/res/values/strings.xml`; a pull request is a perfectly good way to translate
 them.
