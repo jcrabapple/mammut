@@ -93,7 +93,13 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 					case FAVORITE -> R.string.user_favorited;
 					case UPDATE -> R.string.user_edited_post;
 					case QUOTED_UPDATE -> R.string.user_edited_quoted_post;
-					default -> throw new IllegalStateException("Unexpected value: "+notification.notification.type);
+					// MAMMUT: Mastodon 4.x admin notifications. The enum values were added in
+					// the 1.3.6 audit but never wired into this switch, so an admin.report
+					// notification hit the default and crashed the notifications screen.
+					case ADMIN_SIGN_UP -> R.string.mo_admin_signed_up;
+					case ADMIN_REPORT -> R.string.mo_admin_reported;
+					// Render any unrecognized type generically instead of crashing the list.
+					default -> R.string.mo_notification_fallback;
 				}, "{{name}}");
 			}
 			String[] parts=text.split(Pattern.quote("{{name}}"), 2);
@@ -227,12 +233,16 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 				case FOLLOW, FOLLOW_REQUEST -> R.drawable.ic_person_add_fill1_24px;
 				case POLL -> R.drawable.ic_insert_chart_fill1_24px;
 				case UPDATE, QUOTED_UPDATE -> R.drawable.ic_edit_24px;
-				default -> throw new IllegalStateException("Unexpected value: "+item.notification.notification.type);
+				// MAMMUT: admin notifications, plus a safe icon for any unrecognized type.
+				case ADMIN_SIGN_UP -> R.drawable.ic_fluent_person_available_24_filled;
+				case ADMIN_REPORT -> R.drawable.ic_fluent_warning_24_filled;
+				default -> R.drawable.ic_notifications_wght700fill1_20px;
 			});
 			icon.setImageTintList(ColorStateList.valueOf(UiUtils.getThemeColor(item.context, switch(item.notification.notification.type){
 				case FAVORITE -> R.attr.colorFavorite;
 				case REBLOG -> R.attr.colorBoost;
-				case FOLLOW, FOLLOW_REQUEST, UPDATE -> R.attr.colorM3Primary;
+				case FOLLOW, FOLLOW_REQUEST, UPDATE, ADMIN_SIGN_UP -> R.attr.colorM3Primary;
+				case ADMIN_REPORT -> R.attr.colorM3Error;
 				default -> R.attr.colorM3Outline;
 			})));
 			itemView.setPadding(itemView.getPaddingLeft(), itemView.getPaddingTop(), itemView.getPaddingRight(), item.notification.status==null ? V.dp(12) : 0);

@@ -204,8 +204,8 @@ public class PushNotificationFallbackTest{
 	@Test
 	public void adminNotificationsMapThroughFallbackWithoutThrowing(){
 		Map<NotificationType, Integer> titleRes=new HashMap<>();
-		titleRes.put(NotificationType.ADMIN_SIGN_UP, org.joinmastodon.android.R.string.user_followed_you);
-		titleRes.put(NotificationType.ADMIN_REPORT, org.joinmastodon.android.R.string.user_favorited);
+		titleRes.put(NotificationType.ADMIN_SIGN_UP, org.joinmastodon.android.R.string.mo_admin_signed_up);
+		titleRes.put(NotificationType.ADMIN_REPORT, org.joinmastodon.android.R.string.mo_admin_reported);
 		for(Map.Entry<NotificationType, Integer> e:titleRes.entrySet()){
 			Notification n=notification(e.getKey(), "5");
 			PushNotification pn=Fallback.build(STUB_STRINGS, n, STUB_TEXT);

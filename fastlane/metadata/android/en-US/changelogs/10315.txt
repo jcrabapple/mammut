@@ -1,0 +1,1 @@
+Fixed: opening Notifications no longer crashes when you have admin notifications (new sign-ups or reports). These now show with their own text and icon, and any unrecognized notification type renders generically instead of crashing the screen.

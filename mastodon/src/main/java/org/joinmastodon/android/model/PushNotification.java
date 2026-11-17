@@ -157,8 +157,8 @@ public class PushNotification extends BaseModel{
 				case STATUS -> R.string.sk_posted;
 				case UPDATE -> R.string.sk_posted;
 				case QUOTE, QUOTED_UPDATE -> R.string.user_quoted_post;
-				case ADMIN_SIGN_UP -> R.string.user_followed_you;
-				case ADMIN_REPORT -> R.string.user_favorited;
+				case ADMIN_SIGN_UP -> R.string.mo_admin_signed_up;
+				case ADMIN_REPORT -> R.string.mo_admin_reported;
 				default -> R.string.sk_posted;
 			};
 		}
