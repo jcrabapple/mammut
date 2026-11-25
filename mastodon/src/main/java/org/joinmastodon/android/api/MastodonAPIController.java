@@ -367,8 +367,11 @@ public class MastodonAPIController{
 				r.currentApiCall=null;
 			}
 		}
-		if(toRemove!=null)
-			thread.handler.removeCallbacks(toRemove);
+		if(toRemove!=null){
+			android.os.Handler h=thread.handler;
+			if(h!=null)
+				h.removeCallbacks(toRemove);
+		}
 		if(toCancel!=null)
 			toCancel.cancel();
 	}

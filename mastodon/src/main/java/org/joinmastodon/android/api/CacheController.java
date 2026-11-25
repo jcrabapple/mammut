@@ -487,7 +487,9 @@ public class CacheController{
 	}
 
 	private void cancelDelayedClose(){
-		databaseThread.handler.removeCallbacks(databaseCloseRunnable);
+		android.os.Handler h=databaseThread.handler;
+		if(h!=null)
+			h.removeCallbacks(databaseCloseRunnable);
 	}
 
 	private SQLiteDatabase getOrOpenDatabase(){

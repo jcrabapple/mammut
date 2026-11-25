@@ -607,7 +607,9 @@ public class AccountSessionManager{
 	}
 
 	private void cancelDelayedClose(){
-		CacheController.databaseThread.handler.removeCallbacks(databaseCloseRunnable);
+		android.os.Handler h=CacheController.databaseThread.handler;
+		if(h!=null)
+			h.removeCallbacks(databaseCloseRunnable);
 	}
 
 	private SQLiteDatabase getOrOpenDatabase(){

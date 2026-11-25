@@ -1,0 +1,1 @@
+Fixed: startup crash on launch caused by a null WorkerThread handler race in AccountSessionManager, CacheController, and MastodonAPIController.
