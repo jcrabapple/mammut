@@ -81,10 +81,10 @@ public class ExternalShareActivity extends FragmentStackActivity{
 			finish();
 			return;
 		}
-		// R1 F4: nulls and non-content schemes (file:, http:, …) never cross
-		// the external boundary — a file:// URI here would crash the app's
-		// own content-URI pipeline downstream.
-		mediaUris=ShareBoundary.sanitize(mediaUris);
+		// R1 F4 + Wave 2 S-M7: nulls, non-content schemes (file:, http:, …), and
+		// Mammut's own content providers (*.fileprovider, *.self_update_provider)
+		// never cross the external share boundary.
+		mediaUris=ShareBoundary.sanitize(mediaUris, getPackageName());
 
 		Bundle args=new Bundle();
 		args.putString("account", accountID);
@@ -136,21 +136,36 @@ public class ExternalShareActivity extends FragmentStackActivity{
 			return "content".equals(scheme);
 		}
 
+		/** Rejects our own app authorities so an external app cannot use Mammut as a confused deputy. */
+		static boolean acceptsAuthority(String authority, String ownPackageName){
+			if(authority==null || authority.isEmpty())
+				return false;
+			if(ownPackageName!=null && !ownPackageName.isEmpty()){
+				if(authority.equals(ownPackageName) || authority.startsWith(ownPackageName+"."))
+					return false;
+			}
+			return true;
+		}
+
 		/** EXTRA_STREAM wins when present and non-empty; ClipData is the fallback. */
 		static <T> List<T> preferExtraStream(List<T> extraStream, List<T> clipData){
 			return extraStream!=null && !extraStream.isEmpty() ? extraStream : clipData;
 		}
 
-		/** Drops nulls and non-content URIs. */
-		static List<Uri> sanitize(List<Uri> uris){
+		/** Drops nulls, non-content URIs, and URIs targeting Mammut's own providers. */
+		static List<Uri> sanitize(List<Uri> uris, String ownPackageName){
 			if(uris==null)
 				return null;
 			ArrayList<Uri> out=new ArrayList<>(uris.size());
 			for(Uri uri:uris){
-				if(uri!=null && acceptsScheme(uri.getScheme()))
+				if(uri!=null && acceptsScheme(uri.getScheme()) && acceptsAuthority(uri.getAuthority(), ownPackageName))
 					out.add(uri);
 			}
 			return out;
+		}
+
+		static List<Uri> sanitize(List<Uri> uris){
+			return sanitize(uris, null);
 		}
 	}
 

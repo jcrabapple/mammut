@@ -184,7 +184,24 @@ public class UiUtils{
 
 	private UiUtils(){}
 
+	/** MAMMUT: Wave 2 S-M4 — pure URL scheme policy, extracted for JVM tests without loading UiUtils.<clinit>. */
+	public static final class UrlPolicy{
+		private UrlPolicy(){}
+
+		public static boolean isAllowedBrowserUrl(String url){
+			if(url==null)
+				return false;
+			String trimmed=url.trim();
+			return trimmed.regionMatches(true, 0, "https://", 0, 8)
+					|| trimmed.regionMatches(true, 0, "http://", 0, 7);
+		}
+	}
+
 	public static void launchWebBrowser(Context context, String url){
+		if(!UrlPolicy.isAllowedBrowserUrl(url)){
+			Toast.makeText(context, R.string.no_app_to_handle_action, Toast.LENGTH_SHORT).show();
+			return;
+		}
 		// MAMMUT: port from upstream master — strip tracking parameters from opened links
 		if(GlobalUserPreferences.removeTrackingParams)
 			url=Tracking.removeTrackingParameters(url);
@@ -196,6 +213,7 @@ public class UiUtils{
 					.intent;
 		}else{
 			intent=new Intent(Intent.ACTION_VIEW);
+			intent.addCategory(Intent.CATEGORY_BROWSABLE);
 		}
 		intent.setData(Uri.parse(url));
 		intent.putExtra(Intent.EXTRA_REFERRER, Uri.parse("android-app://"+context.getPackageName()));

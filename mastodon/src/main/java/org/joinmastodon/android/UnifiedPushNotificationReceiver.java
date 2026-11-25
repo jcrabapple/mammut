@@ -40,8 +40,9 @@ public class UnifiedPushNotificationReceiver extends MessagingReceiver{
 
 	@Override
 	public void onNewEndpoint(@NonNull Context context, @NonNull PushEndpoint endpoint, @NonNull String instance){
-		// MAMMUT: audit S1.7 — the endpoint URL is a capability URL; only the host is logged
-		Log.d(TAG, "onNewEndpoint: "+org.joinmastodon.android.utils.UnifiedPushHelper.redactEndpoint(endpoint.getUrl())+" for "+instance);
+		// MAMMUT: audit S1.7 — the endpoint URL is a capability URL; debug-only redacted log
+		if(BuildConfig.DEBUG)
+			Log.d(TAG, "onNewEndpoint: "+org.joinmastodon.android.utils.UnifiedPushHelper.redactEndpoint(endpoint.getUrl()));
 		AccountSession account=AccountSessionManager.getInstance().tryGetAccount(instance);
 		if(account==null)
 			return;
@@ -54,33 +55,37 @@ public class UnifiedPushNotificationReceiver extends MessagingReceiver{
 
 	@Override
 	public void onRegistrationFailed(@NonNull Context context, @NonNull FailedReason reason, @NonNull String instance){
-		Log.d(TAG, "onRegistrationFailed: "+instance+" ("+reason+")");
+		if(BuildConfig.DEBUG)
+			Log.d(TAG, "onRegistrationFailed ("+reason+")");
 		android.widget.Toast.makeText(context, R.string.mo_up_failed, android.widget.Toast.LENGTH_LONG).show();
 		fallBackToFcm(instance);
 	}
 
 	@Override
 	public void onUnregistered(@NonNull Context context, @NonNull String instance){
-		Log.d(TAG, "onUnregistered: "+instance);
+		if(BuildConfig.DEBUG)
+			Log.d(TAG, "onUnregistered");
 		fallBackToFcm(instance);
 	}
 
 	private void fallBackToFcm(String instance){
 		AccountSession account=AccountSessionManager.getInstance().tryGetAccount(instance);
 		if(account!=null)
-			account.getPushSubscriptionManager().registerAccountForPush(null);
+			account.getPushSubscriptionManager().registerAccountForPush(account.pushSubscription);
 	}
 
 	@Override
 	public void onMessage(@NonNull Context context, @NonNull PushMessage message, @NonNull String instance){
-		Log.d(TAG, "onMessage for "+instance);
+		if(BuildConfig.DEBUG)
+			Log.d(TAG, "onMessage received");
 		AccountSession account=AccountSessionManager.getInstance().tryGetAccount(instance);
 		if(account==null)
 			return;
 		// MAMMUT: audit R3 F6 — the per-account pause must gate UnifiedPush exactly like FCM:
 		// no fetch, no shade notification, no unread increment while it is active
 		if(DeliveryGate.shouldDrop(account.getLocalPreferences().getNotificationsPauseEndTime(), System.currentTimeMillis())){
-			Log.i(TAG, "onMessage: dropping notification because user has paused notifications for this account");
+			if(BuildConfig.DEBUG)
+				Log.i(TAG, "onMessage: dropping notification because user has paused notifications for this account");
 			return;
 		}
 		if(message.getDecrypted()){
@@ -97,22 +102,27 @@ public class UnifiedPushNotificationReceiver extends MessagingReceiver{
 			}
 			if(pn!=null){
 				PushNotification validPn=pn;
-				new GetNotificationByID(validPn.notificationId)
-						.setCallback(new Callback<>(){
-							@Override
-							public void onSuccess(Notification result){
-								MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notify(context, validPn, instance, result));
-							}
+				try{
+					new GetNotificationByID(validPn.notificationId)
+							.setCallback(new Callback<>(){
+								@Override
+								public void onSuccess(Notification result){
+									MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notify(context, validPn, instance, result));
+								}
 
-							@Override
-							public void onError(ErrorResponse error){
-								MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notify(context, validPn, instance, null));
-							}
-						})
-						.exec(instance);
-				return;
+								@Override
+								public void onError(ErrorResponse error){
+									MastodonAPIController.runInBackground(()->new PushNotificationReceiver().notify(context, validPn, instance, null));
+								}
+							})
+							.exec(instance);
+					return;
+				}catch(IllegalArgumentException x){
+					Log.w(TAG, "onMessage: invalid notificationId in decrypted payload, falling back to fetch");
+				}
+			}else{
+				Log.w(TAG, "onMessage: decrypted payload failed validation, falling back to fetch");
 			}
-			Log.w(TAG, "onMessage: decrypted payload failed validation, falling back to fetch");
 		}
 		// The app cannot decrypt this payload (or it failed validation), so pull the newest
 		// notification instead.
@@ -128,7 +138,8 @@ public class UnifiedPushNotificationReceiver extends MessagingReceiver{
 
 					@Override
 					public void onError(ErrorResponse error){
-						Log.w(TAG, "onMessage: could not fetch the notification for "+instance);
+						if(BuildConfig.DEBUG)
+							Log.w(TAG, "onMessage: could not fetch notification");
 					}
 				})
 				.exec(instance);

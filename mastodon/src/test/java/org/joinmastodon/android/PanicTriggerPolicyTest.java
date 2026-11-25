@@ -36,4 +36,10 @@ public class PanicTriggerPolicyTest{
 	public void guardianPanicIsTrusted(){
 		assertTrue(PanicTriggerPolicy.shouldRespond("info.guardianproject.panic"));
 	}
+
+	@Test
+	public void ownPackageIsNeverTrusted(){
+		assertFalse(PanicTriggerPolicy.shouldRespond("app.mammut.android", "app.mammut.android"));
+		assertFalse(PanicTriggerPolicy.shouldRespond("info.guardianproject.ripple", "info.guardianproject.ripple"));
+	}
 }

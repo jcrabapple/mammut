@@ -103,4 +103,15 @@ public class ServerAboutPolicyTest{
 		String html="<h2>Rules</h2><p>No <b>spam</b>, <a href=\"https://example.social/about\">details</a></p><ul><li>one</li></ul>";
 		assertEquals(html, ServerAboutPolicy.sanitizeHtml(html));
 	}
+
+	@Test
+	public void sanitizeStripsStyleTagsAndInlineStylesAndHttpImages(){
+		String out=ServerAboutPolicy.sanitizeHtml(
+				"<style>body{display:none}</style><div style=\"position:fixed;inset:0\">hi</div><img src=\"http://tracker.example/p.png\">");
+		assertFalse(out.contains("<style"));
+		assertFalse(out.contains("display:none"));
+		assertFalse(out.contains("position:fixed"));
+		assertFalse(out.contains("http://tracker.example"));
+		assertTrue(out.contains("<div>hi</div>"));
+	}
 }

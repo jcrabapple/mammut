@@ -462,13 +462,16 @@ public class PushSubscriptionManager{
 							.putInt("version", BuildConfig.VERSION_CODE)
 							.putLong("lastRefresh", System.currentTimeMillis())
 							.apply();
-					Log.i(TAG, "Successfully registered for FCM");
+					if(BuildConfig.DEBUG)
+						Log.i(TAG, "Successfully registered for FCM");
 					registerAllAccountsForPush(true);
-				}else{
+				}else if(BuildConfig.DEBUG){
 					Log.e(TAG, "FCM registration intent did not contain registration_id: "+intent);
 					Bundle extras=intent.getExtras();
-					for(String key:extras.keySet()){
-						Log.i(TAG, key+" -> "+extras.get(key));
+					if(extras!=null){
+						for(String key:extras.keySet()){
+							Log.i(TAG, key+" -> "+extras.get(key));
+						}
 					}
 				}
 			}

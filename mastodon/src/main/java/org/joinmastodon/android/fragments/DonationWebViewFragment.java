@@ -41,6 +41,8 @@ public class DonationWebViewFragment extends WebViewFragment{
 
 	@Override
 	protected boolean shouldOverrideUrlLoading(WebResourceRequest req){
+		if(req==null || req.getUrl()==null || !"https".equalsIgnoreCase(req.getUrl().getScheme()))
+			return true;
 		String url=req.getUrl().buildUpon().clearQuery().fragment(null).build().toString();
 		if(url.equalsIgnoreCase(SUCCESS_URL)){
 			onSuccess();

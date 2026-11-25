@@ -27,6 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
           fetch-depth: 0
 
       # The mapsplatform secrets plugin requires local.properties to exist.
@@ -50,9 +51,13 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Run unit tests
+        run: ./gradlew :mastodon:testDebugUnitTest --console=plain
+
       - name: Decode release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -z "${KEYSTORE_BASE64:-}" ]; then
@@ -62,7 +67,7 @@ jobs:
           mkdir -p mastodon/keystore
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > mastodon/keystore/ci-release.jks
           keytool -list -keystore mastodon/keystore/ci-release.jks \
-            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" | head -20
+            -storepass:env KEYSTORE_PASSWORD | head -20
 
       - name: Assemble signed release
         env:
@@ -71,24 +76,35 @@ jobs:
         run: ./gradlew :mastodon:assembleGithubRelease --console=plain --stacktrace
 
       - name: Verify signature and checksum
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Refusing unexpected release tag format: $RELEASE_TAG" >&2
+            exit 1
+          fi
           APK=$(find mastodon/build/outputs/apk -name '*.apk' | head -1)
           echo "APK: $APK"
           APKSIGNER=$(command -v apksigner || echo "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools/35.0.0/apksigner")
           "$APKSIGNER" verify --print-certs "$APK"
-          cp "$APK" mammut-${GITHUB_REF_NAME#v}.apk
-          sha256sum "mammut-${GITHUB_REF_NAME#v}.apk" | tee mammut-${GITHUB_REF_NAME#v}.apk.sha256
+          cp "$APK" "mammut-${RELEASE_TAG#v}.apk"
+          sha256sum "mammut-${RELEASE_TAG#v}.apk" | tee "mammut-${RELEASE_TAG#v}.apk.sha256"
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          gh release create "$TAG" \
-            "mammut-${TAG#v}.apk" "mammut-${TAG#v}.apk.sha256" \
-            --repo "${{ github.repository }}" \
-            --title "Mammut ${TAG#v}" \
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Refusing unexpected release tag format: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            "mammut-${RELEASE_TAG#v}.apk" "mammut-${RELEASE_TAG#v}.apk.sha256" \
+            --repo "$REPO" \
+            --title "Mammut ${RELEASE_TAG#v}" \
             --generate-notes \
             --latest

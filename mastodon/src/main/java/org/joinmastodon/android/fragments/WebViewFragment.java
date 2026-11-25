@@ -62,6 +62,8 @@ public abstract class WebViewFragment extends LoaderFragment{
 			}
 		});
 		webView.getSettings().setJavaScriptEnabled(true);
+		webView.getSettings().setAllowFileAccess(false);
+		webView.getSettings().setAllowContentAccess(false);
 		return webView;
 	}
 

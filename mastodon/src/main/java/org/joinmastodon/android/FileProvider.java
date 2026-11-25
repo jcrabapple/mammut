@@ -781,7 +781,9 @@ public class FileProvider extends ContentProvider {
                 throw new IllegalArgumentException("Failed to resolve canonical path for " + file);
             }
 
-            if (!file.getPath().startsWith(root.getPath())) {
+            String rootPath = root.getPath();
+            String rootPrefix = rootPath.endsWith(File.separator) ? rootPath : rootPath + File.separator;
+            if (!file.getPath().equals(rootPath) && !file.getPath().startsWith(rootPrefix)) {
                 throw new SecurityException("Resolved path jumped beyond configured root");
             }
 

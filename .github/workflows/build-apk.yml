@@ -23,6 +23,9 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -55,30 +58,43 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # Secrets are not exposed to pull requests from forks, so only sign on push/dispatch.
+      - name: Run unit tests
+        run: ./gradlew :mastodon:testDebugUnitTest --console=plain
+
+      # Secrets are not exposed to pull requests from forks; only sign on mainline branches or manual dispatch.
       - name: Decode release keystore
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/mammut' || github.ref == 'refs/heads/feat/parity' || github.event_name == 'workflow_dispatch')
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
+          set -euo pipefail
           mkdir -p mastodon/keystore
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > mastodon/keystore/ci-release.jks
           keytool -list -keystore mastodon/keystore/ci-release.jks \
-            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" | head -20
+            -storepass:env KEYSTORE_PASSWORD | head -20
 
       - name: Assemble
         env:
           SIGNING_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: key0
+          INPUT_VARIANT: ${{ github.event.inputs.variant }}
         run: |
-          VARIANT="${{ github.event.inputs.variant }}"
-          VARIANT="${VARIANT:-githubRelease}"
-          if [ "$VARIANT" = "debug" ]; then TASK=":mastodon:assembleDebug"; else TASK=":mastodon:assembleGithubRelease"; fi
+          set -euo pipefail
+          VARIANT="${INPUT_VARIANT:-githubRelease}"
+          if [ "$VARIANT" = "debug" ]; then
+            TASK=":mastodon:assembleDebug"
+          elif [ "$VARIANT" = "githubRelease" ]; then
+            TASK=":mastodon:assembleGithubRelease"
+          else
+            echo "Unsupported variant: $VARIANT" >&2
+            exit 1
+          fi
           echo "Building $TASK"
           ./gradlew "$TASK" --console=plain --stacktrace
 
       - name: Verify APK signature
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/mammut' || github.ref == 'refs/heads/feat/parity' || github.event_name == 'workflow_dispatch')
         run: |
           set -euo pipefail
           APK=$(find mastodon/build/outputs/apk -name '*.apk' | head -1)

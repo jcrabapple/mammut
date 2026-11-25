@@ -66,10 +66,12 @@ public class SettingsServerAboutFragment extends LoaderFragment{
 	@Override
 	public View onCreateContentView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState){
 		webView=new WebView(getActivity());
-		// MAMMUT: audit S1.5 — instance extended descriptions are third-party HTML rendered
-		// in-process; JavaScript stays disabled and navigation is restricted to the scheme
-		// allowlist via ServerAboutPolicy.
+		// MAMMUT: audit S1.5 / Wave 2 S-L1 — instance extended descriptions are third-party
+		// HTML rendered in-process; disable JS and file/content URI access, and restrict
+		// navigation to the scheme allowlist via ServerAboutPolicy.
 		webView.getSettings().setJavaScriptEnabled(false);
+		webView.getSettings().setAllowFileAccess(false);
+		webView.getSettings().setAllowContentAccess(false);
 		webView.setWebViewClient(new WebViewClient(){
 			@Override
 			public void onPageFinished(WebView view, String url){
@@ -268,18 +270,24 @@ public class SettingsServerAboutFragment extends LoaderFragment{
 		}
 
 		// Instance extended descriptions are admin-controlled HTML from a third-party server.
-		// Strip active content (scriptable tags, inline event handlers, scriptable URL
-		// schemes) while leaving the formatting markup the renderer expects intact.
+		// Clean with Jsoup using an explicit allowlist (no scripts, styles, iframes, forms,
+		// event handlers, or inline style attributes that could overlay spoofed UI).
+		private static final org.jsoup.safety.Safelist ABOUT_SAFELIST=new org.jsoup.safety.Safelist()
+				.addTags("h1", "h2", "h3", "h4", "h5", "h6", "p", "br", "hr",
+						"b", "strong", "i", "em", "u", "s", "del", "small", "sub", "sup",
+						"code", "pre", "blockquote", "ul", "ol", "li", "dl", "dt", "dd",
+						"a", "img", "span", "div")
+				.addAttributes("a", "href")
+				.addAttributes("img", "src", "alt")
+				.addProtocols("a", "href", "https", "http", "mailto")
+				.addProtocols("img", "src", "https");
+
 		public static String sanitizeHtml(String html){
 			if(html==null)
 				return "";
-			String s=html;
-			s=s.replaceAll("(?is)<script[^>]*>.*?</script>", "");
-			s=s.replaceAll("(?is)<(script|iframe|object|embed|form|link|base|meta)\\b[^>]*>", "");
-			s=s.replaceAll("(?is)\\son[a-z]+\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", "");
-			s=s.replaceAll("(?i)javascript\\s*:", "");
-			s=s.replaceAll("(?i)data\\s*:\\s*text/html", "");
-			return s;
+			org.jsoup.nodes.Document.OutputSettings settings=new org.jsoup.nodes.Document.OutputSettings()
+					.prettyPrint(false);
+			return org.jsoup.Jsoup.clean(html, "", ABOUT_SAFELIST, settings);
 		}
 	}
 }

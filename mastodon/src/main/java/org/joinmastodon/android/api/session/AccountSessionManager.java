@@ -114,9 +114,10 @@ public class AccountSessionManager{
 		// MAMMUT: must match the ${oAuthScheme} manifest placeholder, otherwise the browser has
 		// no handler for the redirect and the authorization flow silently dead-ends.
 		builder.append("mammut-android-");
-		if(BuildConfig.BUILD_TYPE.equals("debug") || BuildConfig.BUILD_TYPE.equals("nightly")){
-			builder.append(BuildConfig.BUILD_TYPE);
-			builder.append('-');
+		if(BuildConfig.BUILD_TYPE.equals("debug") || BuildConfig.BUILD_TYPE.equals("githubDebug") || BuildConfig.BUILD_TYPE.equals("screenshotsUiTest")){
+			builder.append("debug-");
+		}else if(BuildConfig.BUILD_TYPE.equals("nightly")){
+			builder.append("nightly-");
 		}
 		builder.append("auth://callback");
 		return builder.toString();
@@ -306,6 +307,11 @@ public class AccountSessionManager{
 
 	public Application getAuthenticatingApp(){
 		return authenticatingApp;
+	}
+
+	public void clearAuthenticatingSession(){
+		authenticatingInstance=null;
+		authenticatingApp=null;
 	}
 
 	public void maybeUpdateLocalInfo(){

@@ -27,11 +27,12 @@ public class OAuthActivity extends Activity{
 		UiUtils.setUserPreferredTheme(this);
 		super.onCreate(savedInstanceState);
 		Uri uri=getIntent().getData();
-		if(uri==null || isTaskRoot()){
+		if(uri==null || isTaskRoot() || !isExpectedCallbackUri(uri)){
 			finish();
 			return;
 		}
 		if(uri.getQueryParameter("error")!=null){
+			AccountSessionManager.getInstance().clearAuthenticatingSession();
 			String error=uri.getQueryParameter("error_description");
 			if(TextUtils.isEmpty(error))
 				error=uri.getQueryParameter("error");
@@ -42,11 +43,13 @@ public class OAuthActivity extends Activity{
 		}
 		String code=uri.getQueryParameter("code");
 		if(TextUtils.isEmpty(code)){
+			AccountSessionManager.getInstance().clearAuthenticatingSession();
 			finish();
 			return;
 		}
 		Instance instance=AccountSessionManager.getInstance().getAuthenticatingInstance();
 		Application app=AccountSessionManager.getInstance().getAuthenticatingApp();
+		AccountSessionManager.getInstance().clearAuthenticatingSession();
 		if(instance==null || app==null){
 			finish();
 			return;
@@ -88,6 +91,12 @@ public class OAuthActivity extends Activity{
 					}
 				})
 				.execNoAuth(instance.getDomain());
+	}
+
+	private static boolean isExpectedCallbackUri(Uri uri){
+		Uri expected=Uri.parse(AccountSessionManager.REDIRECT_URI);
+		return expected.getScheme()!=null && expected.getScheme().equals(uri.getScheme())
+				&& expected.getHost()!=null && expected.getHost().equals(uri.getHost());
 	}
 
 	private void handleError(ErrorResponse error){

@@ -117,7 +117,7 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 		// The magic will happen on the onActivityResult Method
 		Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
 		intent.setType("application/json");
-		intent.putExtra(Intent.EXTRA_TITLE,"moshidon-exported-settings.json");
+		intent.putExtra(Intent.EXTRA_TITLE,"mammut-exported-settings.json");
 		startActivityForResult(intent, EXPORT_RESULT);
 	}
 
@@ -141,7 +141,7 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 	@Override
 	public void onActivityResult(int requestCode, int resultCode, Intent data){
 		if(requestCode==IMPORT_RESULT && resultCode==Activity.RESULT_OK){
-			Uri uri=data.getData();
+			Uri uri=data!=null ? data.getData() : null;
 			if(uri==null){
 				return;
 			}
@@ -225,7 +225,7 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 		}
 
 		if(requestCode==EXPORT_RESULT && resultCode==Activity.RESULT_OK){
-			if(data.getData()==null){
+			if(data==null || data.getData()==null){
 				Toast.makeText(getContext(), R.string.error_saving_file, Toast.LENGTH_SHORT).show();
 				return;
 			}
@@ -233,7 +233,7 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 				JsonObject jsonObject=SettingsSchema.buildExportDocument(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE,
 						GlobalUserPreferences.getPrefs().getAll(), collectAccountPrefs());
 
-				File file=new File(getContext().getCacheDir(), "moshidon-exported-settings.json");
+				File file=new File(getContext().getCacheDir(), "mammut-exported-settings.json");
 				// MAMMUT: audit R4 F11/S1#5 — try-with-resources on every stream, a null provider
 				// stream is a failure (not a silent NPE), and the cache copy is always deleted
 				try(FileWriter writer=new FileWriter(file)){
@@ -440,9 +440,9 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 			m.put("enhanceTextSize", PrefRule.bool());
 			m.put("fontFamily", PrefRule.enumValue(GlobalUserPreferences.FontFamily.class));
 			m.put("fabOnLeft", PrefRule.bool());
-			m.put("libreTranslateUrl", PrefRule.string());
-			m.put("libreTranslateApiKey", PrefRule.string());
-			m.put("translationService", PrefRule.enumValue(GlobalUserPreferences.TranslationService.class));
+			// MAMMUT: Wave 2 S-M2 — libreTranslateApiKey, libreTranslateUrl, and translationService
+			// are intentionally excluded from export and import so API secrets never leak into
+			// shareable JSON files and imported files cannot silently redirect post translations.
 			m.put("perAccountMigrationDone", PrefRule.bool());
 			return java.util.Collections.unmodifiableMap(m);
 		}
@@ -464,7 +464,7 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 			m.put("keepOnlyLatestNotification", PrefRule.bool());
 			m.put("emojiReactionsEnabled", PrefRule.bool());
 			m.put("showEmojiReactions", PrefRule.enumValue(AccountLocalPreferences.ShowEmojiReactions.class));
-			m.put("color", PrefRule.string());
+			m.put("color", PrefRule.enumValue(AccountLocalPreferences.ColorPreference.class));
 			m.put("recentCustomEmoji", PrefRule.string());
 			m.put("notificationFilters", PrefRule.string());
 			m.put("catchUpLastAt", PrefRule.aLong());
@@ -492,18 +492,31 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 			return null;
 		}
 
-		// MAMMUT: audit R4 F11 — the export document builder is pure so tests can assert the
-		// document is complete (all sections survive a serialize/parse/validate round-trip)
+		// MAMMUT: audit R4 F11 + Wave 2 S-M2 — filter exported maps through the explicit
+		// allowlist schemas so secrets (e.g. libreTranslateApiKey) and internal keys are never
+		// written into shareable JSON backups.
 		public static JsonObject buildExportDocument(String versionName, int versionCode, Map<String, ?> globalPrefs, LinkedHashMap<String, Map<String, ?>> accountPrefs){
+			Gson exportGson=new Gson();
 			JsonObject jsonObject=new JsonObject();
 			jsonObject.addProperty("schemaVersion", VERSION);
 			jsonObject.addProperty("versionName", versionName);
 			jsonObject.addProperty("versionCode", versionCode);
-			jsonObject.add("GlobalUserPreferences", new Gson().toJsonTree(globalPrefs));
+			jsonObject.add("GlobalUserPreferences", exportGson.toJsonTree(filterBySchema(globalPrefs, GLOBAL)));
 			for(Map.Entry<String, Map<String, ?>> account : accountPrefs.entrySet()){
-				jsonObject.add(account.getKey(), new Gson().toJsonTree(account.getValue()));
+				jsonObject.add(account.getKey(), exportGson.toJsonTree(filterBySchema(account.getValue(), ACCOUNT)));
 			}
 			return jsonObject;
+		}
+
+		private static LinkedHashMap<String, Object> filterBySchema(Map<String, ?> source, Map<String, PrefRule> schema){
+			LinkedHashMap<String, Object> out=new LinkedHashMap<>();
+			if(source==null)
+				return out;
+			for(Map.Entry<String, ?> entry : source.entrySet()){
+				if(schema.containsKey(entry.getKey()) && entry.getValue()!=null)
+					out.put(entry.getKey(), entry.getValue());
+			}
+			return out;
 		}
 	}
 

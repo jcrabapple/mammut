@@ -188,7 +188,7 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 					.setPriority(Notification.PRIORITY_DEFAULT)
 					.setDefaults(Notification.DEFAULT_SOUND | Notification.DEFAULT_VIBRATE);
 		}
-		Intent contentIntent=new Intent(context, MainActivity.class);
+		Intent contentIntent=new Intent(context, NotificationTapActivity.class);
 		contentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 		contentIntent.putExtra("fromNotification", true);
 		contentIntent.putExtra("accountID", accountID);

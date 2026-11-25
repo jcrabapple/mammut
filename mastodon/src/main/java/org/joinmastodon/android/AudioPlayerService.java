@@ -90,8 +90,8 @@ public class AudioPlayerService extends Service{
 //		registerReceiver(receiver, new IntentFilter(Intent.ACTION_MEDIA_BUTTON));
 		registerReceiver(receiver, new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY));
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.TIRAMISU){
-			registerReceiver(receiver, new IntentFilter(ACTION_PLAY_PAUSE), RECEIVER_EXPORTED);
-			registerReceiver(receiver, new IntentFilter(ACTION_STOP), RECEIVER_EXPORTED);
+			registerReceiver(receiver, new IntentFilter(ACTION_PLAY_PAUSE), RECEIVER_NOT_EXPORTED);
+			registerReceiver(receiver, new IntentFilter(ACTION_STOP), RECEIVER_NOT_EXPORTED);
 		}else{
 			registerReceiver(receiver, new IntentFilter(ACTION_PLAY_PAUSE));
 			registerReceiver(receiver, new IntentFilter(ACTION_STOP));
@@ -277,7 +277,7 @@ public class AudioPlayerService extends Service{
 				.setContentText(HtmlParser.strip(status.content))
 				.setOngoing(!dismissable)
 				.setShowWhen(false)
-				.setDeleteIntent(PendingIntent.getBroadcast(this, 3, new Intent(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE));
+				.setDeleteIntent(PendingIntent.getBroadcast(this, 3, new Intent(ACTION_STOP).setPackage(getPackageName()), PendingIntent.FLAG_IMMUTABLE));
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O){
 			bldr.setChannelId("audioPlayer");
 		}
@@ -290,7 +290,7 @@ public class AudioPlayerService extends Service{
 			boolean isPlaying=player.isPlaying();
 			bldr.addAction(new Notification.Action.Builder(Icon.createWithResource(this, isPlaying ? R.drawable.ic_pause_24 : R.drawable.ic_play_24),
 						getString(isPlaying ? R.string.pause : R.string.play),
-						PendingIntent.getBroadcast(this, 2, new Intent(ACTION_PLAY_PAUSE), PendingIntent.FLAG_IMMUTABLE))
+						PendingIntent.getBroadcast(this, 2, new Intent(ACTION_PLAY_PAUSE).setPackage(getPackageName()), PendingIntent.FLAG_IMMUTABLE))
 					.build());
 			style.setShowActionsInCompactView(0);
 		}

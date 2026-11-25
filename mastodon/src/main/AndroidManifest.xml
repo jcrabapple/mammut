@@ -36,7 +36,7 @@
 
 	<application
 		android:name=".MastodonApp"
-		android:allowBackup="true"
+		android:allowBackup="false"
 		android:fullBackupContent="@xml/backup_rules"
 		android:dataExtractionRules="@xml/data_extraction_rules"
 		android:label="@string/mo_app_name"
@@ -101,6 +101,9 @@
 			</intent-filter>
 		</activity>
 		<activity android:name=".ExitActivity" android:exported="false"
+			android:theme="@android:style/Theme.NoDisplay"/>
+		<activity android:name=".NotificationTapActivity" android:exported="false"
+			android:noHistory="true"
 			android:theme="@android:style/Theme.NoDisplay"/>
 		<activity android:name=".ChooseAccountForComposeActivity" android:exported="true"
 			android:configChanges="orientation|screenSize" android:windowSoftInputMode="adjustResize"

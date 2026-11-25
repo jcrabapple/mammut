@@ -41,6 +41,8 @@ public class SecurityConfigFilesTest{
 	public void releaseBaseConfigHasNoUserTrustAnchor() throws IOException{
 		String xml=readResXml("network_security_config.xml");
 		String base=baseConfigSection(xml);
+		assertTrue("release base-config must disable cleartext HTTP for API 23-27",
+				base.contains("cleartextTrafficPermitted=\"false\""));
 		assertFalse("user CAs must not be in the release base trust anchors",
 				base.contains("<certificates src=\"user\""));
 		assertTrue(base.contains("<certificates src=\"system\""));
@@ -70,5 +72,28 @@ public class SecurityConfigFilesTest{
 		assertTrue(xml.contains("<device-transfer>"));
 		assertTrue(xml.contains("<exclude domain=\"database\" path=\"accounts.db\""));
 		assertTrue(xml.contains("<exclude domain=\"sharedpref\" path=\"account_manager.xml\""));
+		assertTrue(xml.contains("<exclude domain=\"database\" path=\".\""));
+		assertTrue(xml.contains("<exclude domain=\"sharedpref\" path=\".\""));
+		assertTrue(xml.contains("<exclude domain=\"file\" path=\".\""));
+	}
+
+	@Test
+	public void manifestDisablesCloudBackup() throws IOException{
+		String[] candidates={
+				"src/main/AndroidManifest.xml",
+				"mastodon/src/main/AndroidManifest.xml",
+				"../mastodon/src/main/AndroidManifest.xml",
+		};
+		String manifest=null;
+		for(String candidate : candidates){
+			Path p=Paths.get(System.getProperty("user.dir", ".")).resolve(candidate);
+			if(Files.exists(p)){
+				manifest=new String(Files.readAllBytes(p), java.nio.charset.StandardCharsets.UTF_8);
+				break;
+			}
+		}
+		assertTrue("AndroidManifest.xml found", manifest!=null);
+		assertTrue("android:allowBackup must be false", manifest.contains("android:allowBackup=\"false\""));
+		assertFalse("android:allowBackup must not be true", manifest.contains("android:allowBackup=\"true\""));
 	}
 }

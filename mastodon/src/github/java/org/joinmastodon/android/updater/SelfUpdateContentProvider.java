@@ -50,8 +50,10 @@ public class SelfUpdateContentProvider extends ContentProvider{
 	@Nullable
 	@Override
 	public ParcelFileDescriptor openFile(@NonNull Uri uri, @NonNull String mode) throws FileNotFoundException{
-		if(isCorrectUri(uri)){
-			return ParcelFileDescriptor.open(((GithubSelfUpdaterImpl)GithubSelfUpdater.getInstance()).getUpdateApkFile(), ParcelFileDescriptor.MODE_READ_ONLY);
+		if(isCorrectUri(uri) && "r".equals(mode)){
+			java.io.File apk=((GithubSelfUpdaterImpl)GithubSelfUpdater.getInstance()).getUpdateApkFile();
+			if(apk!=null && apk.isFile())
+				return ParcelFileDescriptor.open(apk, ParcelFileDescriptor.MODE_READ_ONLY);
 		}
 		throw new FileNotFoundException();
 	}

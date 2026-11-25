@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MAMMUT: audit S1.6 — cloud/device backup must not include credential stores.
-     accounts.db holds session tokens and OAuth client secrets; account_manager.xml is the
-     account registry. Everything else (settings, drafts, caches) stays backupable. -->
+<!-- MAMMUT: cloud/device backup is disabled (android:allowBackup="false"); settings transfer
+     uses explicit Settings Export. These exclusions remain as defense-in-depth so no
+     databases, credentials, push keys, or drafts ever leave the device via backup. -->
 <full-backup-content>
+	<exclude domain="database" path="."/>
 	<exclude domain="database" path="accounts.db"/>
+	<exclude domain="sharedpref" path="."/>
 	<exclude domain="sharedpref" path="account_manager.xml"/>
+	<exclude domain="file" path="."/>
 </full-backup-content>

@@ -65,4 +65,15 @@ public class ExternalShareBoundaryTest{
 		List<String> empty=Collections.emptyList();
 		assertSame(empty, ShareBoundary.preferExtraStream(null, empty));
 	}
+
+	@Test
+	public void ownAuthoritiesAreRejectedAcrossBoundary(){
+		assertFalse(ShareBoundary.acceptsAuthority("app.mammut.android.fileprovider", "app.mammut.android"));
+		assertFalse(ShareBoundary.acceptsAuthority("app.mammut.android.self_update_provider", "app.mammut.android"));
+		assertFalse(ShareBoundary.acceptsAuthority("app.mammut.android", "app.mammut.android"));
+		assertFalse(ShareBoundary.acceptsAuthority(null, "app.mammut.android"));
+		assertFalse(ShareBoundary.acceptsAuthority("", "app.mammut.android"));
+		assertTrue(ShareBoundary.acceptsAuthority("com.android.providers.media.documents", "app.mammut.android"));
+		assertTrue(ShareBoundary.acceptsAuthority("app.mammut.android.debug.other", "app.mammut.android.release"));
+	}
 }

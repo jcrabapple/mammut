@@ -68,17 +68,17 @@ public class MainActivity extends FragmentStackActivity{
 	protected void onNewIntent(Intent intent){
 		super.onNewIntent(intent);
 		setIntent(intent);
-		if(intent.getBooleanExtra("fromNotification", false)){
-			String accountID=intent.getStringExtra("accountID");
-			AccountSession accountSession;
+		NotificationHandoff.Entry handoff=NotificationHandoff.take(intent.getStringExtra(EXTRA_NOTIFICATION_HANDOFF));
+		intent.removeExtra(EXTRA_NOTIFICATION_HANDOFF);
+		if(handoff!=null){
+			String accountID=handoff.accountID;
 			try{
-				accountSession=AccountSessionManager.getInstance().getAccount(accountID);
+				AccountSessionManager.getInstance().getAccount(accountID);
 			}catch(IllegalStateException x){
 				return;
 			}
-			if(intent.hasExtra("notification")){
-				Notification notification=Parcels.unwrap(intent.getParcelableExtra("notification"));
-				showFragmentForNotification(notification, accountID);
+			if(handoff.notification!=null){
+				showFragmentForNotification(handoff.notification, accountID);
 			}else{
 				AccountSessionManager.getInstance().setLastActiveAccountID(accountID);
 				Bundle args=new Bundle();
@@ -142,6 +142,8 @@ public class MainActivity extends FragmentStackActivity{
 	}
 
 	private void showFragmentForNotification(Notification notification, String accountID){
+		if(notification==null)
+			return;
 		Fragment fragment;
 		Bundle args=new Bundle();
 		args.putString("account", accountID);
@@ -155,16 +157,16 @@ public class MainActivity extends FragmentStackActivity{
 		if(notification.status!=null){
 			fragment=new ThreadFragment();
 			args.putParcelable("status", Parcels.wrap(notification.status));
-		}else{
+		}else if(notification.account!=null){
 			fragment=new ProfileFragment();
 			args.putParcelable("profileAccount", Parcels.wrap(notification.account));
+		}else{
+			return;
 		}
 		fragment.setArguments(args);
 		showFragment(fragment);
 		Intent intent=getIntent();
-		intent.removeExtra("fromNotification");
-		intent.removeExtra("notification");
-		intent.removeExtra("accountID");
+		intent.removeExtra(EXTRA_NOTIFICATION_HANDOFF);
 		setIntent(intent);
 	}
 
@@ -199,11 +201,12 @@ public class MainActivity extends FragmentStackActivity{
 			AccountSession session;
 			Bundle args=new Bundle();
 			Intent intent=getIntent();
-			if(intent.getBooleanExtra("fromNotification", false)){
-				String accountID=intent.getStringExtra("accountID");
+			NotificationHandoff.Entry handoff=NotificationHandoff.take(intent.getStringExtra(EXTRA_NOTIFICATION_HANDOFF));
+			intent.removeExtra(EXTRA_NOTIFICATION_HANDOFF);
+			if(handoff!=null){
 				try{
-					session=AccountSessionManager.getInstance().getAccount(accountID);
-					if(!intent.hasExtra("notification"))
+					session=AccountSessionManager.getInstance().getAccount(handoff.accountID);
+					if(handoff.notification==null)
 						args.putString("tab", "notifications");
 				}catch(IllegalStateException x){
 					session=AccountSessionManager.getInstance().getLastActiveAccount();
@@ -215,15 +218,8 @@ public class MainActivity extends FragmentStackActivity{
 			Fragment fragment=session.activated ? new HomeFragment() : new AccountActivationFragment();
 			fragment.setArguments(args);
 			showFragmentClearingBackStack(fragment);
-			if(intent.getBooleanExtra("fromNotification", false) && intent.hasExtra("notification")){
-				// Parcelables might not be compatible across app versions so this protects against possible crashes
-				// when a notification was received, then the app was updated, and then the user opened the notification
-				try{
-					Notification notification=Parcels.unwrap(intent.getParcelableExtra("notification"));
-					showFragmentForNotification(notification, session.getID());
-				}catch(BadParcelableException x){
-					Log.w(TAG, x);
-				}
+			if(handoff!=null && handoff.notification!=null){
+				showFragmentForNotification(handoff.notification, session.getID());
 			}else if(intent.getBooleanExtra("compose", false)){
 				showCompose();
 			}else if(intent.getBooleanExtra("explore", false) && fragment instanceof HomeFragment hf){
@@ -239,28 +235,58 @@ public class MainActivity extends FragmentStackActivity{
 
 	// MOSHIDON:
 	public AccountSession getCurrentSession(){
-		AccountSession session;
-		Bundle args=new Bundle();
 		Intent intent=getIntent();
-		if(intent.hasExtra("fromExternalShare")) {
-			return AccountSessionManager.getInstance()
-					.getAccount(intent.getStringExtra("account"));
+		NotificationHandoff.Entry handoff=NotificationHandoff.peek(intent!=null ? intent.getStringExtra(EXTRA_NOTIFICATION_HANDOFF) : null);
+		if(handoff!=null){
+			try{
+				return AccountSessionManager.getInstance().getAccount(handoff.accountID);
+			}catch(IllegalStateException ignored){
+				return AccountSessionManager.getInstance().getLastActiveAccount();
+			}
+		}
+		return AccountSessionManager.getInstance().getLastActiveAccount();
+	}
+
+	public static final String EXTRA_NOTIFICATION_HANDOFF="notificationHandoffToken";
+
+	/**
+	 * MAMMUT: Wave 2 S-M6 — in-process one-shot handoff between unexported
+	 * {@link NotificationTapActivity} and exported {@link MainActivity}, preventing
+	 * external apps from forging notification Parcelables or crashing onNewIntent/onCreate.
+	 */
+	public static final class NotificationHandoff{
+		public static final class Entry{
+			public final String accountID;
+			@Nullable
+			public final Notification notification;
+
+			Entry(String accountID, @Nullable Notification notification){
+				this.accountID=accountID;
+				this.notification=notification;
+			}
 		}
 
-		boolean fromNotification = intent.getBooleanExtra("fromNotification", false);
-		boolean hasNotification = intent.hasExtra("notification");
-		if(fromNotification){
-			String accountID=intent.getStringExtra("accountID");
-			try{
-				session=AccountSessionManager.getInstance().getAccount(accountID);
-				if(!hasNotification) args.putString("tab", "notifications");
-			}catch(IllegalStateException x){
-				session=AccountSessionManager.getInstance().getLastActiveAccount();
-			}
-		}else{
-			session=AccountSessionManager.getInstance().getLastActiveAccount();
+		private static final java.util.concurrent.ConcurrentHashMap<String, Entry> PENDING=new java.util.concurrent.ConcurrentHashMap<>();
+
+		private NotificationHandoff(){}
+
+		public static String put(String accountID, @Nullable Notification notification){
+			if(PENDING.size()>32)
+				PENDING.clear();
+			String token=java.util.UUID.randomUUID().toString();
+			PENDING.put(token, new Entry(accountID, notification));
+			return token;
 		}
-		return session;
+
+		@Nullable
+		public static Entry peek(@Nullable String token){
+			return token==null ? null : PENDING.get(token);
+		}
+
+		@Nullable
+		public static Entry take(@Nullable String token){
+			return token==null ? null : PENDING.remove(token);
+		}
 	}
 
 	public Fragment getTopmostFragment(){

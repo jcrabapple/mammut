@@ -3,7 +3,7 @@
      MitM vector for credential-bearing API traffic, so they are moved to debug-overrides
      (debuggable builds only) where proxy debugging still works. -->
 <network-security-config>
-	<base-config>
+	<base-config cleartextTrafficPermitted="false">
 		<trust-anchors>
 			<certificates src="system" />
 		</trust-anchors>

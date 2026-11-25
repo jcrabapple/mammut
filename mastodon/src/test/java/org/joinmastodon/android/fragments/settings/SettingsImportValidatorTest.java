@@ -210,4 +210,35 @@ public class SettingsImportValidatorTest{
 		assertEquals(135, doc.get("versionCode").getAsInt());
 		assertTrue(doc.has("GlobalUserPreferences"));
 	}
+
+	@Test
+	public void translationSecretsAndEndpointsExcludedFromExportAndImport() throws Exception{
+		Map<String, Object> globalIn=mapOf(
+				"playGifs", true,
+				"libreTranslateApiKey", "super-secret-key",
+				"libreTranslateUrl", "https://evil.example/translate",
+				"translationService", "CUSTOM"
+		);
+		JsonObject doc=SettingsSchema.buildExportDocument("1.3.15", 10315, globalIn, new LinkedHashMap<>());
+		JsonObject exportedGlobal=doc.getAsJsonObject("GlobalUserPreferences");
+		assertTrue(exportedGlobal.has("playGifs"));
+		assertFalse(exportedGlobal.has("libreTranslateApiKey"));
+		assertFalse(exportedGlobal.has("libreTranslateUrl"));
+		assertFalse(exportedGlobal.has("translationService"));
+
+		LinkedHashMap<String, Object> imported=SettingsImportValidator.validate(globalIn, SettingsSchema.GLOBAL);
+		assertEquals(Boolean.TRUE, imported.get("playGifs"));
+		assertFalse(imported.containsKey("libreTranslateApiKey"));
+		assertFalse(imported.containsKey("libreTranslateUrl"));
+		assertFalse(imported.containsKey("translationService"));
+	}
+
+	@Test
+	public void accountColorRejectsUnknownEnumValue(){
+		try{
+			SettingsImportValidator.validate(mapOf("color", "INVALID_COLOR"), SettingsSchema.ACCOUNT);
+			fail("expected rejection");
+		}catch(SettingsImportException expected){
+		}
+	}
 }
