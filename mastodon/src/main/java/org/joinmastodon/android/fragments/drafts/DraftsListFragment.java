@@ -1,5 +1,6 @@
 package org.joinmastodon.android.fragments.drafts;
 
+import android.app.Activity;
 import android.app.Fragment;
 import android.app.FragmentTransaction;
 import android.os.Bundle;
@@ -125,6 +126,10 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 				// page's hidden state, so visiblePage can be rebuilt from it.
 				visiblePage=draftsPage.isHidden() ? scheduledPage : draftsPage;
 			}
+			// Wave 3 Q-H14: keep TabLayout selection in sync with restored visiblePage
+			int restoredTab=visiblePage==scheduledPage ? 1 : 0;
+			if(restoredTab<tabLayout.getTabCount() && tabLayout.getSelectedTabPosition()!=restoredTab)
+				tabLayout.getTabAt(restoredTab).select();
 		}
 		return view;
 	}
@@ -229,11 +234,11 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 
 		private void loadDrafts(){
 			DraftStore store=new DraftStore(MastodonApp.context, accountID);
-			MastodonAPIController.runInBackground(()->{
+			DraftStore.runInBackground(()->{
 				List<ComposeDraft> result=store.list();
-				if(getActivity()==null)
-					return;
 				UiUtils.runOnUiThread(()->{
+					if(getActivity()==null || list==null || adapter==null)
+						return;
 					drafts.clear();
 					drafts.addAll(result);
 					loaded=true;
@@ -244,12 +249,16 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 		}
 
 		private void updateEmpty(){
+			if(emptyView==null || list==null)
+				return;
 			boolean empty=drafts.isEmpty();
 			emptyView.setVisibility(empty ? View.VISIBLE : View.GONE);
 			list.setVisibility(empty ? View.GONE : View.VISIBLE);
 		}
 
 		private void openDraft(int position){
+			if(position<0 || position>=drafts.size() || getActivity()==null)
+				return;
 			ComposeDraft d=drafts.get(position);
 			Bundle args=new Bundle();
 			args.putString("account", accountID);
@@ -257,21 +266,27 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 			Nav.go(getActivity(), ComposeFragment.class, args);
 		}
 
-		private void confirmDeleteDraft(int position){
+		private void confirmDeleteDraft(ComposeDraft draft){
+			if(getActivity()==null)
+				return;
 			new M3AlertDialogBuilder(getActivity())
 					.setTitle(R.string.delete_draft)
 					.setMessage(R.string.delete_draft_message)
-					.setPositiveButton(R.string.delete, (dlg, which)->deleteDraft(position))
+					.setPositiveButton(R.string.delete, (dlg, which)->deleteDraft(draft))
 					.setNegativeButton(R.string.cancel, null)
 					.show();
 		}
 
-		private void deleteDraft(int position){
-			ComposeDraft d=drafts.remove(position);
-			adapter.notifyItemRemoved(position);
-			updateEmpty();
+		private void deleteDraft(ComposeDraft d){
+			int idx=drafts.indexOf(d);
+			if(idx>=0){
+				drafts.remove(idx);
+				if(adapter!=null)
+					adapter.notifyItemRemoved(idx);
+				updateEmpty();
+			}
 			// The store removes the directory with the media copies inside it
-			MastodonAPIController.runInBackground(()->new DraftStore(MastodonApp.context, accountID).delete(d.id));
+			DraftStore.runInBackground(()->new DraftStore(MastodonApp.context, accountID).delete(d.id));
 		}
 
 		private String draftTitle(ComposeDraft d){
@@ -327,8 +342,8 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 					menu.inflate(R.menu.draft_row);
 					menu.setOnMenuItemClickListener(item->{
 						int pos=holder.getAdapterPosition();
-						if(pos!=RecyclerView.NO_POSITION)
-							confirmDeleteDraft(pos);
+						if(pos!=RecyclerView.NO_POSITION && pos<drafts.size())
+							confirmDeleteDraft(drafts.get(pos));
 						return true;
 					});
 					menu.show();
@@ -388,6 +403,10 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 
 		@Override
 		public void onDestroy(){
+			if(currentLoadRequest!=null){
+				currentLoadRequest.cancel();
+				currentLoadRequest=null;
+			}
 			E.unregister(this);
 			super.onDestroy();
 		}
@@ -432,7 +451,13 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 			return view;
 		}
 
+		private me.grishka.appkit.api.APIRequest<?> currentLoadRequest;
+
 		private void reload(){
+			if(currentLoadRequest!=null){
+				currentLoadRequest.cancel();
+				currentLoadRequest=null;
+			}
 			loading=false;
 			nextMaxID=null;
 			loadPage(null);
@@ -440,14 +465,15 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 
 		private void loadPage(String maxID){
 			loading=true;
-			new GetScheduledStatuses(maxID, PAGE_SIZE)
+			currentLoadRequest=new GetScheduledStatuses(maxID, PAGE_SIZE)
 					.setCallback(new Callback<>(){
 						@Override
 						public void onSuccess(HeaderPaginationList<ScheduledStatus> result){
+							currentLoadRequest=null;
 							loading=false;
 							loaded=true;
 							nextMaxID=result.getNextPageMaxID();
-							if(list==null || adapter==null)
+							if(getActivity()==null || list==null || adapter==null)
 								return;
 							if(maxID==null)
 								statuses.clear();
@@ -461,6 +487,7 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 
 						@Override
 						public void onError(ErrorResponse error){
+							currentLoadRequest=null;
 							loading=false;
 							loaded=true;
 							updateEmpty();
@@ -472,6 +499,8 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 		}
 
 		private void updateEmpty(){
+			if(emptyView==null || list==null)
+				return;
 			boolean empty=statuses.isEmpty();
 			emptyView.setVisibility(empty ? View.VISIBLE : View.GONE);
 			list.setVisibility(empty ? View.GONE : View.VISIBLE);
@@ -507,19 +536,18 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 			return TextUtils.join(" · ", parts);
 		}
 
-		private void confirmCancel(int position){
+		private void confirmCancel(ScheduledStatus status){
+			if(getActivity()==null)
+				return;
 			new M3AlertDialogBuilder(getActivity())
 					.setTitle(R.string.cancel_scheduled_post)
 					.setMessage(R.string.cancel_scheduled_post_message)
-					.setPositiveButton(R.string.cancel_scheduled_post_action, (dlg, which)->cancelScheduled(position))
+					.setPositiveButton(R.string.cancel_scheduled_post_action, (dlg, which)->cancelScheduled(status))
 					.setNegativeButton(R.string.keep, null)
 					.show();
 		}
 
-		private void cancelScheduled(int position){
-			if(position<0 || position>=statuses.size())
-				return;
-			ScheduledStatus s=statuses.get(position);
+		private void cancelScheduled(ScheduledStatus s){
 			new DeleteScheduledStatus(s.id)
 					.setCallback(new Callback<>(){
 						@Override
@@ -527,7 +555,8 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 							int idx=statuses.indexOf(s);
 							if(idx>=0){
 								statuses.remove(idx);
-								adapter.notifyItemRemoved(idx);
+								if(adapter!=null)
+									adapter.notifyItemRemoved(idx);
 								updateEmpty();
 							}
 							E.post(new ScheduledStatusDeletedEvent(s.id, accountID));
@@ -555,12 +584,15 @@ public class DraftsListFragment extends MastodonToolbarFragment{
 				holder.title.setText(rowTitle(s));
 				holder.subtitle.setText(rowSubtitle(s));
 				holder.overflow.setOnClickListener(v->{
-					PopupMenu menu=new PopupMenu(getActivity(), holder.overflow);
+					Activity a=getActivity();
+					if(a==null)
+						return;
+					PopupMenu menu=new PopupMenu(a, holder.overflow);
 					menu.inflate(R.menu.scheduled_row);
 					menu.setOnMenuItemClickListener(item->{
 						int pos=holder.getAdapterPosition();
-						if(pos!=RecyclerView.NO_POSITION)
-							confirmCancel(pos);
+						if(pos!=RecyclerView.NO_POSITION && pos<statuses.size())
+							confirmCancel(statuses.get(pos));
 						return true;
 					});
 					menu.show();

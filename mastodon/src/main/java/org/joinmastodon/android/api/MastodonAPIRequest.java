@@ -71,7 +71,15 @@ public abstract class MastodonAPIRequest<T> extends APIRequest<T>{
 		if(BuildConfig.DEBUG)
 			Log.d(TAG, "canceling request "+this);
 		gate.cancel();
+		releaseRequestResources();
+		dismissProgressDialogSafely();
 	}
+
+	/**
+	 * Hook for requests holding temporary request-body files (e.g. resized images) to release
+	 * them on terminal completion, pre-enqueue cancel, or body-build failure.
+	 */
+	protected void releaseRequestResources(){}
 
 	@Override
 	public APIRequest<T> exec(){
@@ -174,7 +182,26 @@ public abstract class MastodonAPIRequest<T> extends APIRequest<T>{
 
 	@Override
 	public MastodonAPIRequest<T> setCallback(Callback<T> callback){
-		super.setCallback(callback);
+		if(callback==null){
+			super.setCallback(null);
+			return this;
+		}
+		// MAMMUT: Wave 3 Q-H13 — recheck cancellation on the UI thread immediately before
+		// delivering callbacks so a UI-thread cancel() that landed after OkHttp posted the
+		// completion runnable never delivers stale results.
+		super.setCallback(new Callback<>(){
+			@Override
+			public void onSuccess(T result){
+				if(!gate.isCanceled())
+					callback.onSuccess(result);
+			}
+
+			@Override
+			public void onError(ErrorResponse error){
+				if(!gate.isCanceled())
+					callback.onError(error);
+			}
+		});
 		return this;
 	}
 
@@ -229,9 +256,27 @@ public abstract class MastodonAPIRequest<T> extends APIRequest<T>{
 
 	@Override
 	protected void onRequestDone(){
-		if(progressDialog!=null){
-			progressDialog.dismiss();
-		}
+		releaseRequestResources();
+		dismissProgressDialogSafely();
+	}
+
+	private void dismissProgressDialogSafely(){
+		ProgressDialog dlg=progressDialog;
+		progressDialog=null;
+		if(dlg==null)
+			return;
+		Runnable dismiss=()->{
+			try{
+				if(dlg.isShowing())
+					dlg.dismiss();
+			}catch(IllegalArgumentException ignored){
+				// Activity window already detached before request finished.
+			}
+		};
+		if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper())
+			dismiss.run();
+		else
+			org.joinmastodon.android.ui.utils.UiUtils.runOnUiThread(dismiss);
 	}
 
 	public enum HttpMethod{

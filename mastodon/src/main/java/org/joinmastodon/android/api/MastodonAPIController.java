@@ -124,8 +124,10 @@ public class MastodonAPIController{
 				// the body (staging + resize read) wins here — the call is never enqueued,
 				// so zero bytes hit the wire for a canceled upload and no orphaned
 				// attachment can appear server-side.
-				if(!req.gate.claim(call))
+				if(!req.gate.claim(call)){
+					req.releaseRequestResources();
 					return;
+				}
 				if(req.timeout>0){
 					call.timeout().timeout(req.timeout, TimeUnit.MILLISECONDS);
 				}
@@ -136,8 +138,11 @@ public class MastodonAPIController{
 				call.enqueue(new Callback(){
 					@Override
 					public void onFailure(@NonNull Call call, @NonNull IOException e){
-						if(req.gate.isCanceled())
+						if(req.gate.isCanceled()){
+							req.gate.release();
+							req.releaseRequestResources();
 							return;
+						}
 						if(BuildConfig.DEBUG)
 							Log.w(TAG, logTag(session)+""+hreq+" failed", e);
 						req.gate.release();
@@ -147,6 +152,8 @@ public class MastodonAPIController{
 					@Override
 					public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException{
 						if(req.gate.isCanceled()){
+							req.gate.release();
+							req.releaseRequestResources();
 							response.close();
 							return;
 						}
@@ -250,6 +257,7 @@ public class MastodonAPIController{
 					}
 				});
 			}catch(Exception x){
+				req.releaseRequestResources();
 				if(BuildConfig.DEBUG)
 					Log.w(TAG, logTag(session)+"error creating and sending http request", x);
 				req.onError(x.getLocalizedMessage(), 0, x);

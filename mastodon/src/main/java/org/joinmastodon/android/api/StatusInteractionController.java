@@ -60,27 +60,30 @@ public class StatusInteractionController{
 
 		// MOSHIDON:
 		AccountSession session=AccountSessionManager.get(accountID);
-		Instance instance=session.getInstance().get();
+		Instance instance=session.getInstance().orElse(null);
 
 		SetStatusFavorited current=runningFavoriteRequests.remove(status.id);
 		if(current!=null){
 			current.cancel();
 		}
+		SetStatusFavorited[] reqHolder=new SetStatusFavorited[1];
 		SetStatusFavorited req=(SetStatusFavorited) new SetStatusFavorited(status.id, favorited)
 				.setCallback(new Callback<>(){
 					@Override
 					public void onSuccess(Status result){
-						runningFavoriteRequests.remove(status.id);
+						if(runningFavoriteRequests.get(status.id)==reqHolder[0])
+							runningFavoriteRequests.remove(status.id);
 
 						// MOSHIDON:
 						cb.accept(result);
 						if(updateCounters) E.post(new StatusCountersUpdatedEvent(result, StatusCountersUpdatedEvent.CounterType.FAVORITES));
-						if(instance.isIceshrimpJs()) E.post(new EmojiReactionsUpdatedEvent(status.id, result.reactions, false, null));
+						if(instance!=null && instance.isIceshrimpJs()) E.post(new EmojiReactionsUpdatedEvent(status.id, result.reactions, false, null));
 					}
 
 					@Override
 					public void onError(ErrorResponse error){
-						runningFavoriteRequests.remove(status.id);
+						if(runningFavoriteRequests.get(status.id)==reqHolder[0])
+							runningFavoriteRequests.remove(status.id);
 						error.showToast(MastodonApp.context);
 						status.favourited=!favorited;
 						if(favorited)
@@ -91,10 +94,11 @@ public class StatusInteractionController{
 						// MOSHIDON:
 						cb.accept(status);
 						if(updateCounters) E.post(new StatusCountersUpdatedEvent(status, StatusCountersUpdatedEvent.CounterType.FAVORITES));
-						if(instance.isIceshrimpJs()) E.post(new EmojiReactionsUpdatedEvent(status.id, status.reactions, false, null));
+						if(instance!=null && instance.isIceshrimpJs()) E.post(new EmojiReactionsUpdatedEvent(status.id, status.reactions, false, null));
 					}
 				})
 				.exec(accountID);
+		reqHolder[0]=req;
 		runningFavoriteRequests.put(status.id, req);
 		status.favourited=favorited;
 		if(favorited)
@@ -106,14 +110,14 @@ public class StatusInteractionController{
 		if(updateCounters) E.post(new StatusCountersUpdatedEvent(status, StatusCountersUpdatedEvent.CounterType.FAVORITES));
 
 		// MOSHIDON: all below is for the emojis
-		if(instance.configuration==null || instance.configuration.reactions==null)
+		if(instance==null || instance.configuration==null || instance.configuration.reactions==null)
 			return;
 
 		String defaultReactionEmojiRaw=instance.configuration.reactions.defaultReaction;
-		if(!instance.isIceshrimpJs() || defaultReactionEmojiRaw==null)
+		if(!instance.isIceshrimpJs() || defaultReactionEmojiRaw==null || status.reactions==null)
 			return;
 
-		boolean reactionIsCustom=defaultReactionEmojiRaw.startsWith(":");
+		boolean reactionIsCustom=defaultReactionEmojiRaw.length()>=2 && defaultReactionEmojiRaw.startsWith(":") && defaultReactionEmojiRaw.endsWith(":");
 		String defaultReactionEmoji=reactionIsCustom ? defaultReactionEmojiRaw.substring(1, defaultReactionEmojiRaw.length()-1) : defaultReactionEmojiRaw;
 		ArrayList<EmojiReaction> reactions=new ArrayList<>(status.reactions.size());
 		for(EmojiReaction reaction:status.reactions){
@@ -167,11 +171,13 @@ public class StatusInteractionController{
 			current.cancel();
 		}
 		// MOSHIDON: more parameters
+		SetStatusReblogged[] reqHolder=new SetStatusReblogged[1];
 		SetStatusReblogged req=(SetStatusReblogged) new SetStatusReblogged(status.id, reblogged, visibility)
 				.setCallback(new Callback<>(){
 					@Override
 					public void onSuccess(Status result){
-						runningReblogRequests.remove(status.id);
+						if(runningReblogRequests.get(status.id)==reqHolder[0])
+							runningReblogRequests.remove(status.id);
 
 						// MOSHIDON:
 						cb.accept(result);
@@ -180,7 +186,8 @@ public class StatusInteractionController{
 
 					@Override
 					public void onError(ErrorResponse error){
-						runningReblogRequests.remove(status.id);
+						if(runningReblogRequests.get(status.id)==reqHolder[0])
+							runningReblogRequests.remove(status.id);
 						error.showToast(MastodonApp.context);
 						status.reblogged=!reblogged;
 						if(reblogged)
@@ -191,10 +198,11 @@ public class StatusInteractionController{
 						// MOSHIDON
 						cb.accept(status);
 
-						E.post(new StatusCountersUpdatedEvent(status, StatusCountersUpdatedEvent.CounterType.REBLOGS));
+						if(updateCounters) E.post(new StatusCountersUpdatedEvent(status, StatusCountersUpdatedEvent.CounterType.REBLOGS));
 					}
 				})
 				.exec(accountID);
+		reqHolder[0]=req;
 		runningReblogRequests.put(status.id, req);
 		status.reblogged=reblogged;
 		if(reblogged)
@@ -214,23 +222,27 @@ public class StatusInteractionController{
 		if(current!=null){
 			current.cancel();
 		}
+		SetStatusBookmarked[] reqHolder=new SetStatusBookmarked[1];
 		SetStatusBookmarked req=(SetStatusBookmarked) new SetStatusBookmarked(status.id, bookmarked)
 				.setCallback(new Callback<>(){
 					@Override
 					public void onSuccess(Status result){
-						runningBookmarkRequests.remove(status.id);
-						E.post(new StatusCountersUpdatedEvent(result, StatusCountersUpdatedEvent.CounterType.BOOKMARKS));
+						if(runningBookmarkRequests.get(status.id)==reqHolder[0])
+							runningBookmarkRequests.remove(status.id);
+						if(updateCounters) E.post(new StatusCountersUpdatedEvent(result, StatusCountersUpdatedEvent.CounterType.BOOKMARKS));
 					}
 
 					@Override
 					public void onError(ErrorResponse error){
-						runningBookmarkRequests.remove(status.id);
+						if(runningBookmarkRequests.get(status.id)==reqHolder[0])
+							runningBookmarkRequests.remove(status.id);
 						error.showToast(MastodonApp.context);
 						status.bookmarked=!bookmarked;
-						E.post(new StatusCountersUpdatedEvent(status, StatusCountersUpdatedEvent.CounterType.BOOKMARKS));
+						if(updateCounters) E.post(new StatusCountersUpdatedEvent(status, StatusCountersUpdatedEvent.CounterType.BOOKMARKS));
 					}
 				})
 				.exec(accountID);
+		reqHolder[0]=req;
 		runningBookmarkRequests.put(status.id, req);
 		status.bookmarked=bookmarked;
 

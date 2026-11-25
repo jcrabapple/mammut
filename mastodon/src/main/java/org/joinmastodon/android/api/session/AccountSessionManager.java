@@ -91,10 +91,10 @@ public class AccountSessionManager{
 
 	private static final AccountSessionManager instance=new AccountSessionManager();
 
-	private HashMap<String, AccountSession> sessions=new HashMap<>();
-	private HashMap<String, List<EmojiCategory>> customEmojis=new HashMap<>();
-	private HashMap<String, Long> instancesLastUpdated=new HashMap<>();
-	private HashMap<String, Instance> instances=new HashMap<>();
+	private final java.util.concurrent.ConcurrentHashMap<String, AccountSession> sessions=new java.util.concurrent.ConcurrentHashMap<>();
+	private final java.util.concurrent.ConcurrentHashMap<String, List<EmojiCategory>> customEmojis=new java.util.concurrent.ConcurrentHashMap<>();
+	private final java.util.concurrent.ConcurrentHashMap<String, Long> instancesLastUpdated=new java.util.concurrent.ConcurrentHashMap<>();
+	private final java.util.concurrent.ConcurrentHashMap<String, Instance> instances=new java.util.concurrent.ConcurrentHashMap<>();
 	private MastodonAPIController unauthenticatedApiController=new MastodonAPIController(null);
 	private Instance authenticatingInstance;
 	private Application authenticatingApp;
@@ -216,8 +216,8 @@ public class AccountSessionManager{
 
 	public void removeAccount(String id){
 		AccountSession session=getAccount(id);
-		session.getCacheController().closeDatabase();
-		MastodonApp.context.deleteDatabase(id+".db");
+		session.getCacheController().closeAndDeleteDatabase();
+		org.joinmastodon.android.drafts.DraftStore.deleteAllForAccount(MastodonApp.context, id);
 		MastodonApp.context.getSharedPreferences(id, 0).edit().clear().commit();
 		if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.N){
 			MastodonApp.context.deleteSharedPreferences(id);
@@ -229,7 +229,7 @@ public class AccountSessionManager{
 			}
 		}
 		sessions.remove(id);
-		if(lastActiveAccountID.equals(id)){
+		if(id.equals(lastActiveAccountID)){
 			if(sessions.isEmpty())
 				lastActiveAccountID=null;
 			else
@@ -495,7 +495,10 @@ public class AccountSessionManager{
 	}
 
 	public Instance getInstanceInfo(String domain){
-		Instance i=instances.get(domain);
+		String key=domain==null ? "" : domain.toLowerCase(java.util.Locale.US);
+		Instance i=instances.get(key);
+		if(i==null && domain!=null)
+			i=instances.get(domain);
 		if(i!=null)
 			return i;
 		Log.e(TAG, "Instance info for "+domain+" was not found. This should normally never happen. Returning fake instance object");
@@ -593,18 +596,18 @@ public class AccountSessionManager{
 	}
 
 	public void closeDatabase(){
-		if(db!=null){
-			if(BuildConfig.DEBUG)
-				Log.d(TAG, "closeDatabase");
-			db.close();
-			db=null;
+		synchronized(databaseLock){
+			if(db!=null){
+				if(BuildConfig.DEBUG)
+					Log.d(TAG, "closeDatabase");
+				db.close();
+				db=null;
+			}
 		}
 	}
 
 	private void cancelDelayedClose(){
-		if(db!=null){
-			CacheController.databaseThread.handler.removeCallbacks(databaseCloseRunnable);
-		}
+		CacheController.databaseThread.handler.removeCallbacks(databaseCloseRunnable);
 	}
 
 	private SQLiteDatabase getOrOpenDatabase(){
@@ -667,9 +670,7 @@ public class AccountSessionManager{
 	}
 
 	public void clearInstanceInfo(){
-		SQLiteDatabase db=getOrOpenDatabase();
-		db.delete("instances", null, null);
-		db.close();
+		runOnDbThread(db->db.delete("instances", null, null));
 	}
 
 	private static void insertInstanceIntoDatabase(SQLiteDatabase db, String domain, Instance instance, List<Emoji> emojis, long lastUpdated){

@@ -309,9 +309,14 @@ public class UploadStaging{
 		if(TextUtils.isEmpty(mime) && !"file".equals(uri.getScheme()))
 			mime=context.getContentResolver().getType(uri);
 		if(TextUtils.isEmpty(mime)){
-			MediaType type=UiUtils.getFileMediaType(file);
-			return type!=null ? type : MediaType.parse("application/octet-stream");
+			try{
+				MediaType type=UiUtils.getFileMediaType(file);
+				if(type!=null)
+					return type;
+			}catch(RuntimeException ignored){}
+			return MediaType.parse("application/octet-stream");
 		}
-		return MediaType.parse(mime);
+		MediaType parsed=MediaType.parse(mime);
+		return parsed!=null ? parsed : MediaType.parse("application/octet-stream");
 	}
 }

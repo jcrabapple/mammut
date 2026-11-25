@@ -165,14 +165,26 @@ public class ComposeMediaViewController{
 			showMediaAttachmentError(fragment.getResources().getQuantityString(R.plurals.cant_add_more_than_x_attachments, MAX_ATTACHMENTS, MAX_ATTACHMENTS));
 			return false;
 		}
+		if(uri==null)
+			return false;
 		String type=fragment.getActivity().getContentResolver().getType(uri);
-		int size;
+		if(TextUtils.isEmpty(type)){
+			String fn=UiUtils.getFileName(uri);
+			int dot=fn!=null ? fn.lastIndexOf('.') : -1;
+			if(dot>=0 && dot<fn.length()-1){
+				type=android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(fn.substring(dot+1).toLowerCase(Locale.US));
+			}
+		}
+		if(TextUtils.isEmpty(type)){
+			showMediaAttachmentError(fragment.getString(R.string.media_attachment_unsupported_type, UiUtils.getFileName(uri)));
+			return false;
+		}
+		long size=0;
 		try(Cursor cursor=MastodonApp.context.getContentResolver().query(uri, new String[]{OpenableColumns.SIZE}, null, null, null)){
-			cursor.moveToFirst();
-			size=cursor.getInt(0);
+			if(cursor!=null && cursor.moveToFirst() && !cursor.isNull(0))
+				size=cursor.getLong(0);
 		}catch(Exception x){
 			Log.w("ComposeFragment", x);
-			return false;
 		}
 		Instance instance=fragment.instance;
 		if(instance!=null && instance.configuration!=null && instance.configuration.mediaAttachments!=null){
@@ -182,7 +194,7 @@ public class ComposeMediaViewController{
 			}
 			if(!type.startsWith("image/")){
 				int sizeLimit=instance.configuration.mediaAttachments.videoSizeLimit;
-				if(size>sizeLimit){
+				if(size>0 && size>sizeLimit){
 					float mb=sizeLimit/(float) (1024*1024);
 					String sMb=String.format(Locale.getDefault(), mb%1f==0f ? "%.0f" : "%.2f", mb);
 					showMediaAttachmentError(fragment.getString(R.string.media_attachment_too_big, UiUtils.getFileName(uri), sMb));
@@ -194,7 +206,7 @@ public class ComposeMediaViewController{
 		draft.uri=uri;
 		draft.mimeType=type;
 		draft.description=description;
-		draft.fileSize=size;
+		draft.fileSize=(int) Math.min(size, Integer.MAX_VALUE);
 
 		UiUtils.beginLayoutTransition(attachmentsScroller);
 		attachmentsView.addView(createMediaAttachmentView(draft), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -251,7 +263,7 @@ public class ComposeMediaViewController{
 		if(draft.serverAttachment!=null){
 			if(draft.serverAttachment.previewUrl!=null)
 				ViewImageLoader.load(img, draft.serverAttachment.blurhashPlaceholder, new UrlImageLoaderRequest(draft.serverAttachment.previewUrl, V.dp(250), V.dp(250)));
-		}else{
+		}else if(draft.mimeType!=null){
 			if(draft.mimeType.startsWith("image/")){
 				ViewImageLoader.load(img, null, new UrlImageLoaderRequest(draft.uri, V.dp(250), V.dp(250)));
 			}else if(draft.mimeType.startsWith("video/")){
@@ -428,31 +440,44 @@ public class ComposeMediaViewController{
 		}
 	}
 
+	private static final int MAX_PROCESSING_POLLS=120;
+	private static final int MAX_POLL_ERRORS=5;
+
 	private void loadVideoThumbIntoView(ImageView target, Uri uri){
 		MastodonAPIController.runInBackground(()->{
 			Context context=fragment.getActivity();
 			if(context==null)
 				return;
+			MediaMetadataRetriever mmr=new MediaMetadataRetriever();
 			try{
-				MediaMetadataRetriever mmr=new MediaMetadataRetriever();
 				mmr.setDataSource(context, uri);
 				Bitmap frame=mmr.getFrameAtTime(3_000_000);
-				mmr.release();
+				if(frame==null)
+					return;
 				int size=Math.max(frame.getWidth(), frame.getHeight());
 				int maxSize=V.dp(250);
 				if(size>maxSize){
 					float factor=maxSize/(float)size;
-					frame=Bitmap.createScaledBitmap(frame, Math.round(frame.getWidth()*factor), Math.round(frame.getHeight()*factor), true);
+					Bitmap scaled=Bitmap.createScaledBitmap(frame, Math.max(1, Math.round(frame.getWidth()*factor)), Math.max(1, Math.round(frame.getHeight()*factor)), true);
+					if(scaled!=frame)
+						frame.recycle();
+					frame=scaled;
 				}
 				Bitmap finalFrame=frame;
 				target.post(()->target.setImageBitmap(finalFrame));
 			}catch(Exception x){
 				Log.w(TAG, "loadVideoThumbIntoView: error getting video frame", x);
+			}finally{
+				try{
+					mmr.release();
+				}catch(Exception ignored){}
 			}
 		});
 	}
 
 	private void pollForMediaAttachmentProcessing(DraftMediaAttachment attachment){
+		if(destroyed || attachment.serverAttachment==null)
+			return;
 		attachment.processingPollingRequest=(GetAttachmentByID) new GetAttachmentByID(attachment.serverAttachment.id)
 			.setCallback(new Callback<>(){
 				@Override
@@ -460,12 +485,16 @@ public class ComposeMediaViewController{
 					attachment.processingPollingRequest=null;
 					// Audit R2 F4: removed while the poll was in flight — the tile,
 					// its staged file and its request are already gone.
-					if(!attachments.contains(attachment))
+					if(destroyed || !attachments.contains(attachment))
 						return;
+					attachment.processingPollErrors=0;
 					if(!TextUtils.isEmpty(result.url)){
 						attachment.processingPollingRunnable=null;
 						attachment.serverAttachment=result;
 						finishMediaAttachmentUpload(attachment);
+					}else if(++attachment.processingPollCount>=MAX_PROCESSING_POLLS){
+						attachment.processingPollingRunnable=null;
+						failProcessingPoll(attachment, new MastodonErrorResponse("Media processing timed out", 0, null));
 					}else if(isFragmentAttached()){
 						UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
 					}
@@ -476,13 +505,38 @@ public class ComposeMediaViewController{
 				@Override
 				public void onError(ErrorResponse error){
 					attachment.processingPollingRequest=null;
-					if(!attachments.contains(attachment))
+					if(destroyed || !attachments.contains(attachment))
 						return;
+					if(++attachment.processingPollErrors>=MAX_POLL_ERRORS){
+						attachment.processingPollingRunnable=null;
+						failProcessingPoll(attachment, error);
+						return;
+					}
 					if(isFragmentAttached())
 						UiUtils.runOnUiThread(attachment.processingPollingRunnable, 1000);
 				}
 			})
 			.exec(fragment.getAccountID());
+	}
+
+	private void failProcessingPoll(DraftMediaAttachment attachment, ErrorResponse error){
+		attachment.state=AttachmentUploadState.ERROR;
+		if(!isFragmentAttached())
+			return;
+		if(attachment.titleView!=null)
+			attachment.titleView.setText(R.string.upload_failed);
+		if(attachment.editButton!=null){
+			V.setVisibilityAnimated(attachment.editButton, View.VISIBLE);
+			attachment.editButton.setImageResource(R.drawable.ic_restart_alt_24px);
+			attachment.editButton.setOnClickListener(ComposeMediaViewController.this::onRetryOrCancelMediaUploadClick);
+		}
+		if(attachment.view!=null)
+			attachment.setUseErrorColors(true);
+		if(attachment.progressBar!=null)
+			V.setVisibilityAnimated(attachment.progressBar, View.GONE);
+		fragment.updatePublishButtonState();
+		if(!areThereAnyUploadingAttachments())
+			uploadNextQueuedAttachment();
 	}
 
 	private void finishMediaAttachmentUpload(DraftMediaAttachment attachment){
@@ -757,7 +811,10 @@ public class ComposeMediaViewController{
 		return attachments.size();
 	}
 	
+	private boolean destroyed;
+
 	public void cancelAllUploads(){
+		destroyed=true;
 		for(DraftMediaAttachment att:attachments){
 			if(att.isUploadingOrProcessing())
 				att.cancelUpload();
@@ -768,8 +825,10 @@ public class ComposeMediaViewController{
 	}
 	
 	public void setAltTextByID(String attID, String text){
+		if(attID==null)
+			return;
 		for(DraftMediaAttachment att:attachments){
-			if(att.serverAttachment.id.equals(attID)){
+			if(att.serverAttachment!=null && attID.equals(att.serverAttachment.id)){
 				att.descriptionSaved=false;
 				att.description=text;
 				att.setDescriptionToTitle();
@@ -809,59 +868,67 @@ public class ComposeMediaViewController{
 
 	public boolean areAllAttachmentsImages(){
 		for(DraftMediaAttachment att:attachments){
-			if((att.mimeType==null && att.serverAttachment.type==Attachment.Type.IMAGE) || (att.mimeType!=null && !att.mimeType.startsWith("image/")))
+			if(!isImageAttachment(att.mimeType, att.serverAttachment!=null ? att.serverAttachment.type : null))
 				return false;
 		}
 		return true;
+	}
+
+	/** Pure image-type predicate (fixes inverted == Attachment.Type.IMAGE bug). */
+	static boolean isImageAttachment(String mimeType, Attachment.Type serverType){
+		if(mimeType!=null)
+			return mimeType.toLowerCase(Locale.ROOT).startsWith("image/");
+		return serverType==Attachment.Type.IMAGE;
 	}
 
 	public int getMaxAttachments(){
 		return MAX_ATTACHMENTS;
 	}
 
-	// MAMMUT: Composer 2.0 (§2/§3) — draft snapshot and restore. Restored media
-	// re-enters through addRestoredAttachment below, which never invokes the
-	// Caption Track metadata prefill (prefill is only called from
-	// addMediaAttachment), so a restored description is never overwritten by
-	// a metadata suggestion.
-
 	/**
-	 * MAMMUT: Composer 2.0 (M5) — UI-thread snapshot of the attachment list.
-	 * The copy is made here, on the thread that owns the list, and passed
-	 * into the draft-save runnable; the worker thread then only touches the
-	 * snapshot, so it can never iterate the live list while the UI thread
-	 * adds or removes attachments.
+	 * Wave 3 Q-H11: immutable UI-thread snapshot of one attachment's draft-save inputs,
+	 * eliminating cross-thread reads of mutable {@link DraftMediaAttachment} fields.
 	 */
-	public List<DraftMediaAttachment> snapshotAttachments(){
-		return new ArrayList<>(attachments);
+	public static final class DraftAttachmentSnapshot{
+		final DraftMediaAttachment owner;
+		final Uri uri;
+		final String mimeType;
+		final String description;
+		final String draftFilePath;
+
+		DraftAttachmentSnapshot(DraftMediaAttachment owner){
+			this.owner=owner;
+			this.uri=owner.uri;
+			this.mimeType=owner.mimeType;
+			this.description=owner.description;
+			this.draftFilePath=owner.draftFilePath;
+		}
 	}
 
-	/**
-	 * Builds the durable attachment list for a draft save from a UI-thread
-	 * snapshot (see {@link #snapshotAttachments()}). Attachments already
-	 * copied into this draft directory on a previous save are reused; fresh
-	 * picker attachments are copied in via the shared store (§2: media is
-	 * copied in, never referenced).
-	 * <p>
-	 * MAMMUT (M4): an attachment that cannot be persisted — no mime type, no
-	 * source to copy from, or a failed copy — fails the whole save with an
-	 * IOException. The draft is never saved with silently missing media, and
-	 * ComposeFragment surfaces the failure to the author (§6).
-	 * Must run on a background thread.
-	 */
-	public List<DraftAttachment> buildDraftAttachments(List<DraftMediaAttachment> snapshot, DraftStore store, String draftId) throws IOException{
+	public List<DraftAttachmentSnapshot> snapshotAttachments(){
+		List<DraftAttachmentSnapshot> out=new ArrayList<>(attachments.size());
+		for(DraftMediaAttachment att:attachments)
+			out.add(new DraftAttachmentSnapshot(att));
+		return out;
+	}
+
+	public List<DraftAttachment> buildDraftAttachments(List<DraftAttachmentSnapshot> snapshot, DraftStore store, String draftId) throws IOException{
 		List<DraftAttachment> result=new ArrayList<>();
-		for(DraftMediaAttachment att:snapshot){
-			if(att.mimeType==null)
+		for(DraftAttachmentSnapshot snap:snapshot){
+			if(snap.mimeType==null)
 				throw new IOException("attachment has no mime type to persist");
 			DraftAttachment da=new DraftAttachment();
-			da.mimeType=att.mimeType;
-			da.description=att.description;
-			String existing=att.draftFilePath;
+			da.mimeType=snap.mimeType;
+			da.description=snap.description;
+			String existing=snap.draftFilePath;
 			if(existing!=null && new File(existing).exists()){
 				da.filePath=existing;
-			}else if(att.uri!=null){
-				da.filePath=store.importMedia(draftId, att.uri, att.mimeType);
+			}else if(snap.uri!=null){
+				String importedPath=store.importMedia(draftId, snap.uri, snap.mimeType);
+				da.filePath=importedPath;
+				// Wave 3 Q-H11: record private copy path back on the owner attachment so
+				// subsequent autosaves reuse it even after temporary picker grants expire.
+				UiUtils.runOnUiThread(()->snap.owner.draftFilePath=importedPath);
 			}else{
 				throw new IOException("attachment has no source to copy from");
 			}
@@ -1025,8 +1092,10 @@ public class ComposeMediaViewController{
 		public AttachmentUploadState state=AttachmentUploadState.QUEUED;
 		public int fileSize;
 		public boolean descriptionSaved=true;
-		/** MAMMUT: Composer 2.0 — path of this file's private copy in the draft directory, once saved */
-		public transient String draftFilePath;
+		/** MAMMUT: Composer 2.0 — path of this file's private copy in the draft directory, once saved (non-transient so it survives process death). */
+		public String draftFilePath;
+		public transient int processingPollCount;
+		public transient int processingPollErrors;
 		/** t_54414ac0: the verified local copy + transcode, kept so a retry reuses it instead of
 		 *  re-opening a picker URI whose read grant may already have expired. Written on the
 		 *  staging thread and read on the UI thread; the runOnUiThread post gives a
@@ -1245,8 +1314,8 @@ public class ComposeMediaViewController{
 				staged=UploadStaging.stage(MastodonApp.context, attachment.uri, UploadStaging.sourceFor(attachment.uri, mime, fileName), maxSize);
 			}catch(Throwable t){
 				UiUtils.runOnUiThread(()->{
-					// t_8ab12a49 M2: dropped while staging — nothing to error out on.
-					if(!attachments.contains(attachment))
+					// t_8ab12a49 M2 + Wave 3 Q-H9: dropped or controller destroyed while staging.
+					if(destroyed || !attachments.contains(attachment))
 						return;
 					onLocalUploadError(attachment, t);
 				});
@@ -1254,14 +1323,7 @@ public class ComposeMediaViewController{
 			}
 			attachment.stagedUpload=staged;
 			UiUtils.runOnUiThread(()->{
-				// t_8ab12a49 M2: removing the attachment during staging must cancel it. The
-				// attachment is no longer in the list, so uploading it would orphan media on
-				// the server and leave the staged file on disk — drop the stage and stop.
-				// This check runs on the UI thread, same as removal and as the queue walker,
-				// so a remove either lands before it (bail here; areThereAnyUploadingAttachments()
-				// already sees the list without this attachment and can start the next upload)
-				// or after performUpload (cancelled via uploadRequest.cancel()) — never between.
-				if(!attachments.contains(attachment)){
+				if(destroyed || !attachments.contains(attachment)){
 					releaseStaged(staged);
 					attachment.stagedUpload=null;
 					return;

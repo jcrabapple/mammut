@@ -29,6 +29,7 @@ public class UploadAttachment extends MastodonAPIRequest<Attachment>{
 	private int maxImageSize;
 	private String description;
 	private String fileName;
+	private final Object bodyLock=new Object();
 	private ResizedImageRequestBody resizedBody;
 
 	public UploadAttachment(UploadStaging.StagedUpload staged, int maxImageSize, String description, String fileName){
@@ -51,22 +52,14 @@ public class UploadAttachment extends MastodonAPIRequest<Attachment>{
 	 * cancel-before-write, where the temp was staged but never streamed).
 	 */
 	@Override
-	public synchronized void cancel(){
-		releaseResizedBody();
-		super.cancel();
-	}
-
-	@Override
-	protected void onRequestDone(){
-		releaseResizedBody();
-		super.onRequestDone();
-	}
-
-	private void releaseResizedBody(){
-		if(resizedBody!=null){
-			resizedBody.release();
+	protected void releaseRequestResources(){
+		ResizedImageRequestBody toRelease;
+		synchronized(bodyLock){
+			toRelease=resizedBody;
 			resizedBody=null;
 		}
+		if(toRelease!=null)
+			toRelease.release();
 	}
 
 	@Override
@@ -83,12 +76,19 @@ public class UploadAttachment extends MastodonAPIRequest<Attachment>{
 
 	@Override
 	public RequestBody getRequestBody() throws IOException{
-		releaseResizedBody();
+		releaseRequestResources();
 		RequestBody fileBody;
-		if(maxImageSize>0 && staged.mediaType!=null && "image".equals(staged.mediaType.type()))
-			fileBody=resizedBody=new ResizedImageRequestBody(Uri.fromFile(staged.file), maxImageSize, progressListener);
-		else
+		boolean isAnimatedGif=staged.mediaType!=null && "image".equalsIgnoreCase(staged.mediaType.type())
+				&& "gif".equalsIgnoreCase(staged.mediaType.subtype());
+		if(maxImageSize>0 && staged.mediaType!=null && "image".equalsIgnoreCase(staged.mediaType.type()) && !isAnimatedGif){
+			ResizedImageRequestBody body=new ResizedImageRequestBody(Uri.fromFile(staged.file), maxImageSize, progressListener, staged.mediaType);
+			synchronized(bodyLock){
+				resizedBody=body;
+			}
+			fileBody=body;
+		}else{
 			fileBody=new FileRequestBody(staged.file, staged.mediaType, progressListener);
+		}
 		MultipartBody.Builder builder=new MultipartBody.Builder()
 				.setType(MultipartBody.FORM)
 				.addFormDataPart("file", fileName, fileBody);

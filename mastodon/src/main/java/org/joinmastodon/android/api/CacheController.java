@@ -115,7 +115,7 @@ public class CacheController{
 							}
 						})
 						.exec(accountID);
-			}catch(SQLiteException x){
+			}catch(RuntimeException x){
 				Log.w(TAG, x);
 				uiHandler.post(()->callback.onError(new MastodonErrorResponse(x.getLocalizedMessage(), 500, x)));
 			}finally{
@@ -126,18 +126,24 @@ public class CacheController{
 
 	public void putHomeTimeline(List<Status> posts, boolean clear){
 		runOnDbThread((db)->{
-			if(clear)
-				db.delete("home_timeline", null, null);
-			ContentValues values=new ContentValues(4);
-			for(Status s:posts){
-				values.put("id", s.id);
-				values.put("json", MastodonAPIController.gson.toJson(s));
-				int flags=0;
-				if(s.hasGapAfter)
-					flags|=POST_FLAG_GAP_AFTER;
-				values.put("flags", flags);
-				values.put("time", s.createdAt.getEpochSecond());
-				db.insertWithOnConflict("home_timeline", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+			db.beginTransaction();
+			try{
+				if(clear)
+					db.delete("home_timeline", null, null);
+				ContentValues values=new ContentValues(4);
+				for(Status s:posts){
+					values.put("id", s.id);
+					values.put("json", MastodonAPIController.gson.toJson(s));
+					int flags=0;
+					if(s.hasGapAfter)
+						flags|=POST_FLAG_GAP_AFTER;
+					values.put("flags", flags);
+					values.put("time", s.createdAt.getEpochSecond());
+					db.insertWithOnConflict("home_timeline", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+				}
+				db.setTransactionSuccessful();
+			}finally{
+				db.endTransaction();
 			}
 		});
 	}
@@ -244,15 +250,40 @@ public class CacheController{
 					}
 				}
 
-				if(!onlyMentions && loadingNotifications){
+				final boolean coalesce=!onlyMentions && maxID==null;
+				if(coalesce){
 					synchronized(pendingNotificationsCallbacks){
-						pendingNotificationsCallbacks.add(callback);
+						if(loadingNotifications){
+							pendingNotificationsCallbacks.add(callback);
+							return;
+						}
+						loadingNotifications=true;
+					}
+				}
+				long apiVersion;
+				try{
+					apiVersion=AccountSessionManager.get(accountID).getInstanceInfo().getApiVersion();
+				}catch(RuntimeException x){
+					if(coalesce){
+						List<Callback<PaginatedResponse<List<NotificationViewModel>>>> pending;
+						synchronized(pendingNotificationsCallbacks){
+							loadingNotifications=false;
+							pending=new ArrayList<>(pendingNotificationsCallbacks);
+							pendingNotificationsCallbacks.clear();
+						}
+						MastodonErrorResponse err=new MastodonErrorResponse(x.getLocalizedMessage(), 500, x);
+						uiHandler.post(()->{
+							callback.onError(err);
+							for(Callback<PaginatedResponse<List<NotificationViewModel>>> cb:pending)
+								cb.onError(err);
+						});
+					}else{
+						MastodonErrorResponse err=new MastodonErrorResponse(x.getLocalizedMessage(), 500, x);
+						uiHandler.post(()->callback.onError(err));
 					}
 					return;
 				}
-				if(!onlyMentions)
-					loadingNotifications=true;
-				if(AccountSessionManager.get(accountID).getInstanceInfo().getApiVersion()>=2){
+				if(apiVersion>=2){
 					new GetNotificationsV2(maxID, count, onlyMentions ? EnumSet.of(NotificationType.MENTION): EnumSet.allOf(NotificationType.class), NotificationType.getGroupableTypes())
 							.setCallback(new Callback<>(){
 								@Override
@@ -264,13 +295,15 @@ public class CacheController{
 									PaginatedResponse<List<NotificationViewModel>> res=new PaginatedResponse<>(notifications,
 											result.notificationGroups.isEmpty() ? null : result.notificationGroups.get(result.notificationGroups.size()-1).pageMinId);
 									callback.onSuccess(res);
-									if(!onlyMentions){
-										loadingNotifications=false;
+									if(coalesce){
+										List<Callback<PaginatedResponse<List<NotificationViewModel>>>> pending;
 										synchronized(pendingNotificationsCallbacks){
-											for(Callback<PaginatedResponse<List<NotificationViewModel>>> cb:pendingNotificationsCallbacks){
-												cb.onSuccess(res);
-											}
+											loadingNotifications=false;
+											pending=new ArrayList<>(pendingNotificationsCallbacks);
 											pendingNotificationsCallbacks.clear();
+										}
+										for(Callback<PaginatedResponse<List<NotificationViewModel>>> cb:pending){
+											cb.onSuccess(res);
 										}
 									}
 								}
@@ -278,13 +311,15 @@ public class CacheController{
 								@Override
 								public void onError(ErrorResponse error){
 									callback.onError(error);
-									if(!onlyMentions){
-										loadingNotifications=false;
+									if(coalesce){
+										List<Callback<PaginatedResponse<List<NotificationViewModel>>>> pending;
 										synchronized(pendingNotificationsCallbacks){
-											for(Callback<PaginatedResponse<List<NotificationViewModel>>> cb:pendingNotificationsCallbacks){
-												cb.onError(error);
-											}
+											loadingNotifications=false;
+											pending=new ArrayList<>(pendingNotificationsCallbacks);
 											pendingNotificationsCallbacks.clear();
+										}
+										for(Callback<PaginatedResponse<List<NotificationViewModel>>> cb:pending){
+											cb.onError(error);
 										}
 									}
 								}
@@ -304,13 +339,15 @@ public class CacheController{
 											.collect(Collectors.toList());
 									PaginatedResponse<List<NotificationViewModel>> res=new PaginatedResponse<>(converted, result.isEmpty() ? null : result.get(result.size()-1).id);
 									callback.onSuccess(res);
-									if(!onlyMentions){
-										loadingNotifications=false;
+									if(coalesce){
+										List<Callback<PaginatedResponse<List<NotificationViewModel>>>> pending;
 										synchronized(pendingNotificationsCallbacks){
-											for(Callback<PaginatedResponse<List<NotificationViewModel>>> cb:pendingNotificationsCallbacks){
-												cb.onSuccess(res);
-											}
+											loadingNotifications=false;
+											pending=new ArrayList<>(pendingNotificationsCallbacks);
 											pendingNotificationsCallbacks.clear();
+										}
+										for(Callback<PaginatedResponse<List<NotificationViewModel>>> cb:pending){
+											cb.onSuccess(res);
 										}
 									}
 									databaseThread.postRunnable(()->putNotifications(converted.stream().map(nvm->nvm.notification).collect(Collectors.toList()), accounts, statuses, onlyMentions, maxID==null), 0);
@@ -319,20 +356,22 @@ public class CacheController{
 								@Override
 								public void onError(ErrorResponse error){
 									callback.onError(error);
-									if(!onlyMentions){
-										loadingNotifications=false;
+									if(coalesce){
+										List<Callback<PaginatedResponse<List<NotificationViewModel>>>> pending;
 										synchronized(pendingNotificationsCallbacks){
-											for(Callback<PaginatedResponse<List<NotificationViewModel>>> cb:pendingNotificationsCallbacks){
-												cb.onError(error);
-											}
+											loadingNotifications=false;
+											pending=new ArrayList<>(pendingNotificationsCallbacks);
 											pendingNotificationsCallbacks.clear();
+										}
+										for(Callback<PaginatedResponse<List<NotificationViewModel>>> cb:pending){
+											cb.onError(error);
 										}
 									}
 								}
 							})
 							.exec(accountID);
 				}
-			}catch(SQLiteException x){
+			}catch(RuntimeException x){
 				Log.w(TAG, x);
 				uiHandler.post(()->callback.onError(new MastodonErrorResponse(x.getLocalizedMessage(), 500, x)));
 			}finally{
@@ -347,33 +386,39 @@ public class CacheController{
 			String table="notifications_"+suffix;
 			String accountsTable="notifications_accounts_"+suffix;
 			String statusesTable="notifications_statuses_"+suffix;
-			if(clear){
-				db.delete(table, null, null);
-				db.delete(accountsTable, null, null);
-				db.delete(statusesTable, null, null);
-			}
-			ContentValues values=new ContentValues(4);
-			for(NotificationGroup n:notifications){
-				if(n.type==null){
-					continue;
+			db.beginTransaction();
+			try{
+				if(clear){
+					db.delete(table, null, null);
+					db.delete(accountsTable, null, null);
+					db.delete(statusesTable, null, null);
 				}
-				values.put("id", n.groupKey);
-				values.put("json", MastodonAPIController.gson.toJson(n));
-				values.put("type", n.type.ordinal());
-				values.put("time", n.latestPageNotificationAt.getEpochSecond());
-				values.put("max_id", n.pageMaxId);
-				db.insertWithOnConflict(table, null, values, SQLiteDatabase.CONFLICT_REPLACE);
-			}
-			values.clear();
-			for(Account acc:accounts){
-				values.put("id", acc.id);
-				values.put("json", MastodonAPIController.gson.toJson(acc));
-				db.insertWithOnConflict(accountsTable, null, values, SQLiteDatabase.CONFLICT_REPLACE);
-			}
-			for(Status s:statuses){
-				values.put("id", s.id);
-				values.put("json", MastodonAPIController.gson.toJson(s));
-				db.insertWithOnConflict(statusesTable, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+				ContentValues values=new ContentValues(4);
+				for(NotificationGroup n:notifications){
+					if(n.type==null){
+						continue;
+					}
+					values.put("id", n.groupKey);
+					values.put("json", MastodonAPIController.gson.toJson(n));
+					values.put("type", n.type.ordinal());
+					values.put("time", n.latestPageNotificationAt.getEpochSecond());
+					values.put("max_id", n.pageMaxId);
+					db.insertWithOnConflict(table, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+				}
+				values.clear();
+				for(Account acc:accounts){
+					values.put("id", acc.id);
+					values.put("json", MastodonAPIController.gson.toJson(acc));
+					db.insertWithOnConflict(accountsTable, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+				}
+				for(Status s:statuses){
+					values.put("id", s.id);
+					values.put("json", MastodonAPIController.gson.toJson(s));
+					db.insertWithOnConflict(statusesTable, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+				}
+				db.setTransactionSuccessful();
+			}finally{
+				db.endTransaction();
 			}
 		});
 	}
@@ -417,6 +462,14 @@ public class CacheController{
 	}
 
 	public void closeDatabase(){
+		if(Thread.currentThread()==databaseThread){
+			closeDatabaseOnDbThread();
+		}else{
+			databaseThread.postRunnable(this::closeDatabaseOnDbThread, 0);
+		}
+	}
+
+	private void closeDatabaseOnDbThread(){
 		if(db!=null){
 			if(BuildConfig.DEBUG)
 				Log.d(TAG, "closeDatabase");
@@ -425,10 +478,16 @@ public class CacheController{
 		}
 	}
 
+	public void closeAndDeleteDatabase(){
+		databaseThread.postRunnable(()->{
+			cancelDelayedClose();
+			closeDatabaseOnDbThread();
+			MastodonApp.context.deleteDatabase(accountID+".db");
+		}, 0);
+	}
+
 	private void cancelDelayedClose(){
-		if(db!=null){
-			databaseThread.handler.removeCallbacks(databaseCloseRunnable);
-		}
+		databaseThread.handler.removeCallbacks(databaseCloseRunnable);
 	}
 
 	private SQLiteDatabase getOrOpenDatabase(){
@@ -442,12 +501,12 @@ public class CacheController{
 	}
 
 	private void runOnDbThread(DatabaseRunnable r, Consumer<Exception> onError){
-		cancelDelayedClose();
 		databaseThread.postRunnable(()->{
+			cancelDelayedClose();
 			try{
 				SQLiteDatabase db=getOrOpenDatabase();
 				r.run(db);
-			}catch(SQLiteException|IOException x){
+			}catch(IOException | RuntimeException x){
 				Log.w(TAG, x);
 				if(onError!=null)
 					onError.accept(x);
@@ -478,8 +537,7 @@ public class CacheController{
 				.exec(accountID);
 	}
 
-	private List<FollowList> loadLists(){
-		SQLiteDatabase db=getOrOpenDatabase();
+	private List<FollowList> loadLists(SQLiteDatabase db){
 		try(Cursor cursor=db.query("misc", new String[]{"value"}, "`key`=?", new String[]{"lists"}, null, null, null)){
 			if(!cursor.moveToFirst())
 				return null;
@@ -488,10 +546,13 @@ public class CacheController{
 	}
 
 	private void writeLists(){
+		List<FollowList> snapshot=lists==null ? null : new ArrayList<>(lists);
+		if(snapshot==null)
+			return;
 		runOnDbThread(db->{
 			ContentValues values=new ContentValues();
 			values.put("key", "lists");
-			values.put("value", MastodonAPIController.gson.toJson(lists));
+			values.put("value", MastodonAPIController.gson.toJson(snapshot));
 			db.insertWithOnConflict("misc", null, values, SQLiteDatabase.CONFLICT_REPLACE);
 		});
 	}
@@ -502,16 +563,18 @@ public class CacheController{
 				callback.onSuccess(lists);
 			return;
 		}
-		databaseThread.postRunnable(()->{
-			List<FollowList> lists=loadLists();
-			if(lists!=null){
-				this.lists=lists;
-				if(callback!=null)
-					uiHandler.post(()->callback.onSuccess(lists));
+		runOnDbThread(db->{
+			List<FollowList> loaded=loadLists(db);
+			if(loaded!=null){
+				uiHandler.post(()->{
+					this.lists=loaded;
+					if(callback!=null)
+						callback.onSuccess(loaded);
+				});
 				return;
 			}
-			reloadLists(callback);
-		}, 0);
+			uiHandler.post(()->reloadLists(callback));
+		}, err->uiHandler.post(()->reloadLists(callback)));
 	}
 
 	public void addList(FollowList list){

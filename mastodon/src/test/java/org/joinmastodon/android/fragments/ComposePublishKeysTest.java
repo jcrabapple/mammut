@@ -252,4 +252,29 @@ public class ComposePublishKeysTest{
 		assertNull(back.quotePolicy);
 		assertTrue(back.segmentFingerprints.isEmpty());
 	}
+
+	// --- Wave 3 Q-C10: thread segment key bound to actual inReplyToId ---
+
+	@Test
+	public void threadSegmentKeyBoundToActualReplyAnchorReplaysOnTailRetry(){
+		// Segment 1's key is resolved in publishNextSegment() with the real
+		// posted segment 0 ID as replyAnchorId, not null before segment 0 posts.
+		SegmentPayload seg1=payload("second post in thread");
+		seg1.replyAnchorId="postedSeg0";
+		KeyState seg1State=new KeyState();
+		String firstKey=seg1State.resolve(PublishKeys.fingerprint(seg1), "k-seg1");
+		assertEquals("k-seg1", firstKey);
+
+		// When segment 1 fails and is promoted to segment 0 with threadAnchor="postedSeg0",
+		// retrying with the same payload replays the exact same idempotency key.
+		KeyState promoted=KeyState.restored(seg1State.key, seg1State.fingerprint);
+		SegmentPayload retrySeg0=payload("second post in thread");
+		retrySeg0.replyAnchorId=PublishKeys.anchorId("postedSeg0", null, null);
+		assertEquals("k-seg1", promoted.resolve(PublishKeys.fingerprint(retrySeg0), "k-new"));
+
+		// Whereas binding with null anchor before segment 0 existed would have mismatched.
+		SegmentPayload staleUnbound=payload("second post in thread");
+		staleUnbound.replyAnchorId=null;
+		assertNotEquals(PublishKeys.fingerprint(staleUnbound), PublishKeys.fingerprint(retrySeg0));
+	}
 }

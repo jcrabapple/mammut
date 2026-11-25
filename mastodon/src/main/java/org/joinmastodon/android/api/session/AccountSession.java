@@ -179,25 +179,25 @@ public class AccountSession{
 		return domain+"_"+self.id;
 	}
 
-	public MastodonAPIController getApiController(){
+	public synchronized MastodonAPIController getApiController(){
 		if(apiController==null)
 			apiController=new MastodonAPIController(this);
 		return apiController;
 	}
 
-	public StatusInteractionController getStatusInteractionController(){
+	public synchronized StatusInteractionController getStatusInteractionController(){
 		if(statusInteractionController==null)
 			statusInteractionController=new StatusInteractionController(getID());
 		return statusInteractionController;
 	}
 
-	public CacheController getCacheController(){
+	public synchronized CacheController getCacheController(){
 		if(cacheController==null)
 			cacheController=new CacheController(getID());
 		return cacheController;
 	}
 
-	public PushSubscriptionManager getPushSubscriptionManager(){
+	public synchronized PushSubscriptionManager getPushSubscriptionManager(){
 		if(pushSubscriptionManager==null)
 			pushSubscriptionManager=new PushSubscriptionManager(getID());
 		return pushSubscriptionManager;
@@ -226,7 +226,7 @@ public class AccountSession{
 				.exec(getID());
 	}
 
-	public SharedPreferences getRawLocalPreferences(){
+	public synchronized SharedPreferences getRawLocalPreferences(){
 		if(prefs==null)
 			prefs=MastodonApp.context.getSharedPreferences(getID(), Context.MODE_PRIVATE);
 		return prefs;
@@ -313,7 +313,9 @@ public class AccountSession{
 
 	public void savePreferencesIfPending(){
 		if(preferencesNeedSaving){
-			new UpdateAccountCredentialsPreferences(preferences, null, self.discoverable, self.source.indexable)
+			boolean indexable=self!=null && self.source!=null && self.source.indexable;
+			boolean discoverable=self!=null && self.discoverable;
+			new UpdateAccountCredentialsPreferences(preferences, null, discoverable, indexable)
 					.setCallback(new Callback<>(){
 						@Override
 						public void onSuccess(Account result){
@@ -331,7 +333,7 @@ public class AccountSession{
 		}
 	}
 
-	public AccountLocalPreferences getLocalPreferences(){
+	public synchronized AccountLocalPreferences getLocalPreferences(){
 		if(localPreferences==null)
 			localPreferences=new AccountLocalPreferences(getRawLocalPreferences(), this);
 		return localPreferences;
@@ -342,6 +344,16 @@ public class AccountSession{
 	}
 
 	public <T> void filterStatusContainingObjects(List<T> objects, Function<T, Status> extractor, FilterContext context){
+		if(!getLocalPreferences().serverSideFiltersSupported){
+			for(T obj:objects){
+				Status s=extractor.apply(obj);
+				if(s!=null && s.filtered!=null){
+					getLocalPreferences().serverSideFiltersSupported=true;
+					getLocalPreferences().save();
+					break;
+				}
+			}
+		}
 		if(getLocalPreferences().serverSideFiltersSupported){
 			// Even with server-side filters, clients are expected to remove statuses that match a filter that hides them
 			objects.removeIf(o->{
@@ -351,7 +363,7 @@ public class AccountSession{
 				if(s.filtered==null)
 					return false;
 				for(FilterResult filter:s.filtered){
-					if(filter.filter.isActive() && filter.filter.filterAction==FilterAction.HIDE)
+					if(filter.filter!=null && filter.filter.isActive() && filter.filter.filterAction==FilterAction.HIDE)
 						return true;
 				}
 				return false;
@@ -360,20 +372,12 @@ public class AccountSession{
 		}
 		if(wordFilters==null)
 			return;
-		for(T obj:objects){
-			Status s=extractor.apply(obj);
-			if(s!=null && s.filtered!=null){
-				getLocalPreferences().serverSideFiltersSupported=true;
-				getLocalPreferences().save();
-				return;
-			}
-		}
 		objects.removeIf(o->{
 			Status s=extractor.apply(o);
 			if(s==null)
 				return false;
 			for(LegacyFilter filter:wordFilters){
-				if(filter.context.contains(context) && filter.matches(s) && filter.isActive())
+				if(filter.context!=null && filter.context.contains(context) && filter.matches(s) && filter.isActive())
 					return true;
 			}
 			return false;

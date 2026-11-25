@@ -35,6 +35,25 @@ public class DraftStore{
 	private static final String TAG="DraftStore";
 	private static final String DRAFT_JSON="draft.json";
 	private static final String MEDIA_PREFIX="media-";
+	// MAMMUT: Wave 3 Q-H12 — dedicated single-threaded worker for draft persistence so
+	// ComposeFragment.onPause() never blocks behind slow video staging or image resizing
+	// on MastodonAPIController.thread, while still serializing saves and deletes in FIFO order.
+	private static final me.grishka.appkit.utils.WorkerThread DRAFT_THREAD=new me.grishka.appkit.utils.WorkerThread("DraftStore");
+	static{
+		DRAFT_THREAD.start();
+	}
+
+	public static void runInBackground(Runnable action){
+		DRAFT_THREAD.postRunnable(action, 0);
+	}
+
+	/** Removes all drafts and copied media for a logged-out account. */
+	public static void deleteAllForAccount(Context context, String accountID){
+		if(context==null || accountID==null || accountID.isEmpty())
+			return;
+		File root=new File(context.getApplicationContext().getFilesDir(), "drafts/"+accountID);
+		runInBackground(()->deleteRecursivelyStatic(root));
+	}
 
 	private final Context context;
 	private final File accountRoot;
@@ -70,6 +89,7 @@ public class DraftStore{
 			dest=new File(dir, MEDIA_PREFIX+n+"."+ext);
 			n++;
 		}while(dest.exists());
+		boolean copied=false;
 		try(InputStream in=context.getContentResolver().openInputStream(source)){
 			if(in==null)
 				throw new IOException("Unable to open "+source);
@@ -78,6 +98,13 @@ public class DraftStore{
 				int read;
 				while((read=in.read(buf))>0)
 					out.write(buf, 0, read);
+				out.getFD().sync();
+			}
+			copied=true;
+		}finally{
+			if(!copied && dest.exists()){
+				//noinspection ResultOfMethodCallIgnored
+				dest.delete();
 			}
 		}
 		return dest.getAbsolutePath();
@@ -174,12 +201,16 @@ public class DraftStore{
 	}
 
 	private void deleteRecursively(File f){
+		deleteRecursivelyStatic(f);
+	}
+
+	private static void deleteRecursivelyStatic(File f){
 		if(f==null || !f.exists())
 			return;
 		File[] children=f.listFiles();
 		if(children!=null){
 			for(File child:children)
-				deleteRecursively(child);
+				deleteRecursivelyStatic(child);
 		}
 		//noinspection ResultOfMethodCallIgnored
 		f.delete();

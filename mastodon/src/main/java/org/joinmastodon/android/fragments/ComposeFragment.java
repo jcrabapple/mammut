@@ -243,6 +243,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 * the user starts a fresh composer.
 	 */
 	private boolean restoredDraftVisibility;
+	private boolean restoredDraftQuotePolicy;
+	private boolean userChangedVisibility;
+	private boolean userChangedQuotePolicy;
 	/**
 	 * MAMMUT: Composer 2.0 (§4, audit R1 F1/F2) — the first segment's
 	 * idempotency key and the fingerprint of the payload it is bound to.
@@ -296,7 +299,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 * successfully landed write sets this — a failed tail save must not
 	 * block the next chance to persist.
 	 */
-	private boolean tailDraftSaved;
+	private volatile boolean tailDraftSaved;
 
 	public ComposeFragment(){
 		super(R.layout.toolbar_fragment_with_progressbar);
@@ -378,6 +381,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	public void onDestroy(){
 		super.onDestroy();
 		mediaViewController.cancelAllUploads();
+		for(ThreadSegment ts:extraSegments)
+			ts.mediaController.cancelAllUploads();
+		dismissSendingOverlay();
 		removeBackCallback(emojiKeyboardHider);
 		removeBackCallback(sendingBackButtonBlocker);
 		removeBackCallback(discardConfirmationCallback);
@@ -773,22 +779,17 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			d.segmentFingerprints.add(ts.keyState.fingerprint);
 		}
 		draftId=d.id;
-		// Snapshot the attachment lists on the UI thread (M5): the copy itself
-		// used to run on the worker and could throw mid-iteration while the
-		// UI thread added or removed attachments, silently skipping the save.
-		final List<ComposeMediaViewController.DraftMediaAttachment> attachmentSnapshot=mediaViewController.snapshotAttachments();
-		final List<List<ComposeMediaViewController.DraftMediaAttachment>> threadAttachmentSnapshots=new ArrayList<>();
+		// Snapshot the attachment lists on the UI thread (M5 + Wave 3 Q-H11): immutable
+		// DTOs prevent concurrent reads of mutable attachment fields on the draft worker.
+		final List<ComposeMediaViewController.DraftAttachmentSnapshot> attachmentSnapshot=mediaViewController.snapshotAttachments();
+		final List<List<ComposeMediaViewController.DraftAttachmentSnapshot>> threadAttachmentSnapshots=new ArrayList<>();
 		for(ThreadSegment ts:segsSnapshot)
 			threadAttachmentSnapshots.add(ts.mediaController.snapshotAttachments());
 		final CountDownLatch saveDone=new CountDownLatch(1);
-		MastodonAPIController.runInBackground(()->{
+		DraftStore.runInBackground(()->{
 			try{
-				// The single worker thread serializes this with a publish-cleanup
-				// delete. The finished guard covers the fire-and-forget paths
-				// (onPause autosave) once the user has published or discarded;
-				// the explicit Save-draft button passes a callback and must
-				// write even while the fragment is leaving — its finished is
-				// only set from that callback, after the write.
+				// The dedicated DraftStore worker thread serializes this with a publish-cleanup
+				// delete without blocking behind slow media staging/resizing.
 				if(onSaved==null && finished)
 					return;
 				try{
@@ -823,7 +824,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		final String id=draftId;
 		draftId=null;
 		if(id!=null)
-			MastodonAPIController.runInBackground(()->draftStore.delete(id));
+			DraftStore.runInBackground(()->draftStore.delete(id));
 	}
 
 	@Override
@@ -1063,6 +1064,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		if(d.quotePolicy!=null){
 			try{
 				statusQuotePolicy=StatusQuotePolicy.valueOf(d.quotePolicy);
+				restoredDraftQuotePolicy=true;
 			}catch(IllegalArgumentException ignored){
 				// An unknown policy name from a newer build: keep the default.
 			}
@@ -1614,11 +1616,10 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		}
 		if(statusQuotePolicy!=null && instance.supportsQuotePostAuthoring())
 			req.quoteApprovalPolicy=statusQuotePolicy;
-		// R1 F2: same policy as the first segment — reordering the thread
-		// changes what this segment carries, so its fingerprint changes.
-		PublishKeys.SegmentPayload payload=payloadFor(req, null, null);
-		String key=ts.keyState.resolve(PublishKeys.fingerprint(payload), UUID.randomUUID().toString());
-		return new SegmentPublish(req, key);
+		// Wave 3 Q-C10: defer key/fingerprint resolution to publishNextSegment() once
+		// inReplyToId is known, so promoting a failed segment onto segment 0 keeps the
+		// exact anchor-bound fingerprint that went over the wire.
+		return new SegmentPublish(req, null, ts.keyState);
 	}
 
 	/** The full request payload as a plain value object, for fingerprinting. */
@@ -1652,7 +1653,13 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	private void publishNextSegment(List<SegmentPublish> pubs, int index, String inReplyToId){
 		SegmentPublish pub=pubs.get(index);
 		pub.req.inReplyToId=inReplyToId;
-		new CreateStatus(pub.req, pub.idempotencyKey)
+		String key=pub.idempotencyKey;
+		if(key==null && pub.keyState!=null){
+			PublishKeys.SegmentPayload payload=payloadFor(pub.req, inReplyToId, null);
+			key=pub.keyState.resolve(PublishKeys.fingerprint(payload), UUID.randomUUID().toString());
+			pub.idempotencyKey=key;
+		}
+		new CreateStatus(pub.req, key)
 				.setCallback(new Callback<>(){
 					@Override
 					public void onSuccess(Status result){
@@ -1724,6 +1731,8 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// tail went through updatePublishButtonState inside
 		// removePublishedPrefix, and the button may only be what that
 		// computed — an empty or over-limit lead segment keeps it off.
+		if(getActivity()==null)
+			return;
 		String msg=getResources().getQuantityString(R.plurals.thread_partial_publish, publishedCount, publishedCount);
 		new M3AlertDialogBuilder(getActivity())
 				.setTitle(R.string.post_failed)
@@ -1749,7 +1758,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// The tail's first segment chains below the last published one.
 		d.replyToStatusId=threadAnchorId;
 		final List<ThreadSegment> tail=new ArrayList<>(extraSegments.subList(publishedCount-1, extraSegments.size()));
-		final List<List<ComposeMediaViewController.DraftMediaAttachment>> threadAttachmentSnapshots=new ArrayList<>();
+		final List<List<ComposeMediaViewController.DraftAttachmentSnapshot>> threadAttachmentSnapshots=new ArrayList<>();
 		for(ThreadSegment ts:tail){
 			Segment s=new Segment();
 			s.text=ts.text.getText().toString();
@@ -1768,7 +1777,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		// this latch — a process kill in the gap between scheduling and the
 		// write would silently lose the only copy of the tail.
 		final CountDownLatch saveDone=new CountDownLatch(1);
-		MastodonAPIController.runInBackground(()->{
+		DraftStore.runInBackground(()->{
 			try{
 				try{
 					for(int i=0;i<tail.size();i++)
@@ -1852,11 +1861,17 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 */
 	private static class SegmentPublish{
 		final CreateStatus.Request req;
-		final String idempotencyKey;
+		String idempotencyKey;
+		final PublishKeys.KeyState keyState;
 
 		SegmentPublish(CreateStatus.Request req, String idempotencyKey){
+			this(req, idempotencyKey, null);
+		}
+
+		SegmentPublish(CreateStatus.Request req, String idempotencyKey, PublishKeys.KeyState keyState){
 			this.req=req;
 			this.idempotencyKey=idempotencyKey;
+			this.keyState=keyState;
 		}
 	}
 
@@ -1874,7 +1889,10 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 
 	private void handlePublishError(ErrorResponse error){
 		dismissSendingOverlay();
-		publishButton.setEnabled(true);
+		if(publishButton!=null)
+			publishButton.setEnabled(true);
+		if(getActivity()==null)
+			return;
 		if(error instanceof MastodonErrorResponse me){
 			new M3AlertDialogBuilder(getActivity())
 					.setTitle(R.string.post_failed)
@@ -2063,9 +2081,12 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	 */
 	private void handleScheduleError(ErrorResponse error){
 		dismissSendingOverlay();
-		publishButton.setEnabled(true);
+		if(publishButton!=null)
+			publishButton.setEnabled(true);
 		if(scheduleButton!=null)
 			scheduleButton.setEnabled(true);
+		if(getActivity()==null)
+			return;
 		if(error instanceof MastodonErrorResponse me){
 			new M3AlertDialogBuilder(getActivity())
 					.setTitle(R.string.post_failed)
@@ -2249,7 +2270,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 
 	@Override
 	public void onActivityResult(int requestCode, int resultCode, Intent data){
-		if(requestCode==MEDIA_RESULT && resultCode==Activity.RESULT_OK){
+		if(requestCode==MEDIA_RESULT && resultCode==Activity.RESULT_OK && data!=null){
 			// MAMMUT (§4) — picker media lands in the active segment.
 			ComposeMediaViewController activeMedia=getActiveMediaController();
 			Uri single=data.getData();
@@ -2257,8 +2278,12 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				activeMedia.addMediaAttachment(single, null);
 			}else{
 				ClipData clipData=data.getClipData();
-				for(int i=0;i<clipData.getItemCount();i++){
-					activeMedia.addMediaAttachment(clipData.getItemAt(i).getUri(), null);
+				if(clipData!=null){
+					for(int i=0;i<clipData.getItemCount();i++){
+						Uri u=clipData.getItemAt(i).getUri();
+						if(u!=null)
+							activeMedia.addMediaAttachment(u, null);
+					}
 				}
 			}
 		}
@@ -2302,10 +2327,14 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	}
 
 	private void toggleSpoiler(){
-		// MAMMUT (§4) — the CW toggle acts on the active segment: the main
-		// surface or the card holding the focused field.
-		if(activeSegmentIndex!=0){
-			ThreadSegment ts=extraSegments.get(activeSegmentIndex-1);
+		toggleSpoilerForSegment(activeSegmentIndex);
+	}
+
+	private void toggleSpoilerForSegment(int segmentIndex){
+		// MAMMUT (§4) — act on the explicit target segment (or the active segment from the bottom bar).
+		if(segmentIndex>0 && segmentIndex<=extraSegments.size()){
+			setActiveSegment(segmentIndex);
+			ThreadSegment ts=extraSegments.get(segmentIndex-1);
 			ts.hasSpoiler=!ts.hasSpoiler;
 			if(ts.hasSpoiler){
 				ts.spoilerWrap.setVisibility(View.VISIBLE);
@@ -2318,6 +2347,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 				ts.text.requestFocus();
 			}
 			updateThreadSegmentCounter(ts);
+			updateDraftState();
 			return;
 		}
 		hasSpoiler=!hasSpoiler;
@@ -2330,8 +2360,9 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			spoilerEdit.setText("");
 			spoilerBtn.setSelected(false);
 			mainEditText.requestFocus();
-			updateCharCounter();
 		}
+		updateCharCounter();
+		updateDraftState();
 	}
 
 	private void onVisibilityClick(View v){
@@ -2339,6 +2370,10 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			ComposerVisibilitySheet sheet=new ComposerVisibilitySheet(getActivity(), statusVisibility, statusQuotePolicy,
 					true, quotedStatus!=null, quotedStatus==null ? StatusPrivacy.PUBLIC : quotedStatus.visibility, accountID, (s, visibility, policy)->{
 				if(statusVisibility!=visibility || statusQuotePolicy!=policy){
+					if(statusVisibility!=visibility)
+						userChangedVisibility=true;
+					if(statusQuotePolicy!=policy)
+						userChangedQuotePolicy=true;
 					statusVisibility=visibility;
 					statusQuotePolicy=policy;
 					updateVisibilityButton(true);
@@ -2355,6 +2390,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 			ExtendedPopupMenu menu=new ExtendedPopupMenu(getActivity(), items);
 			Consumer<ListItem<StatusPrivacy>> onClick=i->{
 				if(statusVisibility!=i.parentObject){
+					userChangedVisibility=true;
 					statusVisibility=i.parentObject;
 					updateVisibilityButton(true);
 				}
@@ -2392,28 +2428,36 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 	}
 
 	private void applyPreferencesForPostVisibility(Preferences prefs, Bundle savedInstanceState){
-		if(quotedStatus!=null && quotedStatus.visibility==StatusPrivacy.UNLISTED){
-			statusVisibility=StatusPrivacy.UNLISTED;
+		if(!restoredDraftVisibility && !userChangedVisibility){
+			if(quotedStatus!=null && quotedStatus.visibility==StatusPrivacy.UNLISTED){
+				statusVisibility=StatusPrivacy.UNLISTED;
+			}
+			// Only override the reply visibility if our preference is more private.
+			// MAMMUT: Composer 2.0 — a resumed draft's visibility wins over defaults.
+			if(prefs.postingDefaultVisibility!=null && prefs.postingDefaultVisibility.isLessVisibleThan(statusVisibility)){
+				statusVisibility=prefs.postingDefaultVisibility;
+			}
 		}
 
-		// Only override the reply visibility if our preference is more private.
-		// MAMMUT: Composer 2.0 — a resumed draft's visibility wins over defaults.
-		if(!restoredDraftVisibility && prefs.postingDefaultVisibility.isLessVisibleThan(statusVisibility)){
-			statusVisibility=prefs.postingDefaultVisibility;
-		}
-
-		// A saved privacy setting from a previous compose session wins over all
-		if(savedInstanceState!=null){
-			statusVisibility=(StatusPrivacy) savedInstanceState.getSerializable("visibility");
-			// R1 F6: same parity for the quote policy — account defaults
-			// apply first, then the choice this composition already made.
-			StatusQuotePolicy savedQuotePolicy=(StatusQuotePolicy)savedInstanceState.getSerializable("quotePolicy");
-			if(savedQuotePolicy!=null)
-				statusQuotePolicy=savedQuotePolicy;
-		}
-
-		if(prefs.postingDefaultQuotePolicy!=null)
+		// Wave 3 Q-C9 (audit R1 F6): apply account default quote policy BEFORE savedInstanceState
+		// and only when neither a resumed draft nor the user already chose one.
+		if(!restoredDraftQuotePolicy && !userChangedQuotePolicy && prefs.postingDefaultQuotePolicy!=null){
 			statusQuotePolicy=prefs.postingDefaultQuotePolicy;
+		}
+
+		// A saved privacy/quote setting from a previous compose session wins over account defaults
+		if(savedInstanceState!=null){
+			if(!userChangedVisibility && !restoredDraftVisibility){
+				StatusPrivacy savedVis=(StatusPrivacy) savedInstanceState.getSerializable("visibility");
+				if(savedVis!=null)
+					statusVisibility=savedVis;
+			}
+			if(!userChangedQuotePolicy && !restoredDraftQuotePolicy){
+				StatusQuotePolicy savedQuotePolicy=(StatusQuotePolicy)savedInstanceState.getSerializable("quotePolicy");
+				if(savedQuotePolicy!=null)
+					statusQuotePolicy=savedQuotePolicy;
+			}
+		}
 
 		updateVisibilityButton(false);
 	}
@@ -2719,7 +2763,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		};
 		ts.text.setOnFocusChangeListener(focusListener);
 		ts.spoilerEdit.setOnFocusChangeListener(focusListener);
-		ts.cwBtn.setOnClickListener(v->toggleSpoiler());
+		ts.cwBtn.setOnClickListener(v->toggleSpoilerForSegment(extraSegments.indexOf(ts)+1));
 		ts.deleteBtn.setOnClickListener(v->deleteSegment(extraSegments.indexOf(ts)+1));
 		ts.mediaController.setView(card, mediaSavedState);
 		// Rebuilding an existing holder (rotation): views were destroyed,
@@ -2801,7 +2845,7 @@ public class ComposeFragment extends MastodonToolbarFragment implements ComposeE
 		int target=index+direction;
 		if(target<0 || target>extraSegments.size())
 			return;
-		if(index==0 && pollViewController.isShown()){
+		if((index==0 || target==0) && pollViewController.isShown()){
 			Toast.makeText(getActivity(), R.string.thread_move_poll_blocked, Toast.LENGTH_SHORT).show();
 			return;
 		}

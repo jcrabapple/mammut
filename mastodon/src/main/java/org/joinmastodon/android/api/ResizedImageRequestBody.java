@@ -52,12 +52,17 @@ public class ResizedImageRequestBody extends CountingRequestBody{
 	private volatile boolean released;
 
 	public ResizedImageRequestBody(Uri uri, int maxSize, ProgressListener progressListener) throws IOException{
+		this(uri, maxSize, progressListener, null);
+	}
+
+	public ResizedImageRequestBody(Uri uri, int maxSize, ProgressListener progressListener, MediaType explicitMediaType) throws IOException{
 		super(progressListener);
 		this.uri=uri;
 		this.maxSize=maxSize;
+		boolean prepared=false;
 		try{
 			localFile=ensureLocalFile(uri);
-			contentType=resolveContentType(uri, localFile);
+			contentType=explicitMediaType!=null ? explicitMediaType : resolveContentType(uri, localFile);
 			BitmapFactory.Options opts=new BitmapFactory.Options();
 			opts.inJustDecodeBounds=true;
 			BitmapFactory.decodeFile(localFile.getPath(), opts);
@@ -65,33 +70,41 @@ public class ResizedImageRequestBody extends CountingRequestBody{
 				throw new IOException("Could not decode image bounds: "+uri);
 			if(needResize(opts.outWidth, opts.outHeight) || needCrop(opts.outWidth, opts.outHeight)){
 				Bitmap bitmap=decodeAndScale(localFile, opts);
-				boolean isPNG=UploadSource.isPngMime(contentType.type()+"/"+contentType.subtype());
-				tempFile=File.createTempFile("mastodon_tmp_resized", isPNG ? ".png" : ".jpg", MastodonApp.context.getCacheDir());
-				tempFiles.add(tempFile);
-				try(FileOutputStream out=new FileOutputStream(tempFile)){
-					if(isPNG){
-						// PNG keeps alpha, MIME and filename — no flattening to JPEG.
-						bitmap.compress(Bitmap.CompressFormat.PNG, 0, out);
-					}else{
-						bitmap.compress(Bitmap.CompressFormat.JPEG, 97, out);
-						contentType=MediaType.get("image/jpeg");
+				if(bitmap==null)
+					throw new IOException("Could not decode image bitmap: "+uri);
+				try{
+					boolean isPNG=UploadSource.isPngMime(contentType.type()+"/"+contentType.subtype());
+					tempFile=File.createTempFile("mastodon_tmp_resized", isPNG ? ".png" : ".jpg", MastodonApp.context.getCacheDir());
+					tempFiles.add(tempFile);
+					try(FileOutputStream out=new FileOutputStream(tempFile)){
+						if(isPNG){
+							// PNG keeps alpha, MIME and filename — no flattening to JPEG.
+							bitmap.compress(Bitmap.CompressFormat.PNG, 0, out);
+						}else{
+							bitmap.compress(Bitmap.CompressFormat.JPEG, 97, out);
+							contentType=MediaType.get("image/jpeg");
+						}
+						out.getFD().sync();
 					}
-					out.getFD().sync();
+					if(tempFile.length()==0)
+						throw new IOException("Could not encode image: "+uri);
+					length=tempFile.length();
+				}finally{
+					bitmap.recycle();
 				}
-				if(tempFile.length()==0)
-					throw new IOException("Could not encode image: "+uri);
-				length=tempFile.length();
 			}else{
 				// The on-disk length is a fact; a provider SIZE column (NULL cursor,
 				// empty cursor, expired grant) is never consulted.
 				length=localFile.length();
 			}
+			prepared=true;
 		}catch(IOException e){
-			tempFiles.releaseAll();
 			throw e;
 		}catch(RuntimeException e){
-			tempFiles.releaseAll();
 			throw new IOException("Could not prepare image for upload: "+uri, e);
+		}finally{
+			if(!prepared)
+				tempFiles.releaseAll();
 		}
 	}
 
@@ -165,6 +178,8 @@ public class ResizedImageRequestBody extends CountingRequestBody{
 			BitmapFactory.Options opts=new BitmapFactory.Options();
 			opts.inSampleSize=(int)factor;
 			bitmap=BitmapFactory.decodeFile(localFile.getPath(), opts);
+			if(bitmap==null)
+				throw new IOException("Could not decode image file: "+localFile.getName());
 			boolean needCrop=needCrop(targetWidth, targetHeight);
 			if(factor%1f!=0f || needCrop){
 				Rect srcBounds=null;

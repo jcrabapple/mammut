@@ -22,6 +22,7 @@ public class UpdateAccountCredentials extends MastodonAPIRequest<Account>{
 	private File avatarFile, coverFile;
 	private List<AccountField> fields;
 	private Boolean discoverable, indexable;
+	private final Object bodyLock=new Object();
 	private ResizedImageRequestBody avatarBody, coverBody;
 
 	public UpdateAccountCredentials(String displayName, String bio, Uri avatar, Uri cover, List<AccountField> fields){
@@ -50,66 +51,69 @@ public class UpdateAccountCredentials extends MastodonAPIRequest<Account>{
 
 	@Override
 	public RequestBody getRequestBody() throws IOException{
-		releaseBodies();
+		releaseRequestResources();
 		MultipartBody.Builder bldr=new MultipartBody.Builder()
 				.setType(MultipartBody.FORM)
 				.addFormDataPart("display_name", displayName)
 				.addFormDataPart("note", bio);
 
-		if(avatar!=null){
-			bldr.addFormDataPart("avatar", UiUtils.getFileName(avatar), avatarBody=new AvatarResizedImageRequestBody(avatar, null));
-		}else if(avatarFile!=null){
-			bldr.addFormDataPart("avatar", avatarFile.getName(), avatarBody=new AvatarResizedImageRequestBody(Uri.fromFile(avatarFile), null));
-		}
-		if(cover!=null){
-			bldr.addFormDataPart("header", UiUtils.getFileName(cover), coverBody=new ResizedImageRequestBody(cover, 1500*500, null));
-		}else if(coverFile!=null){
-			bldr.addFormDataPart("header", coverFile.getName(), coverBody=new ResizedImageRequestBody(Uri.fromFile(coverFile), 1500*500, null));
-		}
-		if(fields!=null){
-			if(fields.isEmpty()){
-				bldr.addFormDataPart("fields_attributes[0][name]", "").addFormDataPart("fields_attributes[0][value]", "");
-			}else{
-				int i=0;
-				for(AccountField field:fields){
-					bldr.addFormDataPart("fields_attributes["+i+"][name]", field.name).addFormDataPart("fields_attributes["+i+"][value]", field.value);
-					i++;
+		boolean ok=false;
+		try{
+			if(avatar!=null){
+				ResizedImageRequestBody body=new AvatarResizedImageRequestBody(avatar, null);
+				synchronized(bodyLock){ avatarBody=body; }
+				bldr.addFormDataPart("avatar", UiUtils.getFileName(avatar), body);
+			}else if(avatarFile!=null){
+				ResizedImageRequestBody body=new AvatarResizedImageRequestBody(Uri.fromFile(avatarFile), null);
+				synchronized(bodyLock){ avatarBody=body; }
+				bldr.addFormDataPart("avatar", avatarFile.getName(), body);
+			}
+			if(cover!=null){
+				ResizedImageRequestBody body=new ResizedImageRequestBody(cover, 1500*500, null);
+				synchronized(bodyLock){ coverBody=body; }
+				bldr.addFormDataPart("header", UiUtils.getFileName(cover), body);
+			}else if(coverFile!=null){
+				ResizedImageRequestBody body=new ResizedImageRequestBody(Uri.fromFile(coverFile), 1500*500, null);
+				synchronized(bodyLock){ coverBody=body; }
+				bldr.addFormDataPart("header", coverFile.getName(), body);
+			}
+			if(fields!=null){
+				if(fields.isEmpty()){
+					bldr.addFormDataPart("fields_attributes[0][name]", "").addFormDataPart("fields_attributes[0][value]", "");
+				}else{
+					int i=0;
+					for(AccountField field:fields){
+						bldr.addFormDataPart("fields_attributes["+i+"][name]", field.name).addFormDataPart("fields_attributes["+i+"][value]", field.value);
+						i++;
+					}
 				}
 			}
+			if(discoverable!=null)
+				bldr.addFormDataPart("discoverable", discoverable.toString());
+			if(indexable!=null)
+				bldr.addFormDataPart("indexable", indexable.toString());
+
+			RequestBody built=bldr.build();
+			ok=true;
+			return built;
+		}finally{
+			if(!ok)
+				releaseRequestResources();
 		}
-		if(discoverable!=null)
-			bldr.addFormDataPart("discoverable", discoverable.toString());
-		if(indexable!=null)
-			bldr.addFormDataPart("indexable", indexable.toString());
-
-		return bldr.build();
-	}
-
-	/**
-	 * R2 F3 terminal cleanup: the avatar/header bodies stage verified cache temps that
-	 * must not outlive the request. {@code onRequestDone} runs before the success and
-	 * error callbacks; {@code cancel} covers the path where neither ever fires.
-	 */
-	@Override
-	public synchronized void cancel(){
-		releaseBodies();
-		super.cancel();
 	}
 
 	@Override
-	protected void onRequestDone(){
-		releaseBodies();
-		super.onRequestDone();
-	}
-
-	private void releaseBodies(){
-		if(avatarBody!=null){
-			avatarBody.release();
+	protected void releaseRequestResources(){
+		ResizedImageRequestBody a, c;
+		synchronized(bodyLock){
+			a=avatarBody;
+			c=coverBody;
 			avatarBody=null;
-		}
-		if(coverBody!=null){
-			coverBody.release();
 			coverBody=null;
 		}
+		if(a!=null)
+			a.release();
+		if(c!=null)
+			c.release();
 	}
 }

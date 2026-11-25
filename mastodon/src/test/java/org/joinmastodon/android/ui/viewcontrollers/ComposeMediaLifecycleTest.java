@@ -189,4 +189,26 @@ public class ComposeMediaLifecycleTest{
 			Locale.setDefault(previous);
 		}
 	}
+
+	// --- Wave 3 regressions: image predicate & draftFilePath parceling ---
+
+	@Test
+	public void isImageAttachmentDistinguishesImagesFromVideoAndAudio(){
+		assertTrue(ComposeMediaViewController.isImageAttachment("image/jpeg", null));
+		assertTrue(ComposeMediaViewController.isImageAttachment("IMAGE/PNG", null));
+		assertFalse(ComposeMediaViewController.isImageAttachment("video/mp4", null));
+		assertFalse(ComposeMediaViewController.isImageAttachment("audio/mpeg", null));
+		assertTrue(ComposeMediaViewController.isImageAttachment(null, org.joinmastodon.android.model.Attachment.Type.IMAGE));
+		assertFalse(ComposeMediaViewController.isImageAttachment(null, org.joinmastodon.android.model.Attachment.Type.VIDEO));
+		assertFalse(ComposeMediaViewController.isImageAttachment(null, org.joinmastodon.android.model.Attachment.Type.GIFV));
+		assertFalse(ComposeMediaViewController.isImageAttachment(null, org.joinmastodon.android.model.Attachment.Type.AUDIO));
+		assertFalse(ComposeMediaViewController.isImageAttachment(null, null));
+	}
+
+	@Test
+	public void draftFilePathIsNotTransientSoParcelerPreservesIt() throws Exception{
+		java.lang.reflect.Field f=ComposeMediaViewController.DraftMediaAttachment.class.getDeclaredField("draftFilePath");
+		assertFalse("draftFilePath must survive Parceler save/restore across process death",
+				java.lang.reflect.Modifier.isTransient(f.getModifiers()));
+	}
 }
