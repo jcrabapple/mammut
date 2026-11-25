@@ -231,7 +231,7 @@ public class CatchUpFragment extends StatusListFragment{
 							dataLoading=false;
 							loaded=true;
 							dataLoaded();
-							pendingRetry=()->fetchPage(fill.networkCursor, false);
+							pendingRetry=CatchUpFragment.this::retryMidFill;
 							buildList();
 						}
 					}
@@ -298,6 +298,15 @@ public class CatchUpFragment extends StatusListFragment{
 	}
 
 // Load older posts (spec §6)
+
+	private void retryMidFill(){
+		if(fillRunning)
+			return;
+		fillRunning=true;
+		pendingRetry=null;
+		buildList();
+		fetchPage(fill.networkCursor, false);
+	}
 
 	private void loadOlderPosts(){
 		if(extensionRunning || fill.serverEnded)
@@ -408,7 +417,7 @@ public class CatchUpFragment extends StatusListFragment{
 	}
 
 	private void addTrailingRow(){
-		if(extensionRunning){
+		if(fillRunning || extensionRunning){
 			displayItems.add(new CatchUpProgressStatusDisplayItem("catchup_progress", this, getActivity(),
 					CatchUpProgressStatusDisplayItem.Mode.PROGRESS, getString(R.string.catch_up_loading_older), null, null));
 		}else if(pendingRetry!=null){

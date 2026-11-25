@@ -18,6 +18,7 @@ import org.joinmastodon.android.BuildConfig;
 import org.joinmastodon.android.MastodonApp;
 import org.joinmastodon.android.api.gson.IsoInstantTypeAdapter;
 import org.joinmastodon.android.api.gson.IsoLocalDateTypeAdapter;
+import org.joinmastodon.android.api.gson.SafeEnumSetTypeAdapterFactory;
 import org.joinmastodon.android.api.requests.async_refreshes.GetAsyncRefresh;
 import org.joinmastodon.android.api.session.AccountSession;
 import org.joinmastodon.android.model.AsyncRefresh;
@@ -60,6 +61,7 @@ public class MastodonAPIController{
 			.setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
 			.registerTypeAdapter(Instant.class, new IsoInstantTypeAdapter())
 			.registerTypeAdapter(LocalDate.class, new IsoLocalDateTypeAdapter())
+			.registerTypeAdapterFactory(new SafeEnumSetTypeAdapterFactory())
 			.create();
 	public static final Gson gson = gsonWithoutDeserializer.newBuilder()
 			.registerTypeAdapter(Status.class, new Status.StatusDeserializer())
@@ -278,71 +280,104 @@ public class MastodonAPIController{
 	}
 
 	public void startPollingAsyncRefresh(AsyncRefreshHeader header, Consumer<AsyncRefresh> callback){
-		AsyncRefreshPollRecord existingRecord=asyncRefreshPolls.get(header.id);
-		if(existingRecord!=null){
-			if(existingRecord.callbacks.contains(callback))
-				throw new IllegalStateException("This callback is already polling this async refresh");
-			existingRecord.callbacks.add(callback);
-			return;
+		AsyncRefreshPollRecord r;
+		synchronized(asyncRefreshPolls){
+			AsyncRefreshPollRecord existingRecord=asyncRefreshPolls.get(header.id);
+			if(existingRecord!=null){
+				if(existingRecord.callbacks.contains(callback))
+					throw new IllegalStateException("This callback is already polling this async refresh");
+				existingRecord.callbacks.add(callback);
+				return;
+			}
+			r=new AsyncRefreshPollRecord();
+			r.callbacks.add(callback);
+			r.retryInterval=Math.max(1, Math.min(3600, header.retryInterval));
+			r.upcomingApiCall=()->doAsyncRefreshPoll(header.id, r);
+			asyncRefreshPolls.put(header.id, r);
 		}
-		AsyncRefreshPollRecord r=new AsyncRefreshPollRecord();
-		r.callbacks.add(callback);
-		r.retryInterval=header.retryInterval;
-		r.upcomingApiCall=()->doAsyncRefreshPoll(header.id, r);
-		asyncRefreshPolls.put(header.id, r);
 		thread.postRunnable(r.upcomingApiCall, r.retryInterval*1000);
 		if(BuildConfig.DEBUG)
 			Log.d(TAG, "Starting async refresh poll for id "+header.id);
 	}
 
 	private void doAsyncRefreshPoll(String id, AsyncRefreshPollRecord r){
-		r.currentApiCall=new GetAsyncRefresh(id)
-				.setCallback(new me.grishka.appkit.api.Callback<>(){
-					@Override
-					public void onSuccess(GetAsyncRefresh.Response result){
-						AsyncRefresh ar=result.asyncRefresh;
-						if(ar.status==AsyncRefresh.RefreshStatus.FINISHED){
-							for(Consumer<AsyncRefresh> callback:r.callbacks){
-								callback.accept(ar);
+		synchronized(asyncRefreshPolls){
+			if(asyncRefreshPolls.get(id)!=r)
+				return;
+			r.currentApiCall=new GetAsyncRefresh(id)
+					.setCallback(new me.grishka.appkit.api.Callback<>(){
+						@Override
+						public void onSuccess(GetAsyncRefresh.Response result){
+							AsyncRefresh ar=result.asyncRefresh;
+							if(ar!=null && ar.status==AsyncRefresh.RefreshStatus.FINISHED){
+								List<Consumer<AsyncRefresh>> snapshot;
+								synchronized(asyncRefreshPolls){
+									snapshot=new ArrayList<>(r.callbacks);
+									asyncRefreshPolls.remove(id, r);
+									r.currentApiCall=null;
+								}
+								for(Consumer<AsyncRefresh> callback:snapshot){
+									callback.accept(ar);
+								}
+							}else if(ar!=null && ar.status==AsyncRefresh.RefreshStatus.RUNNING){
+								boolean stillActive;
+								synchronized(asyncRefreshPolls){
+									r.resultCount=ar.resultCount;
+									r.currentApiCall=null;
+									stillActive=asyncRefreshPolls.get(id)==r;
+								}
+								if(stillActive)
+									thread.postRunnable(r.upcomingApiCall, r.retryInterval*1000);
+							}else{
+								synchronized(asyncRefreshPolls){
+									asyncRefreshPolls.remove(id, r);
+									r.currentApiCall=null;
+								}
 							}
-							asyncRefreshPolls.remove(id);
-							r.currentApiCall=null;
-						}else if(ar.status==AsyncRefresh.RefreshStatus.RUNNING){
-							r.resultCount=ar.resultCount;
-							r.currentApiCall=null;
-							thread.postRunnable(r.upcomingApiCall, r.retryInterval*1000);
 						}
-					}
 
-					@Override
-					public void onError(ErrorResponse error){
-						if(BuildConfig.DEBUG)
-							Log.w(TAG, "Async refresh "+id+" polling failed");
-						asyncRefreshPolls.remove(id);
-						r.currentApiCall=null;
-					}
-				})
-				.exec(session.getID());
-	}
-
-	public void cancelPollingAsyncRefresh(String id, Consumer<AsyncRefresh> callback){
-		AsyncRefreshPollRecord r=asyncRefreshPolls.get(id);
-		if(r==null)
-			return;
-		r.callbacks.remove(callback);
-		if(r.callbacks.isEmpty()){
-			if(BuildConfig.DEBUG)
-				Log.d(TAG, "Canceling async refresh poll "+id+" because there are no callbacks left");
-			asyncRefreshPolls.remove(id);
-			thread.handler.removeCallbacks(r.upcomingApiCall);
-			if(r.currentApiCall!=null)
-				r.currentApiCall.cancel();
+						@Override
+						public void onError(ErrorResponse error){
+							if(BuildConfig.DEBUG)
+								Log.w(TAG, "Async refresh "+id+" polling failed");
+							synchronized(asyncRefreshPolls){
+								asyncRefreshPolls.remove(id, r);
+								r.currentApiCall=null;
+							}
+						}
+					})
+					.exec(session.getID());
 		}
 	}
 
+	public void cancelPollingAsyncRefresh(String id, Consumer<AsyncRefresh> callback){
+		MastodonAPIRequest<?> toCancel=null;
+		Runnable toRemove=null;
+		synchronized(asyncRefreshPolls){
+			AsyncRefreshPollRecord r=asyncRefreshPolls.get(id);
+			if(r==null)
+				return;
+			r.callbacks.remove(callback);
+			if(r.callbacks.isEmpty()){
+				if(BuildConfig.DEBUG)
+					Log.d(TAG, "Canceling async refresh poll "+id+" because there are no callbacks left");
+				asyncRefreshPolls.remove(id, r);
+				toRemove=r.upcomingApiCall;
+				toCancel=r.currentApiCall;
+				r.currentApiCall=null;
+			}
+		}
+		if(toRemove!=null)
+			thread.handler.removeCallbacks(toRemove);
+		if(toCancel!=null)
+			toCancel.cancel();
+	}
+
 	public int getAsyncRefreshResultCount(String id){
-		AsyncRefreshPollRecord r=asyncRefreshPolls.get(id);
-		return r==null ? 0 : r.resultCount;
+		synchronized(asyncRefreshPolls){
+			AsyncRefreshPollRecord r=asyncRefreshPolls.get(id);
+			return r==null ? 0 : r.resultCount;
+		}
 	}
 
 	private static class AsyncRefreshPollRecord{

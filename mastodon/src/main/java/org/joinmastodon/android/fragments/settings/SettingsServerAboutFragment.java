@@ -174,12 +174,18 @@ public class SettingsServerAboutFragment extends LoaderFragment{
 				.setCallback(new SimpleCallback<>(this){
 					@Override
 					public void onSuccess(GetInstanceExtendedDescription.Response result){
+						Activity uiActivity=getActivity();
+						if(uiActivity==null)
+							return;
+						HashMap<String, String> templateParams=new HashMap<>();
+						templateParams.put("colorSurface", getThemeColorAsCss(R.attr.colorM3Surface, 1));
+						templateParams.put("colorOnSurface", getThemeColorAsCss(R.attr.colorM3OnSurface, 1));
+						templateParams.put("colorPrimary", getThemeColorAsCss(R.attr.colorM3Primary, 1));
+						templateParams.put("colorPrimaryTransparent", getThemeColorAsCss(R.attr.colorM3Primary, 0.2f));
+						android.content.res.AssetManager assets=uiActivity.getAssets();
 						MastodonAPIController.runInBackground(()->{
-							Activity activity=getActivity();
-							if(activity==null)
-								return;
 							String template;
-							try(BufferedReader reader=new BufferedReader(new InputStreamReader(getActivity().getAssets().open("server_about_template.htm")))){
+							try(BufferedReader reader=new BufferedReader(new InputStreamReader(assets.open("server_about_template.htm")))){
 								StringBuilder sb=new StringBuilder();
 								String line;
 								while((line=reader.readLine())!=null){
@@ -188,23 +194,20 @@ public class SettingsServerAboutFragment extends LoaderFragment{
 								}
 								template=sb.toString();
 							}catch(IOException x){
-								throw new RuntimeException(x);
+								return;
 							}
 
-							HashMap<String, String> templateParams=new HashMap<>();
 							// MAMMUT: audit S1.5 — the description is instance-controlled HTML; strip
 							// active content before it reaches the WebView
 							templateParams.put("content", ServerAboutPolicy.sanitizeHtml(result.content));
-							templateParams.put("colorSurface", getThemeColorAsCss(R.attr.colorM3Surface, 1));
-							templateParams.put("colorOnSurface", getThemeColorAsCss(R.attr.colorM3OnSurface, 1));
-							templateParams.put("colorPrimary", getThemeColorAsCss(R.attr.colorM3Primary, 1));
-							templateParams.put("colorPrimaryTransparent", getThemeColorAsCss(R.attr.colorM3Primary, 0.2f));
 							for(Map.Entry<String, String> param:templateParams.entrySet()){
 								template=template.replace("{{"+param.getKey()+"}}", param.getValue());
 							}
 
 							final String html=template;
-							activity.runOnUiThread(()->{
+							uiActivity.runOnUiThread(()->{
+								if(getActivity()==null || webView==null)
+									return;
 								webView.loadDataWithBaseURL(null, html, "text/html; charset=utf-8", null, null);
 							});
 						});

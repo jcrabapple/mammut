@@ -38,6 +38,10 @@ public class NotificationActionHandlerService extends Service{
 
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startId){
+		if(intent==null){
+			maybeStopSelf();
+			return START_NOT_STICKY;
+		}
 		String action=intent.getStringExtra("action");
 		String account=intent.getStringExtra("account");
 		String postID=intent.getStringExtra("post");
@@ -61,8 +65,15 @@ public class NotificationActionHandlerService extends Service{
 			}
 			CreateStatus.Request req=new CreateStatus.Request();
 			req.inReplyToId=postID;
-			req.status=intent.getStringExtra("replyPrefix")+replyText;
-			StatusPrivacy replyVisibility=StatusPrivacy.valueOf(intent.getStringExtra("visibility"));
+			String replyPrefix=intent.getStringExtra("replyPrefix");
+			req.status=(replyPrefix!=null ? replyPrefix : "")+replyText;
+			StatusPrivacy replyVisibility=StatusPrivacy.PUBLIC;
+			String rawVisibility=intent.getStringExtra("visibility");
+			if(rawVisibility!=null){
+				try{
+					replyVisibility=StatusPrivacy.valueOf(rawVisibility);
+				}catch(IllegalArgumentException ignored){}
+			}
 			// MAMMUT: port from upstream master
 			if(replyVisibility==StatusPrivacy.PUBLIC && GlobalUserPreferences.defaultToUnlistedReplies)
 				replyVisibility=StatusPrivacy.UNLISTED;
@@ -99,7 +110,7 @@ public class NotificationActionHandlerService extends Service{
 					.exec(account);
 		}else if("favorite".equals(action)){
 			PendingIntent prevActionIntent;
-			if(notification!=null){
+			if(notification!=null && notification.getNotification()!=null && notification.getNotification().actions!=null && notification.getNotification().actions.length>1){
 				Notification n=notification.getNotification();
 				prevActionIntent=n.actions[1].actionIntent;
 				n.actions[1].actionIntent=null;
@@ -120,7 +131,7 @@ public class NotificationActionHandlerService extends Service{
 
 						@Override
 						public void onError(ErrorResponse error){
-							if(notification!=null){
+							if(notification!=null && notification.getNotification()!=null && notification.getNotification().actions!=null && notification.getNotification().actions.length>1){
 								Notification n=notification.getNotification();
 								n.actions[1].actionIntent=prevActionIntent;
 								n.actions[1].title=getString(R.string.button_favorite);
@@ -134,7 +145,7 @@ public class NotificationActionHandlerService extends Service{
 					.exec(account);
 		}else if("boost".equals(action)){
 			PendingIntent prevActionIntent;
-			if(notification!=null){
+			if(notification!=null && notification.getNotification()!=null && notification.getNotification().actions!=null && notification.getNotification().actions.length>2){
 				Notification n=notification.getNotification();
 				prevActionIntent=n.actions[2].actionIntent;
 				n.actions[2].actionIntent=null;
@@ -155,7 +166,7 @@ public class NotificationActionHandlerService extends Service{
 
 						@Override
 						public void onError(ErrorResponse error){
-							if(notification!=null){
+							if(notification!=null && notification.getNotification()!=null && notification.getNotification().actions!=null && notification.getNotification().actions.length>2){
 								Notification n=notification.getNotification();
 								n.actions[2].actionIntent=prevActionIntent;
 								n.actions[2].title=getString(R.string.button_reblog);
@@ -170,7 +181,7 @@ public class NotificationActionHandlerService extends Service{
 		}else if("bookmark".equals(action)){
 			// MAMMUT: port from upstream master — bookmark is the default third notification action
 			PendingIntent prevActionIntent;
-			if(notification!=null){
+			if(notification!=null && notification.getNotification()!=null && notification.getNotification().actions!=null && notification.getNotification().actions.length>2){
 				Notification n=notification.getNotification();
 				prevActionIntent=n.actions[2].actionIntent;
 				n.actions[2].actionIntent=null;
@@ -191,7 +202,7 @@ public class NotificationActionHandlerService extends Service{
 
 						@Override
 						public void onError(ErrorResponse error){
-							if(notification!=null){
+							if(notification!=null && notification.getNotification()!=null && notification.getNotification().actions!=null && notification.getNotification().actions.length>2){
 								Notification n=notification.getNotification();
 								n.actions[2].actionIntent=prevActionIntent;
 								n.actions[2].title=getString(R.string.add_bookmark);

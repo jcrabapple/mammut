@@ -87,6 +87,8 @@ public class Attachment extends BaseModel{
 
 	@Override
 	public void postprocess() throws ObjectValidationException{
+		if(type==null)
+			type=Type.UNKNOWN;
 		super.postprocess();
 		if(blurhash!=null){
 			Bitmap placeholder=BlurHashDecoder.decode(blurhash, 16, 16);

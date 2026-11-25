@@ -111,6 +111,8 @@ public class Status extends BaseModel implements DisplayItemsParent, Searchable 
 
 	@Override
 	public void postprocess() throws ObjectValidationException{
+		if(visibility==null)
+			visibility=StatusPrivacy.PUBLIC;
 		super.postprocess();
 		if(application!=null)
 			application.postprocess();
@@ -143,7 +145,7 @@ public class Status extends BaseModel implements DisplayItemsParent, Searchable 
 		}
 
 		// MOSHIDON:
-		if(visibility.equals(StatusPrivacy.LOCAL)) localOnly=true;
+		if(StatusPrivacy.LOCAL.equals(visibility)) localOnly=true;
 		if(emojiReactions!=null) reactions=emojiReactions;
 		if(reactions==null) reactions=new ArrayList<>();
 	}

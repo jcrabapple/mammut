@@ -300,7 +300,6 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 		}
 		if(id==R.id.mark_all_read){
 			markAsRead(true);
-			resetUnreadBackground();
 		}else if(id==R.id.filters){
 			showFiltersAlert();
 		}else if(id==R.id.clear_notifications){
@@ -357,6 +356,8 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 			// marker write leaves the local marker, the unread store, and the badge untouched
 			NavToolbarUtils.markAllNotificationsReadServerOnly(getActivity(), accountID, id, ()->{
 				realUnreadMarker=id;
+				if(force && list!=null)
+					resetUnreadBackground();
 				// MAMMUT: marking read from the notifications screen must also clear the bell
 				// chip. The shared helper only commits the server marker; the bell long-press
 				// path refreshes the store itself, but this path did not, so the chip lingered.
@@ -479,6 +480,8 @@ public class NotificationsListFragment extends BaseNotificationsListFragment{
 					.setCallback(new Callback<>(){
 						@Override
 						public void onSuccess(NotificationsPolicy policy){
+							if(getActivity()==null)
+								return;
 							updatePolicy(policy);
 							dlg.dismiss();
 						}

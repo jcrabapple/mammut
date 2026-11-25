@@ -244,9 +244,10 @@ public class HomeTimelineFragment extends StatusListFragment implements ToolbarD
 							public void onSuccess(List<Status> result){
 								if(refreshing)
 									list.scrollToPosition(0);
-								maxID=result.isEmpty() ? null : result.get(result.size()-1).id;
+								boolean hasMore=!result.isEmpty();
+								maxID=hasMore ? result.get(result.size()-1).id : null;
 								AccountSessionManager.get(accountID).filterStatuses(result, FilterContext.PUBLIC);
-								onDataLoaded(result, !result.isEmpty());
+								onDataLoaded(result, hasMore);
 							}
 						})
 						.exec(accountID);
@@ -258,9 +259,10 @@ public class HomeTimelineFragment extends StatusListFragment implements ToolbarD
 							public void onSuccess(List<Status> result){
 								if(refreshing)
 									list.scrollToPosition(0);
-								maxID=result.isEmpty() ? null : result.get(result.size()-1).id;
+								boolean hasMore=!result.isEmpty();
+								maxID=hasMore ? result.get(result.size()-1).id : null;
 								AccountSessionManager.get(accountID).filterStatuses(result, FilterContext.HOME);
-								onDataLoaded(result, !result.isEmpty());
+								onDataLoaded(result, hasMore);
 							}
 						})
 						.exec(accountID);

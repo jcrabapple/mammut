@@ -5,6 +5,7 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 
+import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.ui.views.NavMenuView;
 
 import androidx.annotation.Nullable;
@@ -55,20 +56,14 @@ public class NavMenuController implements NavMenuView.OnMenuActionListener{
 		// FAB bottom margin: 16dp above the navigation-bar inset (the previous tab bar
 		// enforced a 24dp minimum when any inset was present; keep that so the FAB
 		// clears the gesture pill)
-		view.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener(){
-			@Override
-			public boolean onPreDraw(){
-				applyFabMargin();
-				return true;
-			}
-		});
 		applyFabMargin();
 		return view;
 	}
 
 	public void detach(ViewGroup overlayContainer){
 		setScrollTarget(null);
-		overlayContainer.removeView(view);
+		if(view!=null && overlayContainer!=null)
+			overlayContainer.removeView(view);
 		view=null;
 	}
 
@@ -193,6 +188,12 @@ public class NavMenuController implements NavMenuView.OnMenuActionListener{
 		public void onScrolled(RecyclerView recyclerView, int dx, int dy){
 			if(view==null)
 				return;
+			if(!GlobalUserPreferences.autoHideFab){
+				downAccum=0;
+				upAccum=0;
+				view.showFab();
+				return;
+			}
 			int offset=recyclerView.computeVerticalScrollOffset();
 			if(offset==0){
 				downAccum=0;

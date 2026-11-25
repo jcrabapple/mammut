@@ -590,20 +590,29 @@ public class SettingsAboutAppFragment extends BaseSettingsFragment<Void>{
 	}
 
 	private void onClearMediaCacheClick(ListItem<?> item){
+		Activity activity=getActivity();
+		if(activity==null)
+			return;
+		android.content.Context appCtx=activity.getApplicationContext();
 		MastodonAPIController.runInBackground(()->{
-			Activity activity=getActivity();
-			ImageCache.getInstance(getActivity()).clear();
+			ImageCache.getInstance(appCtx).clear();
 			activity.runOnUiThread(()->{
-				Toast.makeText(activity, R.string.media_cache_cleared, Toast.LENGTH_SHORT).show();
+				Activity current=getActivity();
+				if(current==null || current.isFinishing() || current.isDestroyed())
+					return;
+				Toast.makeText(current, R.string.media_cache_cleared, Toast.LENGTH_SHORT).show();
 				updateMediaCacheItem();
 			});
 		});
 	}
 
 	private void updateMediaCacheItem(){
-		DiskLruCache cache=ImageCache.getInstance(getActivity()).getDiskCache();
+		Activity activity=getActivity();
+		if(activity==null)
+			return;
+		DiskLruCache cache=ImageCache.getInstance(activity).getDiskCache();
 		long size=cache==null ? 0 : cache.size();
-		mediaCacheItem.subtitle=UiUtils.formatFileSize(getActivity(), size, false);
+		mediaCacheItem.subtitle=UiUtils.formatFileSize(activity, size, false);
 		mediaCacheItem.isEnabled=size>0;
 		rebindItem(mediaCacheItem);
 	}

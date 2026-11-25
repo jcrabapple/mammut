@@ -29,6 +29,8 @@ public class Filter extends BaseModel{
 
 	@Override
 	public void postprocess() throws ObjectValidationException{
+		if(context==null)
+			context=EnumSet.noneOf(FilterContext.class);
 		super.postprocess();
 		for(FilterKeyword keyword:keywords)
 			keyword.postprocess();

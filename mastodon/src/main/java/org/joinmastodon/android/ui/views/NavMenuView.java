@@ -196,8 +196,21 @@ public class NavMenuView extends FrameLayout{
 		updateBadge();
 		updateRowBadges();
 		updateFabDescription();
+	}
 
-		getViewTreeObserver().addOnGlobalLayoutListener(this::updateMenuMaxHeight);
+	private final android.view.ViewTreeObserver.OnGlobalLayoutListener menuMaxHeightListener=this::updateMenuMaxHeight;
+
+	@Override
+	protected void onAttachedToWindow(){
+		super.onAttachedToWindow();
+		getViewTreeObserver().addOnGlobalLayoutListener(menuMaxHeightListener);
+	}
+
+	@Override
+	protected void onDetachedFromWindow(){
+		getViewTreeObserver().removeOnGlobalLayoutListener(menuMaxHeightListener);
+		cancelAnims();
+		super.onDetachedFromWindow();
 	}
 
 	private View createDivider(Context context){

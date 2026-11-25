@@ -102,14 +102,26 @@ public class AudioPlayerService extends Service{
 	@Override
 	public void onDestroy(){
 		instance=null;
-		unregisterReceiver(receiver);
+		try{
+			unregisterReceiver(receiver);
+		}catch(IllegalArgumentException ignored){}
 		if(player!=null){
 			player.release();
+			player=null;
+		}
+		if(session!=null){
+			session.setActive(false);
+			session.release();
+			session=null;
 		}
 		nm.cancel(NOTIFICATION_SERVICE);
-		for(Callback cb:callbacks)
-			cb.onPlaybackStopped(attachment.id);
-		getSystemService(AudioManager.class).abandonAudioFocus(audioFocusChangeListener);
+		if(attachment!=null){
+			for(Callback cb:new java.util.ArrayList<>(callbacks))
+				cb.onPlaybackStopped(attachment.id);
+		}
+		AudioManager am=getSystemService(AudioManager.class);
+		if(am!=null)
+			am.abandonAudioFocus(audioFocusChangeListener);
 		super.onDestroy();
 	}
 
@@ -120,13 +132,26 @@ public class AudioPlayerService extends Service{
 			player=null;
 			playerReady=false;
 		}
+		if(session!=null){
+			session.setActive(false);
+			session.release();
+			session=null;
+		}
 		if(attachment!=null){
-			for(Callback cb:callbacks)
+			for(Callback cb:new java.util.ArrayList<>(callbacks))
 				cb.onPlaybackStopped(attachment.id);
 		}
 
+		if(intent==null){
+			stopSelf();
+			return START_NOT_STICKY;
+		}
 		status=Parcels.unwrap(intent.getParcelableExtra("status"));
 		attachment=Parcels.unwrap(intent.getParcelableExtra("attachment"));
+		if(status==null || status.account==null || attachment==null || attachment.url==null){
+			stopSelf();
+			return START_NOT_STICKY;
+		}
 
 		session=new MediaSession(this, "audioPlayer");
 		session.setPlaybackState(new PlaybackState.Builder()
@@ -257,6 +282,8 @@ public class AudioPlayerService extends Service{
 	}
 
 	private void updateSessionState(boolean removeNotification){
+		if(session==null || player==null || attachment==null)
+			return;
 		session.setPlaybackState(new PlaybackState.Builder()
 				.setState(switch(getPlayState()){
 					case PLAYING -> PlaybackState.STATE_PLAYING;
@@ -266,7 +293,7 @@ public class AudioPlayerService extends Service{
 				.setActions(PlaybackState.ACTION_STOP | PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_SEEK_TO)
 				.build());
 		updateNotification(!player.isPlaying(), removeNotification);
-		for(Callback cb:callbacks)
+		for(Callback cb:new java.util.ArrayList<>(callbacks))
 			cb.onPlayStateChanged(attachment.id, getPlayState(), player.getCurrentPosition());
 	}
 
@@ -308,42 +335,42 @@ public class AudioPlayerService extends Service{
 	}
 
 	public void pause(boolean removeNotification){
-		if(player.isPlaying()){
+		if(player!=null && playerReady && player.isPlaying()){
 			player.pause();
 			updateSessionState(removeNotification);
 		}
 	}
 
 	public void play(){
-		if(playerReady && !player.isPlaying()){
+		if(player!=null && playerReady && !player.isPlaying()){
 			player.start();
 			updateSessionState(false);
 		}
 	}
 
 	public void seekTo(int offset){
-		if(playerReady){
+		if(player!=null && playerReady){
 			player.seekTo(offset);
 			updateSessionState(false);
 		}
 	}
 
 	public boolean isPlaying(){
-		return playerReady && player.isPlaying();
+		return player!=null && playerReady && player.isPlaying();
 	}
 
 	public int getPosition(){
-		return playerReady ? player.getCurrentPosition() : 0;
+		return player!=null && playerReady ? player.getCurrentPosition() : 0;
 	}
 
 	public String getAttachmentID(){
-		return attachment.id;
+		return attachment!=null ? attachment.id : null;
 	}
 
 	public PlayState getPlayState(){
 		if(isBuffering)
 			return PlayState.BUFFERING;
-		return player.isPlaying() ? PlayState.PLAYING : PlayState.PAUSED;
+		return player!=null && playerReady && player.isPlaying() ? PlayState.PLAYING : PlayState.PAUSED;
 	}
 
 	public static void registerCallback(Callback cb){

@@ -37,10 +37,11 @@ public class DiscoverPostsFragment extends StatusListFragment{
 				.setCallback(new SimpleCallback<>(this){
 					@Override
 					public void onSuccess(List<Status> result){
-						Log.i(TAG, "trending statuses: "+result.size()+" items after filtering");
+						boolean hasMore=!result.isEmpty();
 						realOffset+=result.size();
 						AccountSessionManager.get(accountID).filterStatuses(result, FilterContext.PUBLIC);
-						onDataLoaded(result, !result.isEmpty());
+						Log.i(TAG, "trending statuses: "+result.size()+" items after filtering");
+						onDataLoaded(result, hasMore);
 						bannerHelper.onBannerBecameVisible();
 					}
 

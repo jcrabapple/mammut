@@ -116,7 +116,6 @@ public class UnreadNotificationStore{
 	}
 
 	private static void dispatch(String accountID){
-		Tracker.State snapshot=tracker.snapshot(accountID);
 		List<Listener> scoped;
 		synchronized(accountListeners){
 			scoped=accountListeners.containsKey(accountID) ? new ArrayList<>(accountListeners.get(accountID)) : null;
@@ -125,10 +124,15 @@ public class UnreadNotificationStore{
 		if(scoped==null && !active)
 			return;
 		runnableOnMain(()->{
+			// Take the snapshot on the main thread so an earlier background dispatch
+			// cannot overwrite a newer markRead() or refresh() with a stale count.
+			Tracker.State snapshot=tracker.snapshot(accountID);
+			if(!snapshot.known)
+				return;
 			if(scoped!=null)
 				for(Listener l:scoped)
 					l.onUnreadCountChanged(snapshot.count, snapshot.more);
-			if(active)
+			if(accountID.equals(activeAccountID))
 				for(Listener l:activeAccountListeners)
 					l.onUnreadCountChanged(snapshot.count, snapshot.more);
 		});

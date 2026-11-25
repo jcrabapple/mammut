@@ -246,7 +246,33 @@ public class ShareImageRenderer{
 		}
 	}
 
+	private void resetRenderState(){
+		card=null;
+		mediaSpace=null;
+		bodyPresent=false;
+		mediaPresent=false;
+		cwPresent=false;
+		mediaTopInCard=0;
+		quoted=null;
+		quotePresent=false;
+		pollPresent=false;
+		quoteContainer=null;
+		quoteTileSpace=null;
+		quoteTileDrawable=null;
+		quoteTileBlurred=false;
+		pollSpace=null;
+		pollTopInCard=0;
+		pollQuestion=null;
+		pollOptionLabels=null;
+		pollOptionHeights=null;
+		pollOptionLabelWidth=0;
+		pollFooter=null;
+		pollPcts=null;
+		pollLeaders=null;
+	}
+
 	private File renderOnce(boolean withImages) throws Exception{
+		resetRenderState();
 		File dir=cleanupAndGetShareDir();
 		if(withImages)
 			loadEmojiDrawables();
@@ -254,7 +280,7 @@ public class ShareImageRenderer{
 		List<Attachment> attachments=status.mediaAttachments!=null ? status.mediaAttachments : List.of();
 		MediaPrep media=withImages ? prepareMedia(attachments) : MediaPrep.none(attachments.size());
 		quoted=quotedStatus(status);
-		if(quoted!=null){
+		if(quoted!=null && withImages){
 			if(parsedQuoteText!=null)
 				loadEmojiDrawables(parsedQuoteText);
 			prepareQuoteTile();
@@ -265,22 +291,26 @@ public class ShareImageRenderer{
 			throw new IllegalStateException("Card measured "+totalHeight+" px, over the "+MAX_HEIGHT+" px cap");
 
 		Bitmap bitmap=Bitmap.createBitmap(CARD_WIDTH, totalHeight, Bitmap.Config.ARGB_8888);
-		Canvas canvas=new Canvas(bitmap);
-		card.draw(canvas);
-		drawAvatar(canvas, avatar);
-		if(mediaPresent)
-			drawMedia(canvas, attachments, media);
-		if(quoteTileSpace!=null)
-			drawQuoteTile(canvas);
-		if(pollPresent)
-			drawPoll(canvas);
+		try{
+			Canvas canvas=new Canvas(bitmap);
+			card.draw(canvas);
+			drawAvatar(canvas, avatar);
+			if(mediaPresent)
+				drawMedia(canvas, attachments, media);
+			if(quoteTileSpace!=null)
+				drawQuoteTile(canvas);
+			if(pollPresent)
+				drawPoll(canvas);
 
-		File out=new File(dir, "post-"+safeFileName(status.id)+"-"+System.currentTimeMillis()+".png");
-		try(FileOutputStream fos=new FileOutputStream(out)){
-			if(!bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos))
-				throw new IOException("Bitmap.compress returned false");
+			File out=new File(dir, "post-"+safeFileName(status.id)+"-"+System.currentTimeMillis()+".png");
+			try(FileOutputStream fos=new FileOutputStream(out)){
+				if(!bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos))
+					throw new IOException("Bitmap.compress returned false");
+			}
+			return out;
+		}finally{
+			bitmap.recycle();
 		}
-		return out;
 	}
 
 	//region Image loading
@@ -582,7 +612,15 @@ public class ShareImageRenderer{
 				truncated.append("\n\n");
 			truncated.append(paragraphs.get(i));
 		}
-		body.setText(truncated);
+		if(choice.paragraphsIncluded==0 && !paragraphs.isEmpty() && bodyBudget>0){
+			// Single paragraph exceeds the budget: keep it constrained by maxLines instead of blanking the body.
+			int maxLines=Math.max(1, bodyBudget/Math.max(1, lineHeight(BODY_SIZE)));
+			body.setMaxLines(maxLines);
+			body.setEllipsize(TextUtils.TruncateAt.END);
+			body.setText(paragraphs.get(0));
+		}else{
+			body.setText(truncated);
+		}
 		if(!choice.truncated)
 			return;
 
@@ -591,7 +629,9 @@ public class ShareImageRenderer{
 		ellipsis.setText("…");
 		card.addView(ellipsis, bodyIndex+1);
 		TextView continueLine=newTextView(CONTINUE_SIZE, palette.onSurfaceVariant, familyTypeface(400, Typeface.DEFAULT));
-		continueLine.setText("Continue reading at "+status.url);
+		continueLine.setSingleLine(true);
+		continueLine.setEllipsize(TextUtils.TruncateAt.END);
+		continueLine.setText("Continue reading at "+(status.url!=null ? status.url : ""));
 		card.addView(continueLine, bodyIndex+2);
 	}
 
@@ -879,7 +919,11 @@ public class ShareImageRenderer{
 		canvas.save();
 		canvas.clipPath(clip);
 		Bitmap bmp=drawableToBitmap(avatar, AVATAR_SIZE, AVATAR_SIZE);
-		canvas.drawBitmap(bmp, null, new Rect(SIDE_PADDING, SIDE_PADDING, SIDE_PADDING+AVATAR_SIZE, SIDE_PADDING+AVATAR_SIZE), null);
+		try{
+			canvas.drawBitmap(bmp, null, new Rect(SIDE_PADDING, SIDE_PADDING, SIDE_PADDING+AVATAR_SIZE, SIDE_PADDING+AVATAR_SIZE), null);
+		}finally{
+			recycleIfOwned(bmp, avatar);
+		}
 		canvas.restore();
 	}
 
@@ -901,19 +945,28 @@ public class ShareImageRenderer{
 			boolean blurred=media.blurred[i];
 			if(d!=null){
 				Bitmap tileBmp=drawableToBitmap(d, tile.width, tile.height);
-				if(blurred){
-					// The unblurred bitmap never touches the PNG: blur into a temp
-					// tile, then draw the blurred result.
-					Bitmap blurredBmp=boxBlur(tileBmp, blurRadiusFor(tile.width));
-					canvas.drawBitmap(blurredBmp, null, tileRect, null);
-				}else{
-					canvas.drawBitmap(tileBmp, null, tileRect, null);
+				try{
+					if(blurred){
+						// The unblurred bitmap never touches the PNG: blur into a temp
+						// tile, then draw the blurred result.
+						Bitmap blurredBmp=boxBlur(tileBmp, blurRadiusFor(tile.width));
+						try{
+							canvas.drawBitmap(blurredBmp, null, tileRect, null);
+						}finally{
+							if(blurredBmp!=tileBmp)
+								blurredBmp.recycle();
+						}
+					}else{
+						canvas.drawBitmap(tileBmp, null, tileRect, null);
+					}
+				}finally{
+					recycleIfOwned(tileBmp, d);
 				}
 			}else{
 				canvas.drawColor(palette.surfaceVariant);
 			}
-			canvas.restore();
 
+			// Draw labels inside the rounded tile clip so long alt text never bleeds into adjacent tiles.
 			if(d==null){
 				// Neutral placeholder: description or a type label, never a blank hole.
 				drawCenteredLabel(canvas, tileRect, placeholderLabel(attachments.get(i)), LABEL_SIZE, palette.onSurfaceVariant, 0, labelPaint);
@@ -931,12 +984,17 @@ public class ShareImageRenderer{
 				else
 					drawCenteredLabel(canvas, tileRect, badge, LABEL_SIZE, 0xFFFFFFFF, 0x99000000, labelPaint);
 			}
+			canvas.restore();
 		}
 	}
 
 	private static String placeholderLabel(Attachment att){
+		if(att==null)
+			return "Media";
 		if(!TextUtils.isEmpty(att.description))
 			return att.description;
+		if(att.type==null)
+			return "Media";
 		return switch(att.type){
 			case VIDEO -> "Video";
 			case AUDIO -> "Audio";
@@ -965,16 +1023,24 @@ public class ShareImageRenderer{
 		Drawable d=quoteTileDrawable;
 		if(d!=null){
 			Bitmap tileBmp=drawableToBitmap(d, QuoteBlock.MEDIA_TILE, QuoteBlock.MEDIA_TILE);
-			if(quoteTileBlurred){
-				Bitmap blurredBmp=boxBlur(tileBmp, blurRadiusFor(QuoteBlock.MEDIA_TILE));
-				canvas.drawBitmap(blurredBmp, null, tileRect, null);
-			}else{
-				canvas.drawBitmap(tileBmp, null, tileRect, null);
+			try{
+				if(quoteTileBlurred){
+					Bitmap blurredBmp=boxBlur(tileBmp, blurRadiusFor(QuoteBlock.MEDIA_TILE));
+					try{
+						canvas.drawBitmap(blurredBmp, null, tileRect, null);
+					}finally{
+						if(blurredBmp!=tileBmp)
+							blurredBmp.recycle();
+					}
+				}else{
+					canvas.drawBitmap(tileBmp, null, tileRect, null);
+				}
+			}finally{
+				recycleIfOwned(tileBmp, d);
 			}
 		}else{
 			canvas.drawColor(palette.surfaceVariant);
 		}
-		canvas.restore();
 
 		Paint labelPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
 		labelPaint.setTypeface(familyTypeface(400, null));
@@ -985,16 +1051,29 @@ public class ShareImageRenderer{
 		}else if(quoteTileBlurred){
 			drawCenteredLabel(canvas, tileRect, "Sensitive media", QUOTE_TILE_LABEL_SIZE, 0xFFFFFFFF, 0x8C000000, labelPaint);
 		}
+		canvas.restore();
 	}
 
 	private String quotePlaceholderLabel(){
+		if(quoted==null || quoted.mediaAttachments==null || quoted.mediaAttachments.isEmpty())
+			return "Media";
 		Attachment att=quoted.mediaAttachments.get(0);
+		if(att==null || att.type==null)
+			return "Media";
 		return switch(att.type){
 			case VIDEO -> "Video";
 			case AUDIO -> "Audio";
 			case GIFV -> "GIF";
 			default -> "Media";
 		};
+	}
+
+	private static void recycleIfOwned(Bitmap bmp, Drawable source){
+		if(bmp==null || bmp.isRecycled())
+			return;
+		if(source instanceof BitmapDrawable bd && bd.getBitmap()==bmp)
+			return;
+		bmp.recycle();
 	}
 
 	/**
@@ -1112,8 +1191,13 @@ public class ShareImageRenderer{
 		Bitmap src=null;
 		if(drawable instanceof BitmapDrawable bd)
 			src=bd.getBitmap();
-		if(src!=null)
-			return centerCrop(toSoftware(src), width, height);
+		if(src!=null){
+			Bitmap soft=toSoftware(src);
+			Bitmap cropped=centerCrop(soft, width, height);
+			if(soft!=src && soft!=cropped)
+				soft.recycle();
+			return cropped;
+		}
 		Bitmap bmp=Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
 		Canvas canvas=new Canvas(bmp);
 		drawable.setBounds(0, 0, width, height);
@@ -1143,8 +1227,17 @@ public class ShareImageRenderer{
 		int scaledW=Math.max(width, Math.round(src.getWidth()*scale));
 		int scaledH=Math.max(height, Math.round(src.getHeight()*scale));
 		Bitmap scaled=Bitmap.createScaledBitmap(src, scaledW, scaledH, true);
-		int x=Math.max(0, (scaledW-width)/2), y=Math.max(0, (scaledH-height)/2);
-		return Bitmap.createBitmap(scaled, x, y, width, height);
+		try{
+			int x=Math.max(0, (scaledW-width)/2), y=Math.max(0, (scaledH-height)/2);
+			Bitmap out=Bitmap.createBitmap(scaled, x, y, width, height);
+			if(scaled!=src && scaled!=out)
+				scaled.recycle();
+			return out;
+		}catch(Throwable t){
+			if(scaled!=src)
+				scaled.recycle();
+			throw t;
+		}
 	}
 
 	/**
@@ -1152,16 +1245,25 @@ public class ShareImageRenderer{
 	 * bitmap (which may back a cache drawable) is never mutated.
 	 */
 	private static Bitmap boxBlur(Bitmap src, int radius){
-		src=toSoftware(src);
-		if(radius<1 || src.getWidth()==0 || src.getHeight()==0)
-			return src;
-		Bitmap work=src.copy(Bitmap.Config.ARGB_8888, true);
-		Bitmap tmp=Bitmap.createBitmap(src.getWidth(), src.getHeight(), Bitmap.Config.ARGB_8888);
-		for(int pass=0;pass<3;pass++){
-			boxBlurPass(work, tmp, radius, true);
-			boxBlurPass(tmp, work, radius, false);
+		Bitmap soft=toSoftware(src);
+		try{
+			if(radius<1 || soft.getWidth()==0 || soft.getHeight()==0)
+				return soft;
+			Bitmap work=soft.copy(Bitmap.Config.ARGB_8888, true);
+			Bitmap tmp=Bitmap.createBitmap(soft.getWidth(), soft.getHeight(), Bitmap.Config.ARGB_8888);
+			try{
+				for(int pass=0;pass<3;pass++){
+					boxBlurPass(work, tmp, radius, true);
+					boxBlurPass(tmp, work, radius, false);
+				}
+			}finally{
+				tmp.recycle();
+			}
+			return work;
+		}finally{
+			if(soft!=src && radius>=1 && soft.getWidth()>0 && soft.getHeight()>0)
+				soft.recycle();
 		}
-		return work;
 	}
 
 	private static void boxBlurPass(Bitmap src, Bitmap dst, int radius, boolean horizontal){

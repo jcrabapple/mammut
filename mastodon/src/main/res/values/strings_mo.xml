@@ -92,7 +92,7 @@
     <string name="mo_settings_enhance_text_size">Enhance text size</string>
     <string name="mo_settings_enhance_text_size_summary">Makes the app\'s text bigger</string>
 <string name="mo_setting_true_black_summary">Might save power on AMOLED displays</string>
-    <string name="mo_setting_marquee_summary">Disables the ellipsized title scrolling</string>
+    <string name="mo_setting_marquee_summary">Scroll long titles in title bars</string>
     <string name="mo_setting_uniform_summary">Use the app icon for all notifications</string>
     <string name="mo_setting_reduced_motion_summary">Disable animations of interactions</string>
     <string name="mo_setting_play_gif_summary">Autoplay GIFs in avatars and emoji</string>

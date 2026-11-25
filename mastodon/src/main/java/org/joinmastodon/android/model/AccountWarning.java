@@ -2,6 +2,7 @@ package org.joinmastodon.android.model;
 
 import com.google.gson.annotations.SerializedName;
 
+import org.joinmastodon.android.api.ObjectValidationException;
 import org.joinmastodon.android.api.RequiredField;
 import org.parceler.Parcel;
 
@@ -12,6 +13,13 @@ public class AccountWarning extends BaseModel{
 	@RequiredField
 	public Action action=Action.NONE;
 	public String text;
+
+	@Override
+	public void postprocess() throws ObjectValidationException{
+		if(action==null)
+			action=Action.NONE;
+		super.postprocess();
+	}
 
 	public enum Action{
 		@SerializedName("none")

@@ -230,17 +230,20 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 			builder.setSubText(accountName);
 		}
 		String notificationTag=accountID+"_"+(notification==null ? 0 : notification.id);
-		if(notification!=null && (notification.type==NotificationType.MENTION)){
+		if(notification!=null && notification.type==NotificationType.MENTION
+				&& notification.status!=null && notification.status.account!=null){
 			ArrayList<String> mentions=new ArrayList<>();
 			String ownID=AccountSessionManager.getInstance().getAccount(accountID).self.id;
 			if(!notification.status.account.id.equals(ownID))
 				mentions.add('@'+notification.status.account.acct);
-			for(Mention mention:notification.status.mentions){
-				if(mention.id.equals(ownID))
-					continue;
-				String m='@'+mention.acct;
-				if(!mentions.contains(m))
-					mentions.add(m);
+			if(notification.status.mentions!=null){
+				for(Mention mention:notification.status.mentions){
+					if(mention==null || ownID.equals(mention.id))
+						continue;
+					String m='@'+mention.acct;
+					if(!mentions.contains(m))
+						mentions.add(m);
+				}
 			}
 			String replyPrefix=mentions.isEmpty() ? "" : TextUtils.join(" ", mentions)+" ";
 
@@ -250,7 +253,7 @@ public class PushNotificationReceiver extends BroadcastReceiver{
 				replyIntent.putExtra("account", accountID);
 				replyIntent.putExtra("post", notification.status.id);
 				replyIntent.putExtra("notificationTag", notificationTag);
-				replyIntent.putExtra("visibility", notification.status.visibility.toString());
+				replyIntent.putExtra("visibility", (notification.status.visibility!=null ? notification.status.visibility : org.joinmastodon.android.model.StatusPrivacy.PUBLIC).toString());
 				replyIntent.putExtra("replyPrefix", replyPrefix);
 
 			// MAMMUT: phase 1 port from upstream master — prefix the CW of a push-notification reply with "re: " per preference

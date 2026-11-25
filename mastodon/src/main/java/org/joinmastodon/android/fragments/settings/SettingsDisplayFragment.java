@@ -136,9 +136,25 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 	@Override
 	public void onAttach(Activity activity){
 		super.onAttach(activity);
+		removeThemeTransitionView(activity);
+	}
+
+	@Override
+	public void onDestroy(){
+		removeThemeTransitionView(getActivity());
+		super.onDestroy();
+	}
+
+	private void removeThemeTransitionView(Activity activity){
 		if(themeTransitionWindowView!=null){
-			// Activity has finished recreating. Remove the overlay.
-			activity.getSystemService(WindowManager.class).removeView(themeTransitionWindowView);
+			WindowManager wm=activity!=null
+					? activity.getSystemService(WindowManager.class)
+					: MastodonApp.context.getSystemService(WindowManager.class);
+			if(wm!=null){
+				try{
+					wm.removeView(themeTransitionWindowView);
+				}catch(IllegalArgumentException ignored){}
+			}
 			themeTransitionWindowView=null;
 		}
 	}
@@ -459,6 +475,7 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		toggleCheckableItem(trueBlackModeItem);
 		boolean prev=GlobalUserPreferences.trueBlackTheme;
 		GlobalUserPreferences.trueBlackTheme=trueBlackModeItem.checked;
+		GlobalUserPreferences.save();
 		maybeApplyNewThemeRightNow(null, null, prev);
 	}
 
@@ -468,10 +485,11 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		if(prevTrueBlack==null) prevTrueBlack=GlobalUserPreferences.trueBlackTheme;
 		if(prevColor==null) prevColor=lp.getCurrentColor();
 
+		boolean systemNight=(getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
 		boolean isCurrentDark=prevTheme==GlobalUserPreferences.ThemePreference.DARK ||
-				(prevTheme==GlobalUserPreferences.ThemePreference.AUTO && Build.VERSION.SDK_INT>=30 && getResources().getConfiguration().isNightModeActive());
+				(prevTheme==GlobalUserPreferences.ThemePreference.AUTO && systemNight);
 		boolean isNewDark=GlobalUserPreferences.theme==GlobalUserPreferences.ThemePreference.DARK ||
-				(GlobalUserPreferences.theme==GlobalUserPreferences.ThemePreference.AUTO && Build.VERSION.SDK_INT>=30 && getResources().getConfiguration().isNightModeActive());
+				(GlobalUserPreferences.theme==GlobalUserPreferences.ThemePreference.AUTO && systemNight);
 
 		// MOSHIDON
 		boolean isNewBlack=GlobalUserPreferences.trueBlackTheme;

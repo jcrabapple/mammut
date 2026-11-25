@@ -51,7 +51,8 @@ public class CustomLocalTimelineFragment extends PinnableStatusListFragment impl
 				.setCallback(new SimpleCallback<>(this){
 					@Override
 					public void onSuccess(List<Status> result){
-						if(!result.isEmpty())
+						boolean hasMore=!result.isEmpty();
+						if(hasMore)
 							maxID=result.get(result.size()-1).id;
 						if (getActivity() == null) return;
 						AccountSessionManager.get(accountID).filterStatuses(result, FilterContext.PUBLIC);
@@ -61,7 +62,7 @@ public class CustomLocalTimelineFragment extends PinnableStatusListFragment impl
 							status.isRemote = true;
 						});
 
-						onDataLoaded(result, !result.isEmpty());
+						onDataLoaded(result, hasMore);
 					}
 				})
 				.execNoAuth(domain);

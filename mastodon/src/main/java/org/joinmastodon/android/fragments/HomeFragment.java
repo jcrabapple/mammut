@@ -59,9 +59,9 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 
 	@Override
 	public void onCreate(Bundle savedInstanceState){
-		UnreadNotificationStore.addListener(unreadListener);
 		super.onCreate(savedInstanceState);
 		accountID=getArguments().getString("account");
+		UnreadNotificationStore.addListener(unreadListener, accountID);
 		setTitle(R.string.app_name);
 
 		// MAMMUT: do NOT retain this fragment. Retaining it across activity.recreate()
@@ -146,17 +146,32 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		// MAMMUT: re-apply the status-bar inset to the children once their views exist and the
 		// insets are cached. A global-layout listener retries across layout passes until both
 		// are ready (a one-shot pre-draw fired before the retained child views were rebuilt).
-		content.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener(){
+		insetsLayoutListener=new ViewTreeObserver.OnGlobalLayoutListener(){
 			@Override
 			public void onGlobalLayout(){
-				if(lastInsets==null || homeTabFragment==null || homeTabFragment.getView()==null)
+				if(content==null || lastInsets==null || homeTabFragment==null || homeTabFragment.getView()==null)
 					return;
 				content.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+				insetsLayoutListener=null;
 				reapplyChildInsets();
 			}
-		});
+		};
+		content.getViewTreeObserver().addOnGlobalLayoutListener(insetsLayoutListener);
 
 		return content;
+	}
+
+	private ViewTreeObserver.OnGlobalLayoutListener insetsLayoutListener;
+
+	@Override
+	public void onDestroyView(){
+		if(content!=null && insetsLayoutListener!=null){
+			content.getViewTreeObserver().removeOnGlobalLayoutListener(insetsLayoutListener);
+			insetsLayoutListener=null;
+		}
+		if(navMenuController!=null && mainContainer!=null)
+			navMenuController.detach(mainContainer);
+		super.onDestroyView();
 	}
 
 	@Override
@@ -168,19 +183,36 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 			return;
 		homeTabFragment=(HomeTabFragment) getChildFragmentManager().getFragment(savedInstanceState, "homeTabFragment");
 		notificationsFragment=(NotificationsListFragment) getChildFragmentManager().getFragment(savedInstanceState, "notificationsFragment");
+		android.app.FragmentTransaction tx=getChildFragmentManager().beginTransaction();
+		if(homeTabFragment==null){
+			Bundle args=new Bundle();
+			args.putString("account", accountID);
+			homeTabFragment=new HomeTabFragment();
+			homeTabFragment.setArguments(args);
+			tx.add(me.grishka.appkit.R.id.fragment_wrap, homeTabFragment);
+		}
+		if(notificationsFragment==null){
+			Bundle args=new Bundle();
+			args.putString("account", accountID);
+			args.putBoolean("noAutoLoad", true);
+			notificationsFragment=new NotificationsListFragment();
+			notificationsFragment.setArguments(args);
+			tx.add(me.grishka.appkit.R.id.fragment_wrap, notificationsFragment);
+		}
 		// R4 F1: register the page listener on the restored instance — the deduping
 		// registry keeps this to exactly one callback even if the view is recreated
 		// again without re-running onCreate.
-		if(homeTabFragment!=null)
-			homeTabFragment.addPageChangeListener(homePageChangeListener);
+		homeTabFragment.addPageChangeListener(homePageChangeListener);
 		Fragment current=fragmentForDestination(currentDestination);
-		getChildFragmentManager().beginTransaction()
-				.hide(homeTabFragment)
+		if(current==null)
+			current=homeTabFragment;
+		tx.hide(homeTabFragment)
 				.hide(notificationsFragment)
 				.show(current)
 				.commit();
 		maybeTriggerLoading(current);
-		content.post(this::updateScrollTarget);
+		if(content!=null)
+			content.post(this::updateScrollTarget);
 	}
 
 	@Override
@@ -427,14 +459,14 @@ public class HomeFragment extends AppKitFragment implements AssistContentProvide
 		if(!ev.accountID.equals(accountID))
 			return;
 		if(ev.clearUnread)
-			UnreadNotificationStore.markRead();
+			UnreadNotificationStore.markRead(accountID);
 	}
 
 	@Subscribe
 	public void onStatusDisplaySettingsChanged(StatusDisplaySettingsChangedEvent ev){
 		if(!ev.accountID.equals(accountID))
 			return;
-		if(notificationsFragment.loaded)
+		if(notificationsFragment!=null && notificationsFragment.loaded)
 			notificationsFragment.rebuildAllDisplayItems();
 	}
 

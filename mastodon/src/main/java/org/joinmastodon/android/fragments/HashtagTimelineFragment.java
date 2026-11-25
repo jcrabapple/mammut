@@ -90,10 +90,11 @@ public class HashtagTimelineFragment extends PinnableStatusListFragment {
 				.setCallback(new SimpleCallback<>(this){
 					@Override
 					public void onSuccess(List<Status> result){
-						if(!result.isEmpty())
+						boolean hasMore=!result.isEmpty();
+						if(hasMore)
 							maxID=result.get(result.size()-1).id;
 						AccountSessionManager.get(accountID).filterStatuses(result, FilterContext.PUBLIC);
-						onDataLoaded(result, !result.isEmpty());
+						onDataLoaded(result, hasMore);
 					}
 				})
 				.exec(accountID);
