@@ -1,0 +1,5 @@
+Mammut 1.4.0: comprehensive security and stability hardening.
+- Hardened self-updater verification, WebViews, OAuth, IPC, and disabled cloud backup in favor of Settings Export (excluding secrets).
+- Fixed crashes across drafts, polls translation, navigation, threads, Catch Up, and notifications.
+- Improved composer/media upload reliability, concurrency, and forward-compatible server parsing.
+- Removed dead instance settings toggles, fixed toolbar marquee, and upgraded OkHttp & Jsoup.
