@@ -61,7 +61,10 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 				.map(a->new UrlImageLoaderRequest(GlobalUserPreferences.playGifs ? a.avatar : a.avatarStatic, V.dp(50), V.dp(50)))
 				.collect(Collectors.toList());
 
-		if(notification.notification.type==NotificationType.POLL && AccountSessionManager.getInstance().isSelf(accountID, notification.accounts.get(0))){
+		NotificationType type=notification.notification.type;
+		if(accounts.isEmpty()){
+			text=context.getString(R.string.notifications);
+		}else if(type==NotificationType.POLL && AccountSessionManager.getInstance().isSelf(accountID, notification.accounts.get(0))){
 			text=context.getString(R.string.own_poll_ended);
 		}else{
 			Account account=notification.accounts.get(0);
@@ -71,14 +74,14 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 			emojiHelper.setText(parsedName);
 
 			String text;
-			if(accounts.size()>1 && notification.notification.type.canBeGrouped()){
-				text=context.getResources().getQuantityString(switch(notification.notification.type){
+			if(accounts.size()>1 && type!=null && type.canBeGrouped()){
+				text=context.getResources().getQuantityString(switch(type){
 					case FAVORITE -> R.plurals.user_and_x_more_favorited;
 					case REBLOG -> R.plurals.user_and_x_more_boosted;
 					case FOLLOW -> R.plurals.user_and_x_more_followed;
-					default -> throw new IllegalStateException("Unexpected value: " + notification.notification.type);
+					default -> throw new IllegalStateException("Unexpected value: " + type);
 				}, notification.notification.notificationsCount-1, "{{name}}", notification.notification.notificationsCount-1);
-			}else if(notification.notification.type==NotificationType.POLL){
+			}else if(type==NotificationType.POLL){
 				if(notification.status==null || notification.status.poll==null){
 					text="???";
 				}else{
@@ -86,21 +89,7 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 					text=context.getResources().getQuantityString(R.plurals.poll_ended_x_voters, count, "{{name}}", count);
 				}
 			}else{
-				text=context.getString(switch(notification.notification.type){
-					case FOLLOW -> R.string.user_followed_you;
-					case FOLLOW_REQUEST -> R.string.user_sent_follow_request;
-					case REBLOG -> R.string.notification_boosted;
-					case FAVORITE -> R.string.user_favorited;
-					case UPDATE -> R.string.user_edited_post;
-					case QUOTED_UPDATE -> R.string.user_edited_quoted_post;
-					// MAMMUT: Mastodon 4.x admin notifications. The enum values were added in
-					// the 1.3.6 audit but never wired into this switch, so an admin.report
-					// notification hit the default and crashed the notifications screen.
-					case ADMIN_SIGN_UP -> R.string.mo_admin_signed_up;
-					case ADMIN_REPORT -> R.string.mo_admin_reported;
-					// Render any unrecognized type generically instead of crashing the list.
-					default -> R.string.mo_notification_fallback;
-				}, "{{name}}");
+				text=context.getString(singleHeaderTextRes(type), "{{name}}");
 			}
 			String[] parts=text.split(Pattern.quote("{{name}}"), 2);
 			SpannableStringBuilder formattedText=new SpannableStringBuilder();
@@ -121,6 +110,52 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 			}
 			this.text=formattedText;
 		}
+	}
+
+	/** Null-safe header string resource for single-account notification headers. */
+	public static int singleHeaderTextRes(NotificationType type){
+		if(type==null)
+			return R.string.mo_notification_fallback;
+		return switch(type){
+			case FOLLOW -> R.string.user_followed_you;
+			case FOLLOW_REQUEST -> R.string.user_sent_follow_request;
+			case REBLOG -> R.string.notification_boosted;
+			case FAVORITE -> R.string.user_favorited;
+			case UPDATE -> R.string.user_edited_post;
+			case QUOTED_UPDATE -> R.string.user_edited_quoted_post;
+			case ADMIN_SIGN_UP -> R.string.mo_admin_signed_up;
+			case ADMIN_REPORT -> R.string.mo_admin_reported;
+			default -> R.string.mo_notification_fallback;
+		};
+	}
+
+	/** Null-safe icon drawable resource for notification headers. */
+	public static int iconRes(NotificationType type, boolean likeIcon){
+		if(type==null)
+			return R.drawable.ic_notifications_wght700fill1_20px;
+		return switch(type){
+			case FAVORITE -> likeIcon ? R.drawable.ic_fluent_heart_24_filled : R.drawable.ic_star_fill1_24px;
+			case REBLOG -> R.drawable.ic_repeat_fill1_24px;
+			case FOLLOW, FOLLOW_REQUEST -> R.drawable.ic_person_add_fill1_24px;
+			case POLL -> R.drawable.ic_insert_chart_fill1_24px;
+			case UPDATE, QUOTED_UPDATE -> R.drawable.ic_edit_24px;
+			case ADMIN_SIGN_UP -> R.drawable.ic_fluent_person_available_24_filled;
+			case ADMIN_REPORT -> R.drawable.ic_fluent_warning_24_filled;
+			default -> R.drawable.ic_notifications_wght700fill1_20px;
+		};
+	}
+
+	/** Null-safe icon tint theme attribute for notification headers. */
+	public static int iconTintAttr(NotificationType type){
+		if(type==null)
+			return R.attr.colorM3Outline;
+		return switch(type){
+			case FAVORITE -> R.attr.colorFavorite;
+			case REBLOG -> R.attr.colorBoost;
+			case FOLLOW, FOLLOW_REQUEST, UPDATE, ADMIN_SIGN_UP -> R.attr.colorM3Primary;
+			case ADMIN_REPORT -> R.attr.colorM3Error;
+			default -> R.attr.colorM3Outline;
+		};
 	}
 
 	@Override
@@ -226,25 +261,8 @@ public class NotificationHeaderStatusDisplayItem extends StatusDisplayItem{
 					}
 				}
 			}
-			icon.setImageResource(switch(item.notification.notification.type){
-				// MAMMUT: phase 1 port from upstream master
-				case FAVORITE -> GlobalUserPreferences.likeIcon ? R.drawable.ic_fluent_heart_24_filled : R.drawable.ic_star_fill1_24px;
-				case REBLOG -> R.drawable.ic_repeat_fill1_24px;
-				case FOLLOW, FOLLOW_REQUEST -> R.drawable.ic_person_add_fill1_24px;
-				case POLL -> R.drawable.ic_insert_chart_fill1_24px;
-				case UPDATE, QUOTED_UPDATE -> R.drawable.ic_edit_24px;
-				// MAMMUT: admin notifications, plus a safe icon for any unrecognized type.
-				case ADMIN_SIGN_UP -> R.drawable.ic_fluent_person_available_24_filled;
-				case ADMIN_REPORT -> R.drawable.ic_fluent_warning_24_filled;
-				default -> R.drawable.ic_notifications_wght700fill1_20px;
-			});
-			icon.setImageTintList(ColorStateList.valueOf(UiUtils.getThemeColor(item.context, switch(item.notification.notification.type){
-				case FAVORITE -> R.attr.colorFavorite;
-				case REBLOG -> R.attr.colorBoost;
-				case FOLLOW, FOLLOW_REQUEST, UPDATE, ADMIN_SIGN_UP -> R.attr.colorM3Primary;
-				case ADMIN_REPORT -> R.attr.colorM3Error;
-				default -> R.attr.colorM3Outline;
-			})));
+			icon.setImageResource(iconRes(item.notification.notification.type, GlobalUserPreferences.likeIcon));
+			icon.setImageTintList(ColorStateList.valueOf(UiUtils.getThemeColor(item.context, iconTintAttr(item.notification.notification.type))));
 			itemView.setPadding(itemView.getPaddingLeft(), itemView.getPaddingTop(), itemView.getPaddingRight(), item.notification.status==null ? V.dp(12) : 0);
 		}
 

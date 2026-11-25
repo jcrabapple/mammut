@@ -173,6 +173,13 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 
 	@Override
 	public void onDestroyView(){
+		if(navMenuController!=null){
+			View root=getView();
+			ViewGroup content=root!=null ? root.findViewById(me.grishka.appkit.R.id.appkit_loader_content) : null;
+			if(content!=null)
+				navMenuController.detach(content);
+			navMenuController=null;
+		}
 		moreRepliesSnackbar=null;
 		if(asyncRefreshID!=null){
 			contentView.removeCallbacks(asyncRefreshPartialRunnable);
@@ -181,6 +188,12 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 			highlightAlphaAnimator.cancel();
 		}
 		super.onDestroyView();
+	}
+
+	@Override
+	protected void onSetFabBottomInset(int inset){
+		if(navMenuController!=null)
+			navMenuController.setBottomInset(inset);
 	}
 
 	@Override
@@ -568,15 +581,12 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		// Pop back to the home surface, then switch the destination there so the
 		// existing per-destination state and scroll positions survive
 		navMenuController.closeMenu();
-		((FragmentStackActivity)getActivity()).removeFragment(this, true);
-		getActivity().getWindow().getDecorView().post(()->{
-			for(android.app.Fragment f:getFragmentManager().getFragments()){
-				if(f instanceof HomeFragment hf){
-					hf.setDestination(destination);
-					break;
-				}
-			}
-		});
+		android.app.Activity activity=getActivity();
+		if(activity instanceof org.joinmastodon.android.MainActivity ma){
+			ma.navigateToHomeDestination(destination);
+		}else if(activity instanceof FragmentStackActivity fsa){
+			fsa.removeFragment(this, true);
+		}
 	}
 
 	@Override
@@ -602,6 +612,7 @@ public class ThreadFragment extends StatusListFragment implements AssistContentP
 		// MAMMUT: navigation FAB overlay; the content container is a FrameLayout so the
 		// menu scrim/panel float above the thread, same as on the home surface
 		navMenuController=new NavMenuController(this);
+		navMenuController.setAccountID(accountID);
 		ViewGroup content=view.findViewById(me.grishka.appkit.R.id.appkit_loader_content);
 		if(content instanceof FrameLayout){
 			navMenuController.attach(content);

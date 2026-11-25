@@ -1,5 +1,7 @@
 package org.joinmastodon.android.drafts;
 
+import com.google.gson.annotations.SerializedName;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,13 +11,18 @@ import java.util.List;
  * lives on the first segment only (§4).
  */
 public class Segment{
+	@SerializedName("text")
 	public String text;
 	/** Nullable: the segment's own content warning text */
+	@SerializedName("spoiler_text")
 	public String spoilerText;
 	/** True when the author flagged media sensitivity without CW text */
+	@SerializedName("sensitive")
 	public boolean sensitive;
+	@SerializedName("attachments")
 	public List<DraftAttachment> attachments=new ArrayList<>();
 	/** Nullable, first segment only */
+	@SerializedName("poll")
 	public PollDraft poll;
 	/**
 	 * MAMMUT: Composer 2.0 (§4) — the Idempotency-Key for this segment's
@@ -24,5 +31,6 @@ public class Segment{
 	 * draft reuses it instead of minting a fresh key (a fresh key can
 	 * double-post the one failure §4 names).
 	 */
+	@SerializedName("idempotency_key")
 	public String idempotencyKey;
 }

@@ -7,6 +7,10 @@ import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.model.Translation;
 import org.junit.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -72,8 +76,39 @@ public class LibreTranslateClientTest{
 	}
 
 	@Test
-	public void plainHttpLocalEndpointAllowed(){
-		assertEquals("http://localhost:5000/translate", LibreTranslateClient.normalizeEndpoint("http://localhost:5000"));
+	public void plainHttpEndpointsRejected(){
+		assertNull(LibreTranslateClient.normalizeEndpoint("http://localhost:5000"));
+		assertNull(LibreTranslateClient.normalizeEndpoint("http://lt.example.com"));
+		assertFalse(LibreTranslateClient.isConfigured("http://lt.example.com"));
+	}
+
+	@Test
+	public void malformedOrUnsafeHttpsUrlsRejected(){
+		assertNull(LibreTranslateClient.normalizeEndpoint("https://my server.com"));
+		assertNull(LibreTranslateClient.normalizeEndpoint("https://host:abc"));
+		assertNull(LibreTranslateClient.normalizeEndpoint("https://[bad"));
+		assertNull(LibreTranslateClient.normalizeEndpoint("https://user:pass@lt.example.com"));
+		assertNull(LibreTranslateClient.normalizeEndpoint("https://lt.example.com?foo=bar"));
+		assertNull(LibreTranslateClient.normalizeEndpoint("https://lt.example.com#frag"));
+	}
+
+	@Test
+	public void subpathPreservedWhenAppendingTranslate(){
+		assertEquals("https://lt.example.com/api/translate", LibreTranslateClient.normalizeEndpoint("https://lt.example.com/api"));
+		assertEquals("https://lt.example.com/api/translate", LibreTranslateClient.normalizeEndpoint("https://lt.example.com/api/translate/"));
+	}
+
+	@Test
+	public void readCappedAllowsWithinLimitAndRejectsOversize() throws IOException{
+		String ok=LibreTranslateClient.readCapped(new ByteArrayInputStream("{\"translatedText\":\"ok\"}".getBytes(StandardCharsets.UTF_8)), 64);
+		assertEquals("{\"translatedText\":\"ok\"}", ok);
+		boolean threw=false;
+		try{
+			LibreTranslateClient.readCapped(new ByteArrayInputStream(new byte[65]), 64);
+		}catch(IOException expected){
+			threw=true;
+		}
+		assertTrue(threw);
 	}
 
 	// --- buildPayload ---

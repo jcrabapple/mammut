@@ -179,28 +179,37 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 			args.putBoolean("__disable_fab", true);
 			args.putBoolean("onlyPosts", true);
 
-			for (int i=0; i < timelinesList.size(); i++) {
-				TimelineDefinition tl = timelinesList.get(i);
-				fragments[i] = tl.getFragment();
-				timelines[i] = tl;
-			}
-
-			FragmentTransaction transaction = getChildFragmentManager().beginTransaction();
+			android.app.FragmentManager cfm = getChildFragmentManager();
+			FragmentTransaction transaction = null;
 			for (int i = 0; i < count; i++) {
-				Bundle tabArgs = timelines[i].populateArguments(new Bundle(args));
-				// MAMMUT: F1 — let the tab fragment find its per-tab view filter definition
-				if (timelines[i].supportsViewFilters())
-					tabArgs.putInt(StatusListFragment.EXTRA_TIMELINE_DEF_INDEX, i);
-				fragments[i].setArguments(tabArgs);
+				TimelineDefinition tl = timelinesList.get(i);
+				timelines[i] = tl;
 				FrameLayout tabView = new FrameLayout(getActivity());
 				tabView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 				tabView.setVisibility(View.GONE);
 				tabView.setId(i + 1);
-				transaction.add(i + 1, fragments[i]);
 				view.addView(tabView);
 				tabViews[i] = tabView;
+
+				// MAMMUT: reuse child timeline fragments restored by ChildFragmentManager
+				// across activity.recreate() / process death instead of stacking duplicates.
+				Fragment restored = cfm.findFragmentById(i + 1);
+				if (restored != null) {
+					fragments[i] = restored;
+				} else {
+					fragments[i] = tl.getFragment();
+					Bundle tabArgs = timelines[i].populateArguments(new Bundle(args));
+					// MAMMUT: F1 — let the tab fragment find its per-tab view filter definition
+					if (timelines[i].supportsViewFilters())
+						tabArgs.putInt(StatusListFragment.EXTRA_TIMELINE_DEF_INDEX, i);
+					fragments[i].setArguments(tabArgs);
+					if (transaction == null)
+						transaction = cfm.beginTransaction();
+					transaction.add(i + 1, fragments[i]);
+				}
 			}
-			transaction.commit();
+			if (transaction != null)
+				transaction.commit();
 		}
 
 		view.addView(pager, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -776,9 +785,12 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 			switcherPopup.dismiss();
 			switcherPopup = null;
 		}
-		if(GithubSelfUpdater.needSelfUpdating()){
-			E.unregister(this);
-		}
+	}
+
+	@Override
+	public void onDestroy(){
+		E.unregister(this);
+		super.onDestroy();
 	}
 
 	@Override
@@ -798,7 +810,8 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 	@Override
 	public void onSaveInstanceState(Bundle outState) {
 		super.onSaveInstanceState(outState);
-		outState.putInt("selectedTab", pager.getCurrentItem());
+		if (pager != null)
+			outState.putInt("selectedTab", pager.getCurrentItem());
 	}
 
 	@Subscribe
@@ -880,7 +893,10 @@ public class HomeTabFragment extends MastodonToolbarFragment implements Scrollab
 	}
 
 	public Fragment getCurrentFragment() {
-		return fragments[pager.getCurrentItem()];
+		if (pager == null || fragments == null)
+			return null;
+		int pos = pager.getCurrentItem();
+		return pos >= 0 && pos < fragments.length ? fragments[pos] : null;
 	}
 
 	public View getFab() {

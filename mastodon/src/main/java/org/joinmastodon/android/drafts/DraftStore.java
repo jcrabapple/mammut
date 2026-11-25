@@ -7,14 +7,14 @@ import android.util.Log;
 import org.joinmastodon.android.api.MastodonAPIController;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -93,13 +93,28 @@ public class DraftStore{
 		//noinspection ResultOfMethodCallIgnored
 		dir.mkdirs();
 		File tmp=new File(dir, DRAFT_JSON+".tmp");
-		try(Writer w=new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8)){
-			MastodonAPIController.gsonWithoutDeserializer.toJson(draft, w);
-		}
-		File target=new File(dir, DRAFT_JSON);
-		// Same directory, so rename is atomic; on POSIX it replaces the target.
-		if(!tmp.renameTo(target)){
-			Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+		boolean moved=false;
+		try{
+			try(FileOutputStream fos=new FileOutputStream(tmp);
+					Writer w=new OutputStreamWriter(fos, StandardCharsets.UTF_8)){
+				MastodonAPIController.gsonWithoutDeserializer.toJson(draft, w);
+				w.flush();
+				fos.getFD().sync();
+			}
+			File target=new File(dir, DRAFT_JSON);
+			// Same directory, so rename is atomic on POSIX; API 23-safe fallback avoids java.nio.file.Files (API 26+).
+			if(!tmp.renameTo(target)){
+				if(target.exists() && !target.delete())
+					throw new IOException("Unable to replace "+target);
+				if(!tmp.renameTo(target))
+					throw new IOException("Unable to rename "+tmp+" to "+target);
+			}
+			moved=true;
+		}finally{
+			if(!moved && tmp.exists()){
+				//noinspection ResultOfMethodCallIgnored
+				tmp.delete();
+			}
 		}
 		deleteOrphanedMedia(dir, draft);
 	}
@@ -109,8 +124,8 @@ public class DraftStore{
 		File f=new File(draftDir(draftId), DRAFT_JSON);
 		if(!f.exists())
 			return null;
-		try(InputStream in=Files.newInputStream(f.toPath())){
-			java.io.InputStreamReader r=new java.io.InputStreamReader(in, StandardCharsets.UTF_8);
+		try(InputStream in=new FileInputStream(f);
+				InputStreamReader r=new InputStreamReader(in, StandardCharsets.UTF_8)){
 			return MastodonAPIController.gsonWithoutDeserializer.fromJson(r, ComposeDraft.class);
 		}catch(Exception x){
 			Log.w(TAG, "load: failed to read draft "+draftId, x);

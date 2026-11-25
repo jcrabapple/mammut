@@ -8,10 +8,15 @@ import org.joinmastodon.android.GlobalUserPreferences;
 import org.joinmastodon.android.model.Translation;
 import org.joinmastodon.android.ui.utils.UiUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
+import androidx.annotation.Nullable;
 import me.grishka.appkit.api.Callback;
 import okhttp3.Call;
+import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -32,6 +37,7 @@ import okhttp3.Response;
 public class LibreTranslateClient{
 	private static final Gson GSON=new Gson();
 	private static final MediaType JSON=MediaType.get("application/json; charset=utf-8");
+	static final int MAX_RESPONSE_BYTES=512*1024;
 
 	private LibreTranslateClient(){}
 
@@ -68,24 +74,44 @@ public class LibreTranslateClient{
 
 	/**
 	 * Normalize a user-entered URL into a LibreTranslate {@code /translate} endpoint.
-	 * Accepts either the service base URL or a full {@code /translate} URL. Returns null
-	 * for anything that is not a non-empty http(s) URL, so a half-typed or invalid entry
-	 * disables the fallback rather than producing a malformed request.
+	 * Accepts either the service base URL or a full {@code /translate} URL. Strictly requires
+	 * HTTPS and a valid {@link HttpUrl} with no embedded credentials, query, or fragment so
+	 * malformed or cleartext entries never hit the network or crash {@link Request.Builder}.
 	 */
 	public static String normalizeEndpoint(String url){
 		if(url==null)
 			return null;
 		String u=url.trim();
-		if(!u.startsWith("http://") && !u.startsWith("https://"))
+		if(!u.regionMatches(true, 0, "https://", 0, 8))
 			return null;
 		while(u.endsWith("/"))
 			u=u.substring(0, u.length()-1);
-		// "https://" alone (or "http://") trims down to the scheme with no host
-		if(u.equals("https:") || u.equals("http:") || u.isEmpty())
+		if(u.length()<=8)
 			return null;
-		if(u.endsWith("/translate"))
-			return u;
-		return u+"/translate";
+		HttpUrl parsed=HttpUrl.parse(u);
+		if(parsed==null || !parsed.isHttps() || parsed.host().isEmpty())
+			return null;
+		if(!parsed.encodedUsername().isEmpty() || !parsed.encodedPassword().isEmpty())
+			return null;
+		if(parsed.encodedQuery()!=null || parsed.fragment()!=null)
+			return null;
+		if(parsed.encodedPath().endsWith("/translate"))
+			return parsed.toString();
+		return parsed.newBuilder().addPathSegment("translate").build().toString();
+	}
+
+	static String readCapped(InputStream in, int maxBytes) throws IOException{
+		ByteArrayOutputStream out=new ByteArrayOutputStream();
+		byte[] buf=new byte[4096];
+		int total=0;
+		int read;
+		while((read=in.read(buf))!=-1){
+			total+=read;
+			if(total>maxBytes)
+				throw new IOException("LibreTranslate response exceeds "+maxBytes+" bytes");
+			out.write(buf, 0, read);
+		}
+		return out.toString(StandardCharsets.UTF_8.name());
 	}
 
 	/** Build the LibreTranslate request body. HTML format preserves post markup. */
@@ -129,42 +155,60 @@ public class LibreTranslateClient{
 
 	/**
 	 * Translate {@code content} (HTML) through the configured endpoint. Success and error
-	 * callbacks both run on the main thread. A non-2xx response, a transport failure or an
-	 * unparseable body all report an error so the caller can surface a single failure path.
+	 * callbacks both run on the main thread. A non-2xx response, a transport failure, an
+	 * over-cap response or an unparseable body all report an error so the caller can surface
+	 * a single failure path. Returns the enqueued {@link Call} so callers can cancel it.
 	 */
-	public static void translate(String endpointUrl, String apiKey, String content, String sourceLang, String targetLang, Callback<Translation> callback){
+	@Nullable
+	public static Call translate(String endpointUrl, String apiKey, String content, String sourceLang, String targetLang, Callback<Translation> callback){
 		String endpoint=normalizeEndpoint(endpointUrl);
 		if(endpoint==null){
 			UiUtils.runOnUiThread(()->callback.onError(new MastodonErrorResponse("No LibreTranslate endpoint configured", -1, null)));
-			return;
+			return null;
+		}
+		Request req;
+		try{
+			req=new Request.Builder()
+					.url(endpoint)
+					.post(RequestBody.create(JSON, buildPayload(content, sourceLang, targetLang, apiKey)))
+					.build();
+		}catch(IllegalArgumentException e){
+			UiUtils.runOnUiThread(()->callback.onError(new MastodonErrorResponse("Invalid LibreTranslate endpoint", -1, e)));
+			return null;
 		}
 		OkHttpClient client=MastodonAPIController.getHttpClient();
-		Request req=new Request.Builder()
-				.url(endpoint)
-				.post(RequestBody.create(JSON, buildPayload(content, sourceLang, targetLang, apiKey)))
-				.build();
-		client.newCall(req).enqueue(new okhttp3.Callback(){
+		Call call=client.newCall(req);
+		call.enqueue(new okhttp3.Callback(){
 			@Override
 			public void onFailure(Call call, IOException e){
+				if(call.isCanceled())
+					return;
 				UiUtils.runOnUiThread(()->callback.onError(new MastodonErrorResponse("LibreTranslate request failed", -1, e)));
 			}
 
 			@Override
 			public void onResponse(Call call, Response response){
 				try{
-					String body=response.body()!=null ? response.body().string() : "";
+					if(call.isCanceled())
+						return;
 					if(!response.isSuccessful()){
 						UiUtils.runOnUiThread(()->callback.onError(new MastodonErrorResponse("LibreTranslate HTTP "+response.code(), response.code(), null)));
 						return;
 					}
+					String body=response.body()!=null ? readCapped(response.body().byteStream(), MAX_RESPONSE_BYTES) : "";
 					Translation t=parseTranslation(body, sourceLang);
-					UiUtils.runOnUiThread(()->callback.onSuccess(t));
+					UiUtils.runOnUiThread(()->{
+						if(!call.isCanceled())
+							callback.onSuccess(t);
+					});
 				}catch(Exception e){
-					UiUtils.runOnUiThread(()->callback.onError(new MastodonErrorResponse("LibreTranslate response unreadable", -1, e)));
+					if(!call.isCanceled())
+						UiUtils.runOnUiThread(()->callback.onError(new MastodonErrorResponse("LibreTranslate response unreadable", -1, e)));
 				}finally{
 					response.close();
 				}
 			}
 		});
+		return call;
 	}
 }

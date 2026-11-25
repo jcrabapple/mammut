@@ -1,5 +1,7 @@
 package org.joinmastodon.android.drafts;
 
+import com.google.gson.annotations.SerializedName;
+
 /**
  * MAMMUT: Composer 2.0 (§1) — one piece of media inside a draft segment.
  * {@link #filePath} is always an app-private copy inside the draft directory
@@ -8,10 +10,14 @@ package org.joinmastodon.android.drafts;
  */
 public class DraftAttachment{
 	/** Absolute path of the app-private copy, alongside draft.json */
+	@SerializedName("file_path")
 	public String filePath;
+	@SerializedName("mime_type")
 	public String mimeType;
 	/** Caption Track text; may be empty, never a metadata suggestion on restore */
+	@SerializedName("description")
 	public String description;
 	/** Focal point, "-1,-1" when unset */
+	@SerializedName("focus")
 	public String focus="-1,-1";
 }

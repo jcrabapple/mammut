@@ -442,7 +442,7 @@ public class PushSubscriptionManager{
 		if(!arePushNotificationsAvailable())
 			return;
 		for(AccountSession session:AccountSessionManager.getInstance().getLoggedInAccounts()){
-			if(session.pushSubscription==null || forceReRegister || session.needReRegisterForPush)
+			if(session.pushSubscription==null || TextUtils.isEmpty(session.pushSubscription.endpoint) || forceReRegister || session.needReRegisterForPush)
 				session.getPushSubscriptionManager().registerAccountForPush(session.pushSubscription);
 			else if(session.needUpdatePushSettings)
 				session.getPushSubscriptionManager().updatePushSettings(session.pushSubscription);

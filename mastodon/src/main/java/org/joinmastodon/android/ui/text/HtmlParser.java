@@ -32,6 +32,7 @@ import org.jsoup.safety.Safelist;
 import org.jsoup.select.NodeVisitor;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -89,12 +90,22 @@ public class HtmlParser{
 			}
 		}
 
-		Map<String, String> idsByUrl=mentions.stream().distinct().collect(Collectors.toMap(m->m.url, m->m.id, (a, b)->b));
+		Map<String, String> idsByUrl=buildMentionIdsByUrl(mentions);
 		// Hashtags in remote posts have remote URLs, these have local URLs so they don't match.
-//		Map<String, String> tagsByUrl=tags.stream().collect(Collectors.toMap(t->t.url, t->t.name));
-		Map<String, Hashtag> tagsByTag=tags.stream().distinct().collect(Collectors.toMap(t->t.name.toLowerCase(), Function.identity(), (a, b)->a));
-		Map<String, Mention> mentionsByID=mentions.stream().distinct().collect(Collectors.toMap(m->m.id, Function.identity(), (a, b)->a));
+		Map<String, Hashtag> tagsByTag=new HashMap<>();
+		if(tags!=null){
+			for(Hashtag t:tags){
+				if(t!=null && t.name!=null){
+					String key=t.name.toLowerCase();
+					if(!tagsByTag.containsKey(key))
+						tagsByTag.put(key, t);
+				}
+			}
+		}
+		Map<String, Mention> mentionsByID=buildMentionsById(mentions);
 
+		if(source==null)
+			source="";
 		source=source.replaceAll("[\u2028\u2029]", "<br>");
 		final SpannableStringBuilder ssb=new SpannableStringBuilder();
 		Element body=Jsoup.parseBodyFragment(source).body();
@@ -304,11 +315,39 @@ public class HtmlParser{
 		UiUtils.loadCustomEmojiInTextView(view);
 	}
 
+	/** Null-safe mention URL->ID index (remote timelines clear mention.id to null). */
+	static Map<String, String> buildMentionIdsByUrl(List<Mention> mentions){
+		Map<String, String> idsByUrl=new HashMap<>();
+		if(mentions!=null){
+			for(Mention m:mentions){
+				if(m!=null && m.url!=null && m.id!=null)
+					idsByUrl.put(m.url, m.id);
+			}
+		}
+		return idsByUrl;
+	}
+
+	/** Null-safe mention ID->Mention index. */
+	static Map<String, Mention> buildMentionsById(List<Mention> mentions){
+		Map<String, Mention> mentionsByID=new HashMap<>();
+		if(mentions!=null){
+			for(Mention m:mentions){
+				if(m!=null && m.id!=null && !mentionsByID.containsKey(m.id))
+					mentionsByID.put(m.id, m);
+			}
+		}
+		return mentionsByID;
+	}
+
 	public static String strip(String html){
+		if(html==null)
+			return "";
 		return Jsoup.clean(html, Safelist.none());
 	}
 
 	public static String stripAndRemoveInvisibleSpans(String html){
+		if(html==null)
+			return "";
 		Document doc=Jsoup.parseBodyFragment(html);
 		doc.body().select("span.invisible").remove();
 		Cleaner cleaner=new Cleaner(Safelist.none().addTags("br", "p"));

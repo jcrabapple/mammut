@@ -25,6 +25,11 @@
 	*;
 }
 
+# MAMMUT: DraftStore persists org.joinmastodon.android.drafts.** via Gson
+-keep public class org.joinmastodon.android.drafts.**{
+	*;
+}
+
 # Inner classes in api requests are used with gson
 -keepclassmembers class org.joinmastodon.android.api.**$*{
 	*;

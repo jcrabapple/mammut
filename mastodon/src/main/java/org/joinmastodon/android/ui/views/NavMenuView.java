@@ -648,9 +648,12 @@ public class NavMenuView extends FrameLayout{
 	}
 
 	private void cancelAnims(){
-		for(Animator a:currentAnims)
-			a.cancel();
+		if(currentAnims.isEmpty())
+			return;
+		ArrayList<Animator> toCancel=new ArrayList<>(currentAnims);
 		currentAnims.clear();
+		for(Animator a:toCancel)
+			a.cancel();
 	}
 
 	private void runAnims(AnimatorSet set){

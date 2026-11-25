@@ -91,16 +91,18 @@ public class CatchUpFragment extends StatusListFragment{
 	public CatchUpFragment(){
 		setLayout(R.layout.fragment_catch_up);
 		setListLayoutId(R.layout.fragment_catch_up_list);
+		// MAMMUT: Catch up is a frozen snapshot (spec §3): the event listener ignores
+		// status-created events entirely, but still honors deletions, edits and the
+		// display-settings event that fires when the tab's view filters change.
+		// Initialize once in the constructor so configuration changes on a retained
+		// fragment never replace the Otto-registered listener in onAttach().
+		eventListener=new CatchUpEventListener();
 	}
 
 	@Override
 	public void onAttach(Activity activity){
 		super.onAttach(activity);
 		setTitle(R.string.catch_up);
-		// MAMMUT: Catch up is a frozen snapshot (spec §3): the event listener ignores
-		// status-created events entirely, but still honors deletions, edits and the
-		// display-settings event that fires when the tab's view filters change.
-		eventListener=new CatchUpEventListener();
 	}
 
 	@Override

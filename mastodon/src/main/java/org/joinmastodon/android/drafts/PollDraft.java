@@ -1,5 +1,7 @@
 package org.joinmastodon.android.drafts;
 
+import com.google.gson.annotations.SerializedName;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,8 +12,12 @@ import java.util.List;
  * completeness so a draft written by a later version round-trips losslessly.
  */
 public class PollDraft{
+	@SerializedName("options")
 	public List<String> options=new ArrayList<>();
+	@SerializedName("expires_in")
 	public int expiresIn;
+	@SerializedName("multiple")
 	public boolean multiple;
+	@SerializedName("hide_totals")
 	public boolean hideTotals;
 }

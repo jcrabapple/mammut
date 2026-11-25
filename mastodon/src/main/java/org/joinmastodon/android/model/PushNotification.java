@@ -165,6 +165,8 @@ public class PushNotification extends BaseModel{
 
 		private static String systemBody(Strings strings, Notification notification){
 			if(notification.type==NotificationType.MODERATION_WARNING && notification.moderationWarning!=null){
+				if(notification.moderationWarning.action==null)
+					return "";
 				return strings.get(switch(notification.moderationWarning.action){
 					case NONE -> R.string.moderation_warning_action_none;
 					case DISABLE -> R.string.moderation_warning_action_disable;

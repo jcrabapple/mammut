@@ -59,6 +59,18 @@ public class PollOptionStatusDisplayItem extends StatusDisplayItem{
 		}
 	}
 
+	public static String translatedOptionTitle(Status status, int optionIndex){
+		if(status==null || status.translation==null || status.translationState!=Status.TranslationState.SHOWN)
+			return null;
+		if(status.translation.poll==null || status.translation.poll.options==null)
+			return null;
+		if(optionIndex<0 || optionIndex>=status.translation.poll.options.length)
+			return null;
+		if(status.translation.poll.options[optionIndex]==null)
+			return null;
+		return status.translation.poll.options[optionIndex].title;
+	}
+
 	@Override
 	public Type getType(){
 		return Type.POLL_OPTION;
@@ -110,12 +122,13 @@ public class PollOptionStatusDisplayItem extends StatusDisplayItem{
 		@Override
 		public void onBind(PollOptionStatusDisplayItem item){
 			itemView.setPaddingRelative(V.dp(item.fullWidth ? 16 : 64), itemView.getPaddingTop(), itemView.getPaddingEnd(), itemView.getPaddingBottom());
-			if (item.status.translation != null && item.status.translationState == Status.TranslationState.SHOWN) {
+			String translated=translatedOptionTitle(item.status, item.optionIndex);
+			if(translated!=null){
 				if(item.translatedText==null){
-					item.translatedText=item.status.translation.poll.options[item.optionIndex].title;
+					item.translatedText=translated;
 				}
 				text.setText(item.translatedText);
-			} else {
+			}else{
 				text.setText(item.text);
 			}
 			percent.setVisibility(item.showResults ? View.VISIBLE : View.GONE);

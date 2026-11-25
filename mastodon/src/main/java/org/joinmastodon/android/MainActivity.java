@@ -269,6 +269,33 @@ public class MainActivity extends FragmentStackActivity{
 		return getFragmentManager().findFragmentById(fragmentContainers.get(fragmentContainers.size()-1).getId());
 	}
 
+	/**
+	 * MAMMUT: pops any fragments stacked above {@link HomeFragment} and switches its destination.
+	 * Uses {@code fragmentContainers} + {@code findFragmentById} so it works on API 23+ without
+	 * relying on API 26's {@code FragmentManager.getFragments()} or touching a detached fragment.
+	 */
+	public void navigateToHomeDestination(org.joinmastodon.android.ui.NavDestination destination){
+		android.app.FragmentManager fm=getFragmentManager();
+		HomeFragment home=null;
+		int homeIndex=-1;
+		for(int i=fragmentContainers.size()-1;i>=0;i--){
+			Fragment f=fm.findFragmentById(fragmentContainers.get(i).getId());
+			if(f instanceof HomeFragment hf){
+				home=hf;
+				homeIndex=i;
+				break;
+			}
+		}
+		if(home==null)
+			return;
+		for(int i=fragmentContainers.size()-1;i>homeIndex;i--){
+			Fragment top=fm.findFragmentById(fragmentContainers.get(i).getId());
+			if(top!=null)
+				removeFragment(top, i==fragmentContainers.size()-1);
+		}
+		home.setDestination(destination);
+	}
+
 	@Override
 	public void onProvideAssistContent(AssistContent outContent){
 		if(getTopmostFragment() instanceof AssistContentProviderFragment provider){

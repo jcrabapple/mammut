@@ -740,6 +740,7 @@
 	<string name="mo_translation_custom_title">Custom translation instance</string>
 	<string name="mo_translation_custom_summary">Your own LibreTranslate endpoint. Your server\'s own translator is still tried first.</string>
 	<string name="mo_translation_url_hint">LibreTranslate URL (https://…)</string>
+	<string name="mo_translation_url_invalid">Enter a valid https:// URL</string>
 	<string name="mo_translation_api_key_hint">API key (optional)</string>
 	<string name="settings_privacy">Privacy and reach</string>
 	<string name="settings_discoverable">Feature profile and posts in discovery algorithms</string>

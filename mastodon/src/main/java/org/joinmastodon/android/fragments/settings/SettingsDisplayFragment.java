@@ -426,20 +426,27 @@ public class SettingsDisplayFragment extends BaseSettingsFragment<Void>{
 		keyField.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
 		keyField.setText(GlobalUserPreferences.libreTranslateApiKey);
 		layout.addView(keyField);
-		new M3AlertDialogBuilder(ctx)
+		android.app.AlertDialog dialog=new M3AlertDialogBuilder(ctx)
 				.setTitle(R.string.mo_translation_custom_title)
 				.setSupportingText(R.string.mo_translation_custom_summary)
 				.setView(layout)
-				.setPositiveButton(R.string.save, (dlg, which)->{
-					GlobalUserPreferences.libreTranslateUrl=urlField.getText().toString().trim();
-					GlobalUserPreferences.libreTranslateApiKey=keyField.getText().toString().trim();
-					GlobalUserPreferences.translationService=GlobalUserPreferences.TranslationService.CUSTOM;
-					GlobalUserPreferences.save();
-					translationServiceItem.subtitle=getTranslationServiceValue();
-					rebindItem(translationServiceItem);
-				})
+				.setPositiveButton(R.string.save, null)
 				.setNegativeButton(R.string.cancel, null)
 				.show();
+		dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+			String candidate=urlField.getText().toString().trim();
+			if(org.joinmastodon.android.api.LibreTranslateClient.normalizeEndpoint(candidate)==null){
+				urlField.setError(getString(R.string.mo_translation_url_invalid));
+				return;
+			}
+			GlobalUserPreferences.libreTranslateUrl=candidate;
+			GlobalUserPreferences.libreTranslateApiKey=keyField.getText().toString().trim();
+			GlobalUserPreferences.translationService=GlobalUserPreferences.TranslationService.CUSTOM;
+			GlobalUserPreferences.save();
+			translationServiceItem.subtitle=getTranslationServiceValue();
+			rebindItem(translationServiceItem);
+			dialog.dismiss();
+		});
 	}
 
 	// MOSHIDON: may the overlords forgive my overloads

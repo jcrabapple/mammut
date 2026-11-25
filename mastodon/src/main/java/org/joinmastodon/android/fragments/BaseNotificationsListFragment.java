@@ -122,10 +122,12 @@ public abstract class BaseNotificationsListFragment extends BaseStatusListFragme
 	@Override
 	public void onItemClick(String id){
 		NotificationViewModel n=getNotificationByID(id);
+		if(n==null)
+			return;
 		if(n.status!=null){
 			Status status=n.status;
 			navigateToStatus(status);
-		}else{
+		}else if(n.accounts!=null && !n.accounts.isEmpty()){
 			Bundle args=new Bundle();
 			args.putString("account", accountID);
 			args.putParcelable("profileAccount", Parcels.wrap(n.accounts.get(0)));
@@ -136,6 +138,8 @@ public abstract class BaseNotificationsListFragment extends BaseStatusListFragme
 	@Override
 	public void onItemClick(String id, boolean quote){
 		NotificationViewModel n=getNotificationByID(id);
+		if(n==null)
+			return;
 		if(n.status!=null){
 			Status status=n.status;
 			navigateToStatus(quote ? status.quote.quotedStatus : status);

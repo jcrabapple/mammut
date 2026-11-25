@@ -128,6 +128,7 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 		GlobalUserPreferences.enableDeleteNotifications=deleteNotificationsItem.checked;
 		GlobalUserPreferences.save();
 		if(needUpdateNotificationSettings){
+			needUpdateNotificationSettings=false;
 			ps.alerts.mention=mentionsItem.checked;
 			ps.alerts.reblog=boostsItem.checked;
 			ps.alerts.favourite=favoritesItem.checked;
@@ -140,16 +141,29 @@ public class SettingsNotificationsFragment extends BaseSettingsFragment<Void>{
 			// (== deviceToken non-empty), so on UnifiedPush-only setups — or before push has
 			// registered — the toggles were never written and reverted on re-entering the screen.
 			AccountSession session=AccountSessionManager.getInstance().getAccount(accountID);
+			boolean pushReady=shouldSyncPushSettings(
+					PushSubscriptionManager.arePushNotificationsAvailable(),
+					org.joinmastodon.android.utils.UnifiedPushHelper.isUnifiedPushEnabled(getContext()));
 			session.pushSubscription=ps;
+			if(!pushReady){
+				session.needUpdatePushSettings=true;
+				if(android.text.TextUtils.isEmpty(ps.endpoint))
+					session.needReRegisterForPush=true;
+			}
 			AccountSessionManager.getInstance().writeAccountPushSettings(accountID);
 			AccountLocalPreferences lp=session.getLocalPreferences();
 			lp.notificationFilters=ps.alerts.clone();
 			lp.save();
-			// The server-side push sync still needs a registration; the local save stands alone.
-			if(PushSubscriptionManager.arePushNotificationsAvailable()){
-				session.getPushSubscriptionManager().updatePushSettings(pushSubscription);
+			// Sync to server whenever either FCM or UnifiedPush is active.
+			if(pushReady){
+				session.getPushSubscriptionManager().updatePushSettings(ps);
 			}
 		}
+	}
+
+	/** Pure policy seam: sync push alert toggles to server when either FCM or UnifiedPush is active. */
+	static boolean shouldSyncPushSettings(boolean fcmAvailable, boolean unifiedPushEnabled){
+		return fcmAvailable || unifiedPushEnabled;
 	}
 
 	@Override

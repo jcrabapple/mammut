@@ -56,6 +56,14 @@ public class SpoilerStatusDisplayItem extends StatusDisplayItem{
 		return emojiHelper.getImageRequest(index);
 	}
 
+	public static String translatedSpoilerTitle(Status status, Status.SpoilerType spoilerType){
+		if(spoilerType!=Status.SpoilerType.CONTENT_WARNING || status==null || status.translation==null
+				|| status.translationState!=Status.TranslationState.SHOWN)
+			return null;
+		String text=status.translation.spoilerText;
+		return text==null || text.isEmpty() ? null : text;
+	}
+
 	@Override
 	public Type getType(){
 		return type;
@@ -89,9 +97,10 @@ public class SpoilerStatusDisplayItem extends StatusDisplayItem{
 		@Override
 		public void onBind(SpoilerStatusDisplayItem item){
 			itemView.setPaddingRelative(V.dp(item.fullWidth ? 16 : 64), itemView.getPaddingTop(), itemView.getPaddingEnd(), itemView.getPaddingBottom());
-			if(item.status.translationState==Status.TranslationState.SHOWN){
+			String translated=translatedSpoilerTitle(item.status, item.spoilerType);
+			if(translated!=null){
 				if(item.translatedTitle==null){
-					item.translatedTitle=item.status.translation.spoilerText;
+					item.translatedTitle=translated;
 				}
 				title.setText(item.translatedTitle);
 			}else{

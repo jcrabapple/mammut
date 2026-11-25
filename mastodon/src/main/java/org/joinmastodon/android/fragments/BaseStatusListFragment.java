@@ -911,6 +911,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 
 	@Nullable
 	protected <I extends StatusDisplayItem, H extends StatusDisplayItem.Holder<I>> H findHolderOfType(String id, Class<H> type){
+		if(list==null)
+			return null;
 		for(int i=0;i<list.getChildCount();i++){
 			RecyclerView.ViewHolder holder=list.getChildViewHolder(list.getChildAt(i));
 			if(holder instanceof StatusDisplayItem.Holder<?> itemHolder && itemHolder.getItemID().equals(id) && type.isInstance(holder))
@@ -921,6 +923,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 
 	protected <I extends StatusDisplayItem, H extends StatusDisplayItem.Holder<I>> List<H> findAllHoldersOfType(String id, Class<H> type){
 		ArrayList<H> holders=new ArrayList<>();
+		if(list==null)
+			return holders;
 		for(int i=0;i<list.getChildCount();i++){
 			RecyclerView.ViewHolder holder=list.getChildViewHolder(list.getChildAt(i));
 			if(holder instanceof StatusDisplayItem.Holder<?> itemHolder && itemHolder.getItemID().equals(id) && type.isInstance(holder))
@@ -1020,27 +1024,59 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 		updateTranslation(itemID);
 	}
 
+	private final ArrayList<APIRequest<?>> activeTranslationRequests=new ArrayList<>();
+	private final ArrayList<okhttp3.Call> activeTranslationCalls=new ArrayList<>();
+	private final ArrayList<Status> translatingStatuses=new ArrayList<>();
+
+	@Override
+	public void onDestroyView(){
+		cancelActiveTranslations();
+		super.onDestroyView();
+	}
+
+	private void cancelActiveTranslations(){
+		for(APIRequest<?> req:new ArrayList<>(activeTranslationRequests))
+			req.cancel();
+		activeTranslationRequests.clear();
+		for(okhttp3.Call call:new ArrayList<>(activeTranslationCalls))
+			call.cancel();
+		activeTranslationCalls.clear();
+		for(Status s:new ArrayList<>(translatingStatuses)){
+			if(s.translationState==Status.TranslationState.LOADING)
+				s.translationState=Status.TranslationState.HIDDEN;
+		}
+		translatingStatuses.clear();
+	}
+
 	// MAMMUT: universal translation — prefer the instance's own translator; when it fails
 	// and a LibreTranslate fallback is configured, retry through that endpoint so translation
 	// works even on instances with no built-in translator. With no fallback configured the
 	// behavior is identical to before (instance only).
 	private void startTranslation(Status status, String itemID){
 		status.translationState=Status.TranslationState.LOADING;
+		if(!translatingStatuses.contains(status))
+			translatingStatuses.add(status);
 		Status content=status.getContentStatus();
 		String target=Locale.getDefault().getLanguage();
 		String fallbackUrl=LibreTranslateClient.effectiveUrl(GlobalUserPreferences.translationService, GlobalUserPreferences.libreTranslateUrl);
 		String fallbackKey=LibreTranslateClient.effectiveApiKey(GlobalUserPreferences.translationService, GlobalUserPreferences.libreTranslateApiKey);
-		new TranslateStatus(content.id, target)
+		APIRequest<?>[] reqHolder=new APIRequest<?>[1];
+		reqHolder[0]=new TranslateStatus(content.id, target)
 				.setCallback(new Callback<>(){
 					@Override
 					public void onSuccess(Translation result){
+						activeTranslationRequests.remove(reqHolder[0]);
 						applyTranslation(status, itemID, result);
 					}
 
 					@Override
 					public void onError(ErrorResponse error){
-						if(getActivity()==null)
+						activeTranslationRequests.remove(reqHolder[0]);
+						if(getActivity()==null){
+							translatingStatuses.remove(status);
+							status.translationState=Status.TranslationState.HIDDEN;
 							return;
+						}
 						if(fallbackUrl!=null){
 							translateViaLibreTranslate(status, itemID, content, target, fallbackUrl, fallbackKey);
 						}else{
@@ -1049,35 +1085,45 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 					}
 				})
 				.exec(accountID);
+		activeTranslationRequests.add(reqHolder[0]);
 	}
 
 	private void translateViaLibreTranslate(Status status, String itemID, Status content, String target, String url, String key){
-		LibreTranslateClient.translate(url, key,
+		okhttp3.Call[] callHolder=new okhttp3.Call[1];
+		callHolder[0]=LibreTranslateClient.translate(url, key,
 				content.content, content.language, target, new Callback<>(){
 					@Override
 					public void onSuccess(Translation result){
+						if(callHolder[0]!=null)
+							activeTranslationCalls.remove(callHolder[0]);
 						applyTranslation(status, itemID, result);
 					}
 
 					@Override
 					public void onError(ErrorResponse error){
+						if(callHolder[0]!=null)
+							activeTranslationCalls.remove(callHolder[0]);
 						failTranslation(status, itemID);
 					}
 				});
+		if(callHolder[0]!=null)
+			activeTranslationCalls.add(callHolder[0]);
 	}
 
 	private void applyTranslation(Status status, String itemID, Translation result){
-		if(getActivity()==null)
-			return;
+		translatingStatuses.remove(status);
 		status.translation=result;
 		status.translationState=Status.TranslationState.SHOWN;
+		if(getActivity()==null)
+			return;
 		updateTranslation(itemID);
 	}
 
 	private void failTranslation(Status status, String itemID){
+		translatingStatuses.remove(status);
+		status.translationState=Status.TranslationState.HIDDEN;
 		if(getActivity()==null)
 			return;
-		status.translationState=Status.TranslationState.HIDDEN;
 		updateTranslation(itemID);
 		new M3AlertDialogBuilder(getActivity())
 				.setTitle(R.string.error)
@@ -1087,6 +1133,8 @@ public abstract class BaseStatusListFragment<T extends DisplayItemsParent> exten
 	}
 
 	private void updateTranslation(String itemID) {
+		if(list==null)
+			return;
 		TextStatusDisplayItem.Holder text=findHolderOfType(itemID, TextStatusDisplayItem.Holder.class);
 		if(text!=null){
 			text.updateTranslation(true);
