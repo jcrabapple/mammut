@@ -47,7 +47,8 @@
 	<org.joinmastodon.android.ui.views.HeaderSubtitleLinearLayout
 		android:id="@+id/name_wrap"
 		android:layout_width="match_parent"
-		android:layout_height="24dp"
+		android:layout_height="wrap_content"
+		android:minHeight="24dp"
 		android:layout_toEndOf="@id/avatar"
 		android:layout_toStartOf="@id/more"
 		android:layout_marginEnd="8dp">
@@ -55,7 +56,8 @@
 		<TextView
 			android:id="@+id/name"
 			android:layout_width="wrap_content"
-			android:layout_height="24dp"
+			android:layout_height="wrap_content"
+			android:minHeight="24dp"
 			android:ellipsize="end"
 			android:singleLine="true"
 			android:textAppearance="@style/m3_title_medium"
@@ -66,7 +68,8 @@
 		<TextView
 			android:id="@+id/extra_text"
 			android:layout_width="wrap_content"
-			android:layout_height="24dp"
+			android:layout_height="wrap_content"
+			android:minHeight="24dp"
 			android:layout_marginStart="8dp"
 			android:ellipsize="end"
 			android:singleLine="true"
@@ -81,7 +84,8 @@
 	<TextView
 		android:id="@+id/time_and_username"
 		android:layout_width="match_parent"
-		android:layout_height="20dp"
+		android:layout_height="wrap_content"
+		android:minHeight="20dp"
 		android:layout_below="@id/name_wrap"
 		android:layout_toEndOf="@id/avatar"
 		android:layout_toStartOf="@id/more"

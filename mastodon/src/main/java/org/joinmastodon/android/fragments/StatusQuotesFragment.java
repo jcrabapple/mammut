@@ -5,6 +5,7 @@ import android.os.Bundle;
 
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.statuses.GetStatusQuotes;
+import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.model.FilterContext;
 import org.joinmastodon.android.model.HeaderPaginationList;
 import org.joinmastodon.android.model.Status;
@@ -31,6 +32,7 @@ public class StatusQuotesFragment extends StatusListFragment{
 					public void onSuccess(HeaderPaginationList<Status> result){
 						if(getActivity()==null)
 							return;
+						AccountSessionManager.get(accountID).filterStatuses(result, getFilterContext());
 						onDataLoaded(result, result.nextPageUri!=null);
 					}
 				})

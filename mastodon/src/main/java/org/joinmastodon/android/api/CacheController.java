@@ -242,7 +242,9 @@ public class CacheController{
 									}
 								}
 							}
-							uiHandler.post(()->callback.onSuccess(new PaginatedResponse<>(makeNotificationViewModels(result, accounts, statuses), _newMaxID)));
+							List<NotificationViewModel> notifications=makeNotificationViewModels(result, accounts, statuses);
+							AccountSessionManager.get(accountID).filterStatusContainingObjects(notifications, n->n.status, FilterContext.NOTIFICATIONS);
+							uiHandler.post(()->callback.onSuccess(new PaginatedResponse<>(notifications, _newMaxID)));
 							return;
 						}
 					}catch(IOException x){
@@ -291,6 +293,7 @@ public class CacheController{
 									Map<String, Account> accounts=result.accounts.stream().collect(Collectors.toMap(a->a.id, Function.identity(), (a1, a2)->a2));
 									Map<String, Status> statuses=result.statuses.stream().collect(Collectors.toMap(s->s.id, Function.identity(), (s1, s2)->s2));
 									List<NotificationViewModel> notifications=makeNotificationViewModels(result.notificationGroups, accounts, statuses);
+									AccountSessionManager.get(accountID).filterStatusContainingObjects(notifications, n->n.status, FilterContext.NOTIFICATIONS);
 									databaseThread.postRunnable(()->putNotifications(result.notificationGroups, result.accounts, result.statuses, onlyMentions, maxID==null), 0);
 									PaginatedResponse<List<NotificationViewModel>> res=new PaginatedResponse<>(notifications,
 											result.notificationGroups.isEmpty() ? null : result.notificationGroups.get(result.notificationGroups.size()-1).pageMinId);

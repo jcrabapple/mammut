@@ -469,8 +469,7 @@ public class HomeTimelineFragment extends StatusListFragment implements ToolbarD
 							toAdd=new ArrayList<>(toAdd);
 						Set<String> existingPostIDs=data.stream().map(s->s.id).collect(Collectors.toSet());
 						toAdd.removeIf(s->existingPostIDs.contains(s.id));
-						if(needCache)
-							AccountSessionManager.get(accountID).filterStatuses(toAdd, FilterContext.HOME);
+						AccountSessionManager.get(accountID).filterStatuses(toAdd, listMode==ListMode.LOCAL ? FilterContext.PUBLIC : FilterContext.HOME);
 						if(!toAdd.isEmpty()){
 							prependItems(toAdd, true);
 							if(GlobalUserPreferences.showNewPostsButton)
@@ -563,8 +562,7 @@ public class HomeTimelineFragment extends StatusListFragment implements ToolbarD
 							}else{
 								result=result.subList(0, endIndex);
 							}
-							if(needCache)
-								AccountSessionManager.get(accountID).filterStatuses(result, FilterContext.HOME);
+							AccountSessionManager.get(accountID).filterStatuses(result, listMode==ListMode.LOCAL ? FilterContext.PUBLIC : FilterContext.HOME);
 							List<StatusDisplayItem> targetList=displayItems.subList(gapPos, gapPos+1); // Get a sub-list that contains the gap item
 							targetList.clear(); // remove the gap item
 							List<Status> insertedPosts=data.subList(gapPostIndex+1, gapPostIndex+1);
@@ -610,16 +608,25 @@ public class HomeTimelineFragment extends StatusListFragment implements ToolbarD
 							}
 							List<StatusDisplayItem> targetList=displayItems.subList(gapPos+1, gapPos+1);
 							List<Status> insertedPosts=data.subList(gapPostIndex+1, gapPostIndex+1);
+							boolean foundIntersection=false;
+							int startIndex=result.size();
 							for(int i=result.size()-1;i>=0;i--){
-								Status s=result.get(i);
-								if(idsAboveGap.contains(s.id))
+								if(idsAboveGap.contains(result.get(i).id)){
+									foundIntersection=true;
 									break;
+								}
+								startIndex=i;
+							}
+							List<Status> toInsert=new ArrayList<>(result.subList(startIndex, result.size()));
+							AccountSessionManager.get(accountID).filterStatuses(toInsert, listMode==ListMode.LOCAL ? FilterContext.PUBLIC : FilterContext.HOME);
+							for(int i=toInsert.size()-1;i>=0;i--){
+								Status s=toInsert.get(i);
 								targetList.addAll(0, buildDisplayItems(s));
 								insertedPosts.add(0, s);
 							}
 							int addedItemCount=targetList.size();
 							boolean gapRemoved=false;
-							if(insertedPosts.size()<result.size()){ // There was an intersection, remove the gap
+							if(foundIntersection){ // There was an intersection, remove the gap
 								gapRemoved=true;
 								gapPost.hasGapAfter=false;
 								if(needCache)

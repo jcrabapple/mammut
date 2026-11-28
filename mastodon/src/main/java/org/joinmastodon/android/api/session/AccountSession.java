@@ -347,7 +347,7 @@ public class AccountSession{
 		if(!getLocalPreferences().serverSideFiltersSupported){
 			for(T obj:objects){
 				Status s=extractor.apply(obj);
-				if(s!=null && s.filtered!=null){
+				if(s!=null && (s.filtered!=null || (s.reblog!=null && s.reblog.filtered!=null))){
 					getLocalPreferences().serverSideFiltersSupported=true;
 					getLocalPreferences().save();
 					break;
@@ -356,21 +356,10 @@ public class AccountSession{
 		}
 		if(getLocalPreferences().serverSideFiltersSupported){
 			// Even with server-side filters, clients are expected to remove statuses that match a filter that hides them
-			objects.removeIf(o->{
-				Status s=extractor.apply(o);
-				if(s==null)
-					return false;
-				if(s.filtered==null)
-					return false;
-				for(FilterResult filter:s.filtered){
-					if(filter.filter!=null && filter.filter.isActive() && filter.filter.filterAction==FilterAction.HIDE)
-						return true;
-				}
-				return false;
-			});
+			objects.removeIf(o->shouldHideStatus(extractor.apply(o)));
 			return;
 		}
-		if(wordFilters==null)
+		if(wordFilters==null || context==null)
 			return;
 		objects.removeIf(o->{
 			Status s=extractor.apply(o);
@@ -382,6 +371,24 @@ public class AccountSession{
 			}
 			return false;
 		});
+	}
+
+	public static boolean shouldHideStatus(Status s){
+		if(s==null)
+			return false;
+		if(hasActiveHideFilter(s.filtered))
+			return true;
+		return s.reblog!=null && hasActiveHideFilter(s.reblog.filtered);
+	}
+
+	private static boolean hasActiveHideFilter(List<FilterResult> results){
+		if(results==null)
+			return false;
+		for(FilterResult filter:results){
+			if(filter!=null && filter.filter!=null && filter.filter.isActive() && filter.filter.filterAction==FilterAction.HIDE)
+				return true;
+		}
+		return false;
 	}
 
 	// MOSHIDON: there might be a bunch of crashes if I don't put this back here

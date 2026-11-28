@@ -5,6 +5,7 @@ import android.net.Uri;
 
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.statuses.GetBookmarkedStatuses;
+import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.events.RemoveAccountPostsEvent;
 import org.joinmastodon.android.model.FilterContext;
 import org.joinmastodon.android.model.HeaderPaginationList;
@@ -33,6 +34,7 @@ public class BookmarkedStatusListFragment extends StatusListFragment{
 							nextMaxID=result.nextPageUri.getQueryParameter("max_id");
 						else
 							nextMaxID=null;
+						AccountSessionManager.get(accountID).filterStatuses(result, getFilterContext());
 						onDataLoaded(result, nextMaxID!=null);
 					}
 				})

@@ -173,6 +173,8 @@ public abstract class StatusDisplayItem{
 		boolean blurFiltered=false; // Blur: media covered, text stays readable
 		String filterTitle=null;
 		FilterResult effectiveResult=FilterResult.getEffectiveResult(status.filtered);
+		if(effectiveResult==null && status.reblog!=null)
+			effectiveResult=FilterResult.getEffectiveResult(status.reblog.filtered);
 		if(effectiveResult!=null){
 			filterTitle=effectiveResult.filter.title;
 			blurFiltered=effectiveResult.filter.filterAction==FilterAction.BLUR;

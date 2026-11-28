@@ -8,6 +8,7 @@ import android.view.MenuItem;
 
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.timelines.GetListTimeline;
+import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.model.FilterContext;
 import org.joinmastodon.android.model.FollowList;
 import org.joinmastodon.android.model.Status;
@@ -36,6 +37,7 @@ public class ListTimelineFragment extends StatusListFragment{
 				.setCallback(new SimpleCallback<>(this){
 					@Override
 					public void onSuccess(List<Status> result){
+						AccountSessionManager.get(accountID).filterStatuses(result, getFilterContext());
 						onDataLoaded(result, !result.isEmpty());
 					}
 				})

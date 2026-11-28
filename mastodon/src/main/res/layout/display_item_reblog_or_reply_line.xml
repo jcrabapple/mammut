@@ -10,7 +10,8 @@
 	<org.joinmastodon.android.ui.views.LinkedTextView
 		android:id="@+id/text"
 		android:layout_width="match_parent"
-		android:layout_height="16dp"
+		android:layout_height="wrap_content"
+		android:minHeight="16dp"
 		android:textAppearance="@style/m3_label_medium"
 		android:drawableTint="?colorM3Outline"
 		android:textColor="?colorM3Outline"

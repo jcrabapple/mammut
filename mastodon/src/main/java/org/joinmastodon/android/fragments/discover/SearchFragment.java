@@ -13,6 +13,7 @@ import org.joinmastodon.android.fragments.BaseStatusListFragment;
 import org.joinmastodon.android.fragments.ProfileFragment;
 import org.joinmastodon.android.fragments.ThreadFragment;
 import org.joinmastodon.android.model.Account;
+import org.joinmastodon.android.model.FilterContext;
 import org.joinmastodon.android.model.Hashtag;
 import org.joinmastodon.android.model.SearchResult;
 import org.joinmastodon.android.model.SearchResults;
@@ -155,6 +156,7 @@ public class SearchFragment extends BaseStatusListFragment<SearchResult>{
 								results.add(new SearchResult(tag));
 						}
 						if(result.statuses!=null){
+							AccountSessionManager.get(accountID).filterStatuses(result.statuses, FilterContext.PUBLIC);
 							Set<String> alreadyLoadedStatuses=data.stream().filter(r->r.type==SearchResult.Type.STATUS).map(r->r.status.id).collect(Collectors.toSet());
 							for(Status status:result.statuses){
 								if(!alreadyLoadedStatuses.contains(status.id))

@@ -13,6 +13,7 @@ import android.widget.TextView;
 import org.joinmastodon.android.R;
 import org.joinmastodon.android.api.requests.statuses.GetBookmarkedStatuses;
 import org.joinmastodon.android.api.requests.statuses.GetFavoritedStatuses;
+import org.joinmastodon.android.api.session.AccountSessionManager;
 import org.joinmastodon.android.events.RemoveAccountPostsEvent;
 import org.joinmastodon.android.model.Account;
 import org.joinmastodon.android.model.FilterContext;
@@ -68,6 +69,7 @@ public class SavedPostsTimelineFragment extends StatusListFragment{
 			public void onSuccess(HeaderPaginationList<Status> result){
 				if(getActivity()==null)
 					return;
+				AccountSessionManager.get(accountID).filterStatuses(result, FilterContext.ACCOUNT);
 				onDataLoaded(result, result.nextPageUri!=null);
 				nextPageMaxID=result.getNextPageMaxID();
 			}
